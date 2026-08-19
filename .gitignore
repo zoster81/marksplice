@@ -1,0 +1,33 @@
+# Go build and test binaries
+*.exe
+*.exe~
+*.test
+
+# Coverage artifacts
+*.coverprofile
+coverage.out
+coverage.txt
+/coverage/
+
+# Local build/output directories
+/bin/
+/dist/
+
+# Go workspace files (local multi-module development state)
+go.work
+go.work.sum
+
+# Local tooling and reports
+/.golangci-cache/
+/reports/
+
+# Local editor/IDE state
+/.vscode/
+/.idea/
+*.swp
+*.swo
+
+# OS noise
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,35 @@
+package parser
+
+// Kind identifies a semantic node kind without exposing parser-specific types.
+type Kind uint8
+
+const (
+	KindUnknown Kind = iota
+	KindParagraph
+	KindHeading
+	KindTask
+)
+
+// Range is a half-open byte range [Start, End) in the parsed source snapshot.
+type Range struct {
+	Start int
+	End   int
+}
+
+// Valid reports whether the range is ordered and contained in a source of total bytes.
+func (r Range) Valid(total int) bool {
+	return r.Start >= 0 && r.End >= r.Start && r.End <= total
+}
+
+// Node is a parser-independent semantic observation used by Marksplice internals.
+type Node struct {
+	Kind    Kind
+	Range   Range
+	Level   int
+	Checked bool
+}
+
+// Adapter parses Markdown into Marksplice-owned semantic observations.
+type Adapter interface {
+	Parse(source []byte) ([]Node, error)
+}

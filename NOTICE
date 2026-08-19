@@ -1,0 +1,8 @@
+Marksplice
+Copyright 2026 Giovanni Riccobene (zoster81)
+
+Marksplice was originally created by Giovanni Riccobene (zoster81).
+
+This product includes software developed by third parties. Marksplice uses
+github.com/yuin/goldmark, which is licensed under the MIT License. Exact
+dependency versions are recorded in go.mod and go.sum.
