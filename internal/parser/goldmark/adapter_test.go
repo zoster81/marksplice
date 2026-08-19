@@ -8,6 +8,8 @@ import (
 	"github.com/yuin/goldmark/ast"
 	extensionast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
+
+	markparser "github.com/zoster81/marksplice/internal/parser"
 )
 
 func TestDefaultProfileIsGFMOnly(t *testing.T) {
@@ -60,6 +62,42 @@ func TestGFM029SpecCompatibilityGuards(t *testing.T) {
 				t.Fatalf("node count for %s = %d, want %d", tt.kind.String(), got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAdapterExposesRawHTMLAndHTMLBlockSourceRanges(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("before <!-- old --> <a id=\"anchor\">text</a>\n\n<div data-x=\"1\">\r\n*not markdown*\r\n</div>\r\n\r\nafter\r\n")
+	nodes, err := New().Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	var rawValues []string
+	var blockValues []string
+	for _, node := range nodes {
+		switch node.Kind {
+		case markparser.KindRawHTML:
+			rawValues = append(rawValues, string(source[node.Range.Start:node.Range.End]))
+		case markparser.KindHTMLBlock:
+			blockValues = append(blockValues, string(source[node.Range.Start:node.Range.End]))
+		}
+	}
+	for _, want := range []string{"<!-- old -->", "<a id=\"anchor\">", "</a>"} {
+		found := false
+		for _, got := range rawValues {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("raw HTML %q not exposed; got %q", want, rawValues)
+		}
+	}
+	if len(blockValues) != 1 || !strings.Contains(blockValues[0], "<div data-x=\"1\">") || !strings.Contains(blockValues[0], "</div>") {
+		t.Fatalf("HTML block ranges = %q, want one opaque block containing opening and closing tags", blockValues)
 	}
 }
 

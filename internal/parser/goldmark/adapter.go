@@ -1,6 +1,7 @@
 package goldmark
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/yuin/goldmark"
@@ -68,65 +69,12 @@ func (a *Adapter) Parse(source []byte) ([]parser.Node, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-
-		switch typed := node.(type) {
-		case *ast.Paragraph:
-			lines := typed.Lines()
-			if lines.Len() == 0 {
-				return ast.WalkContinue, nil
-			}
-
-			first := lines.At(0)
-			last := lines.At(lines.Len() - 1)
-			range_ := parser.Range{Start: first.Start, End: paragraphContentEnd(source, last.Stop)}
-			if !range_.Valid(len(source)) {
-				return ast.WalkStop, fmt.Errorf("goldmark paragraph range [%d,%d) is outside source length %d", range_.Start, range_.End, len(source))
-			}
-
-			nodes = append(nodes, parser.Node{
-				Kind:  parser.KindParagraph,
-				Range: range_,
-			})
-		case *ast.Heading:
-			if typed.Parent() == nil || typed.Parent().Kind() != ast.KindDocument {
-				return ast.WalkContinue, nil
-			}
-			lines := typed.Lines()
-			if lines.Len() == 0 {
-				return ast.WalkContinue, nil
-			}
-
-			first := lines.At(0)
-			last := lines.At(lines.Len() - 1)
-			range_ := parser.Range{Start: first.Start, End: last.Stop}
-			if !range_.Valid(len(source)) {
-				return ast.WalkStop, fmt.Errorf("goldmark heading content range [%d,%d) is outside source length %d", range_.Start, range_.End, len(source))
-			}
-
-			nodes = append(nodes, parser.Node{
-				Kind:  parser.KindHeading,
-				Range: range_,
-				Level: typed.Level,
-			})
-		case *extensionast.TaskCheckBox:
-			parent, ok := typed.Parent().(*ast.TextBlock)
-			if !ok || parent.Parent() == nil || parent.Parent().Kind() != ast.KindListItem {
-				return ast.WalkContinue, nil
-			}
-			lines := parent.Lines()
-			if lines.Len() == 0 {
-				return ast.WalkContinue, nil
-			}
-			first := lines.At(0)
-			range_ := parser.Range{Start: first.Start, End: first.Stop}
-			if !range_.Valid(len(source)) {
-				return ast.WalkStop, fmt.Errorf("goldmark task anchor range [%d,%d) is outside source length %d", range_.Start, range_.End, len(source))
-			}
-			nodes = append(nodes, parser.Node{
-				Kind:    parser.KindTask,
-				Range:   range_,
-				Checked: typed.IsChecked,
-			})
+		observation, ok, err := observeNode(source, node)
+		if err != nil {
+			return ast.WalkStop, err
+		}
+		if ok {
+			nodes = append(nodes, observation)
 		}
 		return ast.WalkContinue, nil
 	})
@@ -134,6 +82,181 @@ func (a *Adapter) Parse(source []byte) ([]parser.Node, error) {
 		return nil, fmt.Errorf("walk goldmark AST: %w", err)
 	}
 	return nodes, nil
+}
+func fencedCodeContentEnd(source []byte, start int) int {
+	end := start
+	for end < len(source) && source[end] != '\r' && source[end] != '\n' {
+		end++
+	}
+	return end
+}
+
+func singleLineRawHTMLRange(source []byte, raw *ast.RawHTML) (parser.Range, bool) {
+	if raw.Segments == nil || raw.Segments.Len() != 1 {
+		return parser.Range{}, false
+	}
+	segment := raw.Segments.At(0)
+	range_ := parser.Range{Start: segment.Start, End: segment.Stop}
+	if !range_.Valid(len(source)) || range_.Start == range_.End {
+		return parser.Range{}, false
+	}
+	for _, b := range source[range_.Start:range_.End] {
+		if b == '\r' || b == '\n' {
+			return parser.Range{}, false
+		}
+	}
+	return range_, true
+}
+
+func htmlBlockSourceRange(source []byte, block *ast.HTMLBlock) (parser.Range, bool) {
+	lines := block.Lines()
+	if lines.Len() == 0 {
+		return parser.Range{}, false
+	}
+	start := lines.At(0).Start
+	end := lines.At(lines.Len() - 1).Stop
+	if block.HasClosure() && block.ClosureLine.Stop > end {
+		end = block.ClosureLine.Stop
+	}
+	range_ := parser.Range{Start: start, End: end}
+	if !range_.Valid(len(source)) || range_.Start == range_.End {
+		return parser.Range{}, false
+	}
+	return range_, true
+}
+
+func autoLinkSourceRange(source []byte, link *ast.AutoLink) (int, parser.Range, string, bool) {
+	pos := link.Pos()
+	if pos < 0 || pos >= len(source) {
+		return 0, parser.Range{}, "", false
+	}
+	value := link.Label(source)
+	if len(value) == 0 {
+		return 0, parser.Range{}, "", false
+	}
+
+	if source[pos] == '<' {
+		start := pos + 1
+		end := start + len(value)
+		if end >= len(source) || source[end] != '>' || !bytes.Equal(source[start:end], value) {
+			return 0, parser.Range{}, "", false
+		}
+		return pos, parser.Range{Start: start, End: end}, string(value), true
+	}
+
+	start := pos
+	end := start + len(value)
+	if end <= len(source) && bytes.Equal(source[start:end], value) {
+		return start, parser.Range{Start: start, End: end}, string(value), true
+	}
+	if pos+1 < len(source) && isGFMExtendedAutolinkBoundary(source[pos]) {
+		start = pos + 1
+		end = start + len(value)
+		if end <= len(source) && bytes.Equal(source[start:end], value) {
+			return start, parser.Range{Start: start, End: end}, string(value), true
+		}
+	}
+	return 0, parser.Range{}, "", false
+}
+
+func simplePlainTextInlineRange(source []byte, node ast.Node) (parser.Range, bool) {
+	if node.ChildCount() != 1 {
+		return parser.Range{}, false
+	}
+	child, ok := node.FirstChild().(*ast.Text)
+	if !ok || child.SoftLineBreak() || child.HardLineBreak() {
+		return parser.Range{}, false
+	}
+	segment := child.Segment
+	range_ := parser.Range{Start: segment.Start, End: segment.Stop}
+	if !range_.Valid(len(source)) || range_.Start == range_.End {
+		return parser.Range{}, false
+	}
+	for _, b := range source[range_.Start:range_.End] {
+		if b == '\r' || b == '\n' {
+			return parser.Range{}, false
+		}
+	}
+	return range_, true
+}
+
+func simpleInlineLinkLabelRange(source []byte, link *ast.Link) (parser.Range, bool) {
+	if link.Pos() < 0 || link.ChildCount() != 1 {
+		return parser.Range{}, false
+	}
+	child, ok := link.FirstChild().(*ast.Text)
+	if !ok || child.SoftLineBreak() || child.HardLineBreak() {
+		return parser.Range{}, false
+	}
+	segment := child.Segment
+	range_ := parser.Range{Start: segment.Start, End: segment.Stop}
+	if !range_.Valid(len(source)) || range_.Start == range_.End || link.Pos() >= range_.Start {
+		return parser.Range{}, false
+	}
+	for _, b := range source[range_.Start:range_.End] {
+		if b == '\r' || b == '\n' {
+			return parser.Range{}, false
+		}
+	}
+	return range_, true
+}
+
+func simpleStrikethroughContentRange(source []byte, strike *extensionast.Strikethrough) (parser.Range, bool) {
+	if strike.ChildCount() != 1 {
+		return parser.Range{}, false
+	}
+	child, ok := strike.FirstChild().(*ast.Text)
+	if !ok || child.SoftLineBreak() || child.HardLineBreak() {
+		return parser.Range{}, false
+	}
+
+	segment := child.Segment
+	range_ := parser.Range{Start: segment.Start, End: segment.Stop}
+	if !range_.Valid(len(source)) || range_.Start == range_.End {
+		return parser.Range{}, false
+	}
+	for _, b := range source[range_.Start:range_.End] {
+		if b == '\r' || b == '\n' {
+			return parser.Range{}, false
+		}
+	}
+	return range_, true
+}
+
+func tableCellColumn(cell *extensionast.TableCell) int {
+	column := 0
+	for sibling := cell.PreviousSibling(); sibling != nil; sibling = sibling.PreviousSibling() {
+		if sibling.Kind() == extensionast.KindTableCell {
+			column++
+		}
+	}
+	return column
+}
+
+func singleLineListItemContentRange(source []byte, item *ast.ListItem) (parser.Range, bool) {
+	if item.ChildCount() != 1 {
+		return parser.Range{}, false
+	}
+
+	var lines *text.Segments
+	switch child := item.FirstChild().(type) {
+	case *ast.TextBlock:
+		lines = child.Lines()
+	case *ast.Paragraph:
+		lines = child.Lines()
+	default:
+		return parser.Range{}, false
+	}
+	if lines.Len() != 1 {
+		return parser.Range{}, false
+	}
+
+	line := lines.At(0)
+	range_ := parser.Range{Start: line.Start, End: paragraphContentEnd(source, line.Stop)}
+	if !range_.Valid(len(source)) || range_.Start == range_.End {
+		return parser.Range{}, false
+	}
+	return range_, true
 }
 
 func normalizeIsolatedCR(source []byte) []byte {

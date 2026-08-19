@@ -6,9 +6,9 @@ Marksplice is an open-source Pure-Go library for understanding and structurally 
 
 ## Status
 
-Marksplice is in its initial feasibility milestone. The published GitHub Flavored Markdown 0.29 specification is the project's single normative Markdown syntax profile. The current work is intentionally narrow: prove that Goldmark, isolated behind a GFM-conformance adapter, can provide semantic understanding while Marksplice owns the lossless source mapping and minimal byte patches required for existing-document edits.
+Marksplice has passed its initial lossless-editing feasibility milestone (M1). The published GitHub Flavored Markdown 0.29 specification is the project's single normative Markdown syntax profile. M1 established that Goldmark can remain isolated behind a GFM-conformance adapter while Marksplice owns lossless source mapping, stale-source safety, and minimal byte patches for representative existing-document edits.
 
-The public API is not yet stable.
+The public API is not yet stable; post-M1 API design will be derived from the proven feasibility invariants rather than exposing the internal proof model directly.
 
 ## Design principles
 
@@ -19,7 +19,7 @@ The public API is not yet stable.
 - keep Goldmark behind an internal adapter and expose only Marksplice-owned types;
 - keep filesystem, network, MCP, and host authorization concerns outside the core library.
 
-See [`docs/architecture.md`](docs/architecture.md) for durable design decisions, [`docs/gfm-conformance.md`](docs/gfm-conformance.md) for the normative Markdown/conformance policy, and [`docs/milestones/m1-lossless-editing.md`](docs/milestones/m1-lossless-editing.md) for the current milestone and acceptance criteria.
+See [`docs/architecture.md`](docs/architecture.md) for durable design decisions, [`docs/gfm-conformance.md`](docs/gfm-conformance.md) for the normative Markdown/conformance policy, and [`docs/milestones/m1-lossless-editing.md`](docs/milestones/m1-lossless-editing.md) for the completed M1 feasibility evidence and exit decision.
 
 ## Development
 

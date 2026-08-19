@@ -8,7 +8,7 @@ Keep responsibilities separated and link rather than duplicate details:
 
 - `docs/architecture.md` owns durable architecture, API-boundary, source-preservation, security, dependency, and performance decisions.
 - `docs/gfm-conformance.md` owns the normative Markdown profile, GFM source hierarchy, conformance gate, and specification-update policy.
-- `docs/milestones/m1-lossless-editing.md` owns the current technical milestone, acceptance criteria, and feasibility matrix.
+- `docs/milestones/m1-lossless-editing.md` owns the completed M1 feasibility evidence, matrix, consolidation record, and exit decision.
 - `go.mod` and `go.sum` own exact Go dependency versions.
 - `LICENSE` and `NOTICE` own licensing and project attribution.
 - `CONTRIBUTING.md` owns contributor workflow and validation expectations.
@@ -28,6 +28,8 @@ Prefer focused TDD: reproduce with a failing test, confirm the expected failure,
 
 Before editing, inspect surrounding context and preserve unrelated changes, encoding, BOM, and line endings. Review the complete diff after editing. Run applicable formatting, tests, race tests, vet/static analysis, vulnerability checks, builds, `git diff --check`, and Git status. Report exactly what was and was not verified.
 
+On Windows, when PowerShell is required, prefer `pwsh` (PowerShell 7+) when available and use legacy Windows PowerShell (`powershell.exe`) as a compatibility fallback. When automation starts an auxiliary user-visible window that does not require interaction, prefer starting it minimized when the launcher or application supports that behavior.
+
 ## Architecture guardrails
 
 - GitHub Flavored Markdown (GFM) is Marksplice's single normative Markdown syntax profile. Follow `docs/gfm-conformance.md`; do not introduce separate CommonMark/GFM modes or dialect switches in core.
@@ -40,11 +42,11 @@ Before editing, inspect surrounding context and preserve unrelated changes, enco
 - Prefer deterministic byte offsets and `[]byte` transformations for source patches.
 - Keep parsing/indexing linear or near-linear where practical and avoid repeated whole-document rescans in edit batches.
 - Core code must not perform arbitrary network requests, command execution, or filesystem traversal.
-- Do not freeze a broad public API until milestone M1 proves the lossless-editing design.
+- M1 has proved the lossless-editing feasibility gate; do not promote the feasibility internals wholesale into a stable public API. Design post-M1 APIs from the proven architecture and source-preservation invariants.
 
 ## Scope
 
-The first milestone is a feasibility gate, not feature completeness. Focus on representative block structures, source preservation, stale-source conflict handling, and documenting the boundary between Goldmark semantics and Marksplice-owned lexical/source information.
+M1 is complete and records the feasibility proof. Subsequent milestone work must extend the model from the established source-preservation, parser-isolation, stale-source, and fail-closed invariants rather than bypassing them.
 
 Do not add Scripthold-specific MCP, filesystem authorization, preview/apply, release, or workspace-crawling behavior to Marksplice core.
 

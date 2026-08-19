@@ -1,10 +1,10 @@
 # Contributing to Marksplice
 
-Marksplice is currently proving its source-preserving editing model. Contributions should favor correctness, deterministic behavior, and narrow changes over API breadth.
+Marksplice has passed its initial source-preserving editing feasibility gate. Contributions should continue to favor correctness, deterministic behavior, and narrow evidence-backed changes over API breadth while the post-M1 public model is designed.
 
 ## Before changing code
 
-Read `AGENTS.md`, `docs/architecture.md`, `docs/gfm-conformance.md`, and the active milestone under `docs/milestones/`. Inspect the relevant implementation and tests before editing.
+Read `AGENTS.md`, `docs/architecture.md`, `docs/gfm-conformance.md`, and the relevant milestone records under `docs/milestones/`. When a milestone is marked active, treat it as the scope and acceptance source for new work. Inspect the relevant implementation and tests before editing.
 
 For substantive changes, document the four engineering phases in the working discussion: requirements/edge cases, architecture/test strategy, devil's advocate risks, and implementation/verification.
 
@@ -55,4 +55,4 @@ Use byte offsets for source mutation boundaries. Be deliberate about LF/CRLF, Un
 
 ## Scope discipline
 
-Do not add Scripthold-specific MCP adapters or host filesystem/security responsibilities to this repository. Broad public API design and document-graph features remain gated on milestone M1.
+Do not add Scripthold-specific MCP adapters or host filesystem/security responsibilities to this repository. M1 no longer blocks public API design, but the current feasibility internals must not be promoted wholesale into a stable API; post-M1 API and document-graph work should be designed explicitly from the proven architecture and source-preservation invariants.

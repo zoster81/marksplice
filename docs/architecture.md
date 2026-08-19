@@ -34,13 +34,15 @@ The semantic parser and lossless mapping have different responsibilities. Goldma
 
 ## Package boundaries
 
-Initial internal boundaries:
+Current internal boundaries:
 
 - `internal/parser/goldmark`: Goldmark-specific parsing and AST traversal. No Goldmark type may cross this adapter boundary.
 - `internal/source`: snapshot fingerprints, byte ranges, validated patches, stale-source conflict detection, and patch application.
 - `internal/splice`: feasibility-level document model that combines semantic observations with source snapshots and prepares structural edits.
 
-The root public package will remain intentionally small until milestone M1 is complete. Internal feasibility types are not promises of final public API shape.
+Milestone M1 has passed its feasibility gate. The root public package remains intentionally small while the post-M1 public API is designed from the evidence gathered by the feasibility implementation; internal M1 types are not automatically promises of final public API shape.
+
+Within the internal implementation, keep orchestration separate from syntax-specific proof logic. Shared mutation plumbing may centralize target lookup, simple replacement preconditions, candidate patch construction, and candidate parsing, while source mappers and semantic validators remain typed and feature-specific when their safety invariants differ. Likewise, shared lexical primitives belong in focused helpers rather than being duplicated across block, inline, link, front-matter, or HTML mapping code.
 
 ## Source model
 
@@ -62,6 +64,8 @@ Human-readable labels such as heading text are not sufficient identities because
 
 Node identities are snapshot-scoped, deterministic, and derived from source-bound structural facts. They are not durable identities across arbitrary document revisions.
 
+An immutable parsed document may maintain a derived snapshot-local `NodeID` index so structural targeting does not require a linear scan for every operation. Building that index must reject duplicate IDs rather than silently choosing one node; the ordered node collection remains the source of structural iteration order.
+
 ## Mutation model
 
 A prepared change contains the source fingerprint it was created against and one or more non-overlapping minimal byte patches.
@@ -75,6 +79,8 @@ Application rules:
 5. preserve all bytes not covered by changed ranges.
 
 Batch editing must reject overlapping or ambiguous patches rather than relying on application order to pick a winner. Efficient batch application should sort validated patches once and apply them without repeated whole-document rescans.
+
+M1 deliberately reparses a prepared candidate snapshot when a mutation must prove that its semantic/source boundary still exists after replacement. This is a conservative O(n) safety oracle for one prepared mutation, not the desired implementation of a future multi-edit batch. Post-M1 batch planning should reuse parsed/indexed state or otherwise amortize validation without weakening the fail-closed semantic checks established by M1.
 
 ## Line endings, Unicode, and encoding
 
@@ -101,6 +107,8 @@ Rules:
 
 GFM's disallowed-raw-HTML tag filtering is an HTML-rendering requirement. Marksplice core currently parses, models, validates, and edits Markdown source rather than rendering HTML; if HTML rendering becomes a Marksplice responsibility, GFM rendering conformance including tag filtering becomes part of that feature's acceptance criteria.
 
+YAML and TOML front matter are document-envelope metadata, not additional Markdown dialects. The GFM body continues to be parsed through the normal Goldmark profile without enabling a front-matter extension. Marksplice may recognize a leading front-matter envelope in its own source layer and exclude that proven envelope from the GFM structural view while preserving all envelope bytes not explicitly edited. M1 deliberately recognizes only closed byte-zero `---`/`+++` envelopes that contain at least one unique scalar field whose lexical value boundary can be proven safely; ambiguous, duplicate-only, complex-only, non-leading, or unclosed shapes remain ordinary GFM source rather than being guessed as metadata.
+
 The detailed capability/ownership matrix is maintained in `docs/goldmark-capability-matrix.md`.
 
 ## Structural semantics
@@ -109,7 +117,7 @@ The target model includes documents, sections, headings, paragraphs, lists/list 
 
 A section is governed by a heading until the next heading of equal or higher level. The model must distinguish the heading, direct section body, and complete subtree.
 
-Milestone M1 intentionally implements only the subset required to prove the architecture.
+Milestone M1 intentionally implemented only the subset required to prove the architecture; later milestones may expand the structural model without weakening the established source-preservation invariants.
 
 ## Safety boundaries
 
@@ -123,9 +131,9 @@ External URLs remain data unless an explicit caller outside core chooses to act 
 
 Parsing and structural indexing should be linear or near-linear in source size where practical. Mutation planning should avoid quadratic rescanning. Callers should eventually be able to impose byte, node, depth, relationship, and output budgets rather than relying on hidden global limits.
 
-## Public API gate
+## Post-M1 public API direction
 
-Do not freeze the broader public API until M1 demonstrates:
+M1 has demonstrated the feasibility requirements that gated broader API design:
 
 - semantic parsing through the internal Goldmark adapter;
 - exact source ranges sufficient for useful local edits;
@@ -133,3 +141,5 @@ Do not freeze the broader public API until M1 demonstrates:
 - stale-source conflict rejection;
 - deterministic malformed/ambiguous behavior;
 - acceptable complexity and testability of the combined semantic + lossless model.
+
+Passing the gate does not freeze the current internal feasibility API. The stable public API and broader structural operations should now be designed from these proven invariants, keeping Goldmark details internal and preserving the minimal-patch/fail-closed model.

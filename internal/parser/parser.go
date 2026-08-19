@@ -8,6 +8,18 @@ const (
 	KindParagraph
 	KindHeading
 	KindTask
+	KindListItem
+	KindTableCell
+	KindFencedCode
+	KindStrikethrough
+	KindInlineLink
+	KindReferenceDefinition
+	KindAutoLink
+	KindCodeSpan
+	KindEmphasis
+	KindStrong
+	KindRawHTML
+	KindHTMLBlock
 )
 
 // Range is a half-open byte range [Start, End) in the parsed source snapshot.
@@ -23,10 +35,21 @@ func (r Range) Valid(total int) bool {
 
 // Node is a parser-independent semantic observation used by Marksplice internals.
 type Node struct {
-	Kind    Kind
-	Range   Range
-	Level   int
-	Checked bool
+	Kind          Kind
+	Range         Range
+	Level         int
+	Checked       bool
+	Ordered       bool
+	Marker        byte
+	TableHeader   bool
+	TableColumn   int
+	Anchor        int
+	Destination   string
+	Label         string
+	Title         string
+	HasTitle      bool
+	Value         string
+	AutoLinkEmail bool
 }
 
 // Adapter parses Markdown into Marksplice-owned semantic observations.

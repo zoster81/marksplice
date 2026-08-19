@@ -1,7 +1,6 @@
 package splice
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -18,6 +17,8 @@ var (
 	ErrInvalidReplacement = errors.New("invalid replacement")
 	ErrInvalidTargetKind  = errors.New("invalid target kind")
 	ErrSourceConflict     = source.ErrConflict
+
+	errDuplicateNodeID = errors.New("duplicate node ID")
 )
 
 // Kind identifies a Marksplice structural node kind.
@@ -28,6 +29,21 @@ const (
 	KindParagraph
 	KindHeading
 	KindTask
+	KindListItem
+	KindTableCell
+	KindFencedCode
+	KindStrikethrough
+	KindInlineLink
+	KindReferenceDefinition
+	KindAutoLink
+	KindCodeSpan
+	KindEmphasis
+	KindStrong
+	KindYAMLFrontMatterField
+	KindTOMLFrontMatterField
+	KindHTMLComment
+	KindHTMLAnchor
+	KindHTMLOpaque
 )
 
 // HeadingStyle identifies the source syntax of a heading.
@@ -47,13 +63,29 @@ type Range = source.Range
 
 // Node is the minimal Marksplice-owned structural view used by the feasibility slice.
 type Node struct {
-	ID           NodeID
-	Kind         Kind
-	Range        Range
-	ContentRange Range
-	Level        int
-	HeadingStyle HeadingStyle
-	Checked      bool
+	ID                NodeID
+	Kind              Kind
+	Range             Range
+	ContentRange      Range
+	Level             int
+	HeadingStyle      HeadingStyle
+	Checked           bool
+	ListOrdered       bool
+	ListMarker        byte
+	TableHeader       bool
+	TableColumn       int
+	Anchor            int
+	Destination       string
+	Label             string
+	Title             string
+	HasTitle          bool
+	Value             string
+	AutoLinkEmail     bool
+	Key               string
+	FrontMatterFormat source.FrontMatterFormat
+	FrontMatterStyle  source.FrontMatterValueStyle
+	HTMLAttribute     string
+	HTMLQuote         byte
 }
 
 // ChangeSet is a source-bound prepared mutation.
@@ -61,22 +93,31 @@ type ChangeSet = source.ChangeSet
 
 // Document is an immutable parsed source snapshot used by the feasibility slice.
 type Document struct {
-	source []byte
-	nodes  []Node
+	source    []byte
+	nodes     []Node
+	nodeIndex map[NodeID]int
 }
 
 // Parse creates a snapshot-local Marksplice model using the internal Goldmark adapter.
 func Parse(input []byte) (*Document, error) {
 	semanticParser := goldmarkparser.New()
 	snapshot := append([]byte(nil), input...)
+	frontMatter, hasFrontMatter := source.MapLeadingFrontMatter(snapshot)
 	observations, err := semanticParser.Parse(snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("parse markdown: %w", err)
 	}
 
 	fingerprint := source.Sum(snapshot)
-	nodes := make([]Node, 0, len(observations))
+	nodes := make([]Node, 0, len(observations)+len(frontMatter.Fields))
+	if hasFrontMatter {
+		nodes = append(nodes, frontMatterNodes(fingerprint, frontMatter)...)
+	}
 	for _, observation := range observations {
+		observationRange := Range{Start: observation.Range.Start, End: observation.Range.End}
+		if hasFrontMatter && rangesOverlap(frontMatter.Range, observationRange) {
+			continue
+		}
 		node, err := nodeFromObservation(snapshot, fingerprint, observation)
 		if err != nil {
 			return nil, err
@@ -84,13 +125,21 @@ func Parse(input []byte) (*Document, error) {
 		nodes = append(nodes, node)
 	}
 
+	nodeIndex, err := indexNodes(nodes)
+	if err != nil {
+		return nil, fmt.Errorf("index structural nodes: %w", err)
+	}
 	return &Document{
-		source: snapshot,
-		nodes:  nodes,
+		source:    snapshot,
+		nodes:     nodes,
+		nodeIndex: nodeIndex,
 	}, nil
 }
 
 func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observation parser.Node) (Node, error) {
+	if observation.Kind == parser.KindRawHTML {
+		return nodeFromRawHTMLObservation(snapshot, fingerprint, observation)
+	}
 	kind, err := mapKind(observation.Kind)
 	if err != nil {
 		return Node{}, err
@@ -102,11 +151,22 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 	}
 
 	node := Node{
-		Kind:         kind,
-		Range:        contentRange,
-		ContentRange: contentRange,
-		Level:        observation.Level,
-		Checked:      observation.Checked,
+		Kind:          kind,
+		Range:         contentRange,
+		ContentRange:  contentRange,
+		Level:         observation.Level,
+		Checked:       observation.Checked,
+		ListOrdered:   observation.Ordered,
+		ListMarker:    observation.Marker,
+		TableHeader:   observation.TableHeader,
+		TableColumn:   observation.TableColumn,
+		Anchor:        observation.Anchor,
+		Destination:   observation.Destination,
+		Label:         observation.Label,
+		Title:         observation.Title,
+		HasTitle:      observation.HasTitle,
+		Value:         observation.Value,
+		AutoLinkEmail: observation.AutoLinkEmail,
 	}
 	switch kind {
 	case KindHeading:
@@ -128,6 +188,15 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 		node.Range = mapping.Range
 		node.ContentRange = mapping.ContentRange
 		node.Checked = mapping.Checked
+	case KindListItem:
+		mapping, err := source.MapSingleLineListItem(snapshot, contentRange, observation.Ordered, observation.Marker)
+		if err != nil {
+			return Node{}, fmt.Errorf("map list item source: %w", err)
+		}
+		node.Range = mapping.Range
+		node.ContentRange = mapping.ContentRange
+		node.ListOrdered = mapping.Ordered
+		node.ListMarker = mapping.Marker
 	}
 	node.ID = makeNodeID(fingerprint, kind, node.Range)
 	return node, nil
@@ -138,149 +207,23 @@ func (d *Document) Nodes() []Node {
 	return append([]Node(nil), d.nodes...)
 }
 
-// PrepareReplace prepares a minimal replacement for a parsed paragraph node.
-func (d *Document) PrepareReplace(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, ok := d.nodeByID(id)
-	if !ok {
-		return ChangeSet{}, ErrNodeNotFound
-	}
-	if err := d.validateReplacement(target.Kind, replacement); err != nil {
-		return ChangeSet{}, err
-	}
-
-	change, err := source.NewChangeSet(d.source, []source.Patch{{
-		Range:       target.Range,
-		Replacement: replacement,
-	}})
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("prepare replacement: %w", err)
-	}
-	return change, nil
-}
-
-// PrepareRenameHeading prepares a source-preserving replacement of top-level heading content.
-func (d *Document) PrepareRenameHeading(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, ok := d.nodeByID(id)
-	if !ok {
-		return ChangeSet{}, ErrNodeNotFound
-	}
-	if target.Kind != KindHeading {
-		return ChangeSet{}, ErrInvalidTargetKind
-	}
-	if len(replacement) == 0 || bytes.ContainsAny(replacement, "\r\n") {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-
-	change, err := source.NewChangeSet(d.source, []source.Patch{{
-		Range:       target.ContentRange,
-		Replacement: replacement,
-	}})
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("prepare heading rename: %w", err)
-	}
-	candidate, err := change.Apply(d.source)
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("render heading rename candidate: %w", err)
-	}
-	if err := validateRenamedHeading(candidate, target); err != nil {
-		return ChangeSet{}, err
-	}
-	return change, nil
-}
-
-// PrepareSetTaskChecked prepares a one-byte GFM task checkbox state change.
-func (d *Document) PrepareSetTaskChecked(id NodeID, checked bool) (ChangeSet, error) {
-	target, ok := d.nodeByID(id)
-	if !ok {
-		return ChangeSet{}, ErrNodeNotFound
-	}
-	if target.Kind != KindTask {
-		return ChangeSet{}, ErrInvalidTargetKind
-	}
-	if target.Checked == checked {
-		return source.NewChangeSet(d.source, nil)
-	}
-
-	state := byte(' ')
-	if checked {
-		state = 'x'
-	}
-	change, err := source.NewChangeSet(d.source, []source.Patch{{
-		Range:       target.ContentRange,
-		Replacement: []byte{state},
-	}})
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("prepare task state change: %w", err)
-	}
-	candidate, err := change.Apply(d.source)
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("render task state candidate: %w", err)
-	}
-	if err := validateTaskState(candidate, target, checked); err != nil {
-		return ChangeSet{}, err
-	}
-	return change, nil
-}
-
-func validateTaskState(candidate []byte, target Node, checked bool) error {
-	observations, err := goldmarkparser.New().Parse(candidate)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidReplacement, err)
-	}
-	for _, observation := range observations {
-		if observation.Kind != parser.KindTask || observation.Range.Start != target.Range.Start || observation.Checked != checked {
-			continue
+func indexNodes(nodes []Node) (map[NodeID]int, error) {
+	index := make(map[NodeID]int, len(nodes))
+	for i, node := range nodes {
+		if _, exists := index[node.ID]; exists {
+			return nil, fmt.Errorf("%w: %q", errDuplicateNodeID, node.ID)
 		}
-		mapping, err := source.MapTaskMarker(candidate, observation.Range.Start)
-		if err == nil && mapping.Range == target.Range && mapping.Checked == checked {
-			return nil
-		}
+		index[node.ID] = i
 	}
-	return ErrInvalidReplacement
-}
-
-func validateRenamedHeading(candidate []byte, target Node) error {
-	observations, err := goldmarkparser.New().Parse(candidate)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidReplacement, err)
-	}
-	for _, observation := range observations {
-		if observation.Kind != parser.KindHeading || observation.Level != target.Level || observation.Range.Start != target.ContentRange.Start {
-			continue
-		}
-		mapping, err := source.MapTopLevelHeading(candidate, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Level)
-		if err != nil {
-			continue
-		}
-		if HeadingStyle(mapping.Style) == target.HeadingStyle && mapping.Range.Start == target.Range.Start {
-			return nil
-		}
-	}
-	return ErrInvalidReplacement
+	return index, nil
 }
 
 func (d *Document) nodeByID(id NodeID) (Node, bool) {
-	for _, node := range d.nodes {
-		if node.ID == id {
-			return node, true
-		}
+	index, ok := d.nodeIndex[id]
+	if !ok || index < 0 || index >= len(d.nodes) {
+		return Node{}, false
 	}
-	return Node{}, false
-}
-
-func (d *Document) validateReplacement(kind Kind, replacement []byte) error {
-	if kind != KindParagraph || len(replacement) == 0 {
-		return ErrInvalidReplacement
-	}
-
-	observations, err := goldmarkparser.New().Parse(replacement)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidReplacement, err)
-	}
-	if len(observations) != 1 || observations[0].Kind != parser.KindParagraph || observations[0].Range.Start != 0 || observations[0].Range.End != len(replacement) {
-		return ErrInvalidReplacement
-	}
-	return nil
+	return d.nodes[index], true
 }
 
 func mapKind(kind parser.Kind) (Kind, error) {
@@ -291,6 +234,30 @@ func mapKind(kind parser.Kind) (Kind, error) {
 		return KindHeading, nil
 	case parser.KindTask:
 		return KindTask, nil
+	case parser.KindListItem:
+		return KindListItem, nil
+	case parser.KindTableCell:
+		return KindTableCell, nil
+	case parser.KindFencedCode:
+		return KindFencedCode, nil
+	case parser.KindStrikethrough:
+		return KindStrikethrough, nil
+	case parser.KindInlineLink:
+		return KindInlineLink, nil
+	case parser.KindReferenceDefinition:
+		return KindReferenceDefinition, nil
+	case parser.KindAutoLink:
+		return KindAutoLink, nil
+	case parser.KindCodeSpan:
+		return KindCodeSpan, nil
+	case parser.KindEmphasis:
+		return KindEmphasis, nil
+	case parser.KindStrong:
+		return KindStrong, nil
+	case parser.KindHTMLBlock:
+		return KindHTMLOpaque, nil
+	case parser.KindRawHTML:
+		return KindHTMLOpaque, nil
 	default:
 		return KindUnknown, fmt.Errorf("unsupported parser node kind %d", kind)
 	}
