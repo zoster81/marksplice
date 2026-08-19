@@ -49,10 +49,10 @@ func (d *Document) PrepareReplaceTableCell(id NodeID, replacement []byte) (Chang
 		return ChangeSet{}, err
 	}
 
-	mapping, err := source.MapTableCell(d.source, target.ContentRange, target.TableColumn)
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("map table cell source: %w", err)
+	if !target.Editable {
+		return ChangeSet{}, fmt.Errorf("%w: table cell source shape is not editable", ErrInvalidTargetKind)
 	}
+	mapping := target.TableCellSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "table cell replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -74,10 +74,10 @@ func (d *Document) PrepareReplaceFencedCode(id NodeID, replacement []byte) (Chan
 		return ChangeSet{}, err
 	}
 
-	mapping, err := source.MapSingleLineFencedCode(d.source, target.ContentRange)
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("map fenced code source: %w", err)
+	if !target.Editable {
+		return ChangeSet{}, fmt.Errorf("%w: fenced code source shape is not editable", ErrInvalidTargetKind)
 	}
+	mapping := target.FencedCodeSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "fenced code replacement")
 	if err != nil {
 		return ChangeSet{}, err

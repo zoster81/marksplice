@@ -64,12 +64,32 @@ func (a *Adapter) Parse(source []byte) ([]parser.Node, error) {
 	parseSource := normalizeIsolatedCR(source)
 	root := a.markdown.Parser().Parse(text.NewReader(parseSource))
 	nodes := make([]parser.Node, 0)
+	currentTableRowAnchor := -1
+	nextTableColumn := 0
 
 	err := ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		observation, ok, err := observeNode(source, node)
+		var observation parser.Node
+		var ok bool
+		var err error
+		if cell, isTableCell := node.(*extensionast.TableCell); isTableCell {
+			parent := cell.Parent()
+			if parent == nil || parent.Pos() < 0 {
+				return ast.WalkContinue, nil
+			}
+			rowAnchor := parent.Pos()
+			if rowAnchor != currentTableRowAnchor {
+				currentTableRowAnchor = rowAnchor
+				nextTableColumn = 0
+			}
+			column := nextTableColumn
+			nextTableColumn++
+			observation, ok, err = observeTableCell(source, cell, column)
+		} else {
+			observation, ok, err = observeNode(source, node)
+		}
 		if err != nil {
 			return ast.WalkStop, err
 		}
@@ -221,16 +241,6 @@ func simpleStrikethroughContentRange(source []byte, strike *extensionast.Striket
 		}
 	}
 	return range_, true
-}
-
-func tableCellColumn(cell *extensionast.TableCell) int {
-	column := 0
-	for sibling := cell.PreviousSibling(); sibling != nil; sibling = sibling.PreviousSibling() {
-		if sibling.Kind() == extensionast.KindTableCell {
-			column++
-		}
-	}
-	return column
 }
 
 func singleLineListItemContentRange(source []byte, item *ast.ListItem) (parser.Range, bool) {

@@ -65,6 +65,63 @@ func TestGFM029SpecCompatibilityGuards(t *testing.T) {
 	}
 }
 
+func TestAdapterExposesSharedTableRowAnchors(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("before\n\n| A | B |\n| - | - |\n| x | y |\n")
+	nodes, err := New().Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	headerAnchor := bytes.Index(source, []byte("| A | B |"))
+	bodyAnchor := bytes.Index(source, []byte("| x | y |"))
+	var header, body []markparser.Node
+	for _, node := range nodes {
+		if node.Kind != markparser.KindTableCell {
+			continue
+		}
+		if node.TableHeader {
+			header = append(header, node)
+		} else {
+			body = append(body, node)
+		}
+	}
+	if len(header) != 2 || len(body) != 2 {
+		t.Fatalf("table cell counts = header %d body %d, want 2/2", len(header), len(body))
+	}
+	for column, node := range header {
+		if node.TableRowAnchor != headerAnchor || node.TableColumn != column {
+			t.Fatalf("header row/column = %d/%d, want %d/%d", node.TableRowAnchor, node.TableColumn, headerAnchor, column)
+		}
+	}
+	for column, node := range body {
+		if node.TableRowAnchor != bodyAnchor || node.TableColumn != column {
+			t.Fatalf("body row/column = %d/%d, want %d/%d", node.TableRowAnchor, node.TableColumn, bodyAnchor, column)
+		}
+	}
+}
+
+func TestAdapterTableColumnsCountUnobservedEmptyCells(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| A | B |\n| - | - |\n|   | value |\n")
+	nodes, err := New().Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	bodyAnchor := bytes.Index(source, []byte("|   | value |"))
+	for _, node := range nodes {
+		if node.Kind == markparser.KindTableCell && !node.TableHeader && node.TableRowAnchor == bodyAnchor {
+			if node.TableColumn != 1 || string(source[node.Range.Start:node.Range.End]) != "value" {
+				t.Fatalf("body table observation = column %d source %q, want column 1 value", node.TableColumn, source[node.Range.Start:node.Range.End])
+			}
+			return
+		}
+	}
+	t.Fatal("non-empty second body cell was not observed")
+}
+
 func TestAdapterExposesRawHTMLAndHTMLBlockSourceRanges(t *testing.T) {
 	t.Parallel()
 

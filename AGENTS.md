@@ -10,6 +10,10 @@ Keep responsibilities separated and link rather than duplicate details:
 - `docs/gfm-conformance.md` owns the normative Markdown profile, GFM source hierarchy, conformance gate, and specification-update policy.
 - `docs/milestones/m1-lossless-editing.md` owns the completed M1 feasibility evidence, matrix, consolidation record, and exit decision.
 - `docs/milestones/m2-public-api-foundation.md` owns the completed M2 public-API foundation, constraints, evidence, and exit decision.
+- `docs/milestones/m3-heading-public-api.md` owns the completed M3 heading-detail and source-preserving rename scope, evidence, and exit decision.
+- `docs/milestones/m4-list-public-api.md` owns the completed M4 list-item/task public API scope, evidence, deferred-family rationale, and exit decision.
+- `docs/milestones/m5-mapped-block-public-api.md` owns the completed M5 parse-time editable mapping, table-cell/fenced-code public API scope, evidence, and exit decision.
+- `docs/milestones/m6-simple-inline-public-api.md` owns the completed M6 simple-inline parse-time mapping, public API scope, unsupported-shape filtering, evidence, and exit decision.
 - `go.mod` and `go.sum` own exact Go dependency versions.
 - `LICENSE` and `NOTICE` own licensing and project attribution.
 - `CONTRIBUTING.md` owns contributor workflow and validation expectations.
@@ -47,7 +51,7 @@ On Windows, when PowerShell is required, prefer `pwsh` (PowerShell 7+) when avai
 
 ## Scope
 
-M1 and M2 are complete. M1 records the feasibility proof; M2 records the first durable public API foundation. Future milestones must extend the model from the established source-preservation, parser-isolation, stale-source, typed-detail, and fail-closed invariants rather than bypassing them.
+M1 through M6 are complete. M1 records the feasibility proof; M2 records the first durable public API foundation; M3 applies the typed-detail/named-operation pattern to top-level headings; M4 applies it to M1-proven single-line list items and GFM task markers; M5 adds a parse-time editable-capability gate and promotes mapped non-empty table cells and supported single-line fenced code; M6 applies the same gate to simple strikethrough, code spans, emphasis, and strong. Future milestones must extend the model from the established source-preservation, parser-isolation, stale-source, typed-detail, mapped-capability, and fail-closed invariants rather than bypassing them.
 
 Do not add Scripthold-specific MCP, filesystem authorization, preview/apply, release, or workspace-crawling behavior to Marksplice core.
 

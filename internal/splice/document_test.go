@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+
+	markparser "github.com/zoster81/marksplice/internal/parser"
 )
 
 func TestReplaceParagraphPreservesUnchangedBytes(t *testing.T) {
@@ -84,6 +86,30 @@ func TestReplaceParagraphPreservesUnchangedBytes(t *testing.T) {
 				t.Fatal("bytes after changed span were modified")
 			}
 		})
+	}
+}
+
+func TestTableCellSourceMappingCacheReusesOneRowMapping(t *testing.T) {
+	t.Parallel()
+
+	snapshot := []byte("| alpha | beta |\n")
+	cache := make(map[int]tableRowSourceResult)
+	firstObservation := markparser.Node{Kind: markparser.KindTableCell, TableColumn: 0, TableRowAnchor: 0}
+	secondObservation := markparser.Node{Kind: markparser.KindTableCell, TableColumn: 1, TableRowAnchor: 0}
+
+	first, editable, err := mapTableCellSource(snapshot, firstObservation, Range{Start: 2, End: 7}, cache)
+	if err != nil || !editable {
+		t.Fatalf("first map = %+v, editable %v, error %v; want mapped/true/nil", first, editable, err)
+	}
+	second, editable, err := mapTableCellSource(snapshot, secondObservation, Range{Start: 10, End: 14}, cache)
+	if err != nil || !editable {
+		t.Fatalf("second map = %+v, editable %v, error %v; want mapped/true/nil", second, editable, err)
+	}
+	if len(cache) != 1 {
+		t.Fatalf("table row mapping cache size = %d, want 1 for two cells in one row", len(cache))
+	}
+	if first.Column != 0 || second.Column != 1 {
+		t.Fatalf("mapped columns = %d/%d, want 0/1", first.Column, second.Column)
 	}
 }
 

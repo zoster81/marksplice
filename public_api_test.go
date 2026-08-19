@@ -11,7 +11,7 @@ import (
 func TestPublicDocumentSnapshotAndNodeLookup(t *testing.T) {
 	t.Parallel()
 
-	input := []byte("# Title\r\n\r\n> internal nested paragraph stays unpromoted\r\n\r\n- [ ] internal task kind stays unpromoted\r\n\r\nParagraph.\r\n")
+	input := []byte("# Title\r\n\r\n> internal nested paragraph stays unpromoted\r\n\r\n- [ ] promoted task item\r\n\r\nParagraph.\r\n")
 	snapshot := append([]byte(nil), input...)
 
 	doc, err := marksplice.Parse(input)
@@ -21,24 +21,30 @@ func TestPublicDocumentSnapshotAndNodeLookup(t *testing.T) {
 	input[0] = 'X'
 
 	nodes := doc.Nodes()
-	if len(nodes) != 2 {
-		t.Fatalf("public node count = %d, want only heading and paragraph", len(nodes))
+	if len(nodes) != 4 {
+		t.Fatalf("public node count = %d, want heading, list item, task, and paragraph", len(nodes))
 	}
 
-	var heading, paragraph marksplice.Node
+	var heading, paragraph, listItem, task marksplice.Node
 	for _, node := range nodes {
 		switch node.Kind() {
 		case marksplice.KindHeading:
 			heading = node
 		case marksplice.KindParagraph:
 			paragraph = node
+		case marksplice.KindListItem:
+			listItem = node
+		case marksplice.KindTask:
+			task = node
 		}
 	}
-	if heading.ID().String() == "" || paragraph.ID().String() == "" {
-		t.Fatalf("heading/paragraph IDs = %v/%v, want non-empty", heading.ID(), paragraph.ID())
+	if heading.ID().String() == "" || paragraph.ID().String() == "" || listItem.ID().String() == "" || task.ID().String() == "" {
+		t.Fatalf("promoted IDs = heading %v paragraph %v list item %v task %v, want non-empty", heading.ID(), paragraph.ID(), listItem.ID(), task.ID())
 	}
 	for _, node := range nodes {
-		if node.Kind() != marksplice.KindHeading && node.Kind() != marksplice.KindParagraph {
+		switch node.Kind() {
+		case marksplice.KindHeading, marksplice.KindParagraph, marksplice.KindListItem, marksplice.KindTask:
+		default:
 			t.Fatalf("Nodes() exposed unpromoted kind %v", node.Kind())
 		}
 	}
@@ -66,7 +72,7 @@ func TestPublicDocumentSnapshotAndNodeLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply(snapshot) error = %v", err)
 	}
-	want := []byte("# Title\r\n\r\n> internal nested paragraph stays unpromoted\r\n\r\n- [ ] internal task kind stays unpromoted\r\n\r\nChanged paragraph.\r\n")
+	want := []byte("# Title\r\n\r\n> internal nested paragraph stays unpromoted\r\n\r\n- [ ] promoted task item\r\n\r\nChanged paragraph.\r\n")
 	if !bytes.Equal(got, want) {
 		t.Fatalf("result = %q, want %q", got, want)
 	}
@@ -170,6 +176,42 @@ func TestPublicZeroAndEmptyReadValuesAreDeterministic(t *testing.T) {
 	var paragraph marksplice.Paragraph
 	if paragraph.ID().String() != "" || paragraph.Range() != (marksplice.Range{}) || !(marksplice.Range{}).Valid(0) {
 		t.Fatalf("zero Paragraph/Range behavior = id %v range %v", paragraph.ID(), paragraph.Range())
+	}
+	var heading marksplice.Heading
+	if heading.ID().String() != "" || heading.Range() != (marksplice.Range{}) || heading.Level() != 0 || heading.Style() != marksplice.HeadingStyleUnknown {
+		t.Fatalf("zero Heading behavior = id %v range %v level %d style %v", heading.ID(), heading.Range(), heading.Level(), heading.Style())
+	}
+	var listItem marksplice.ListItem
+	if listItem.ID().String() != "" || listItem.Range() != (marksplice.Range{}) || listItem.Ordered() || listItem.Marker() != 0 {
+		t.Fatalf("zero ListItem behavior = id %v range %v ordered %v marker %q", listItem.ID(), listItem.Range(), listItem.Ordered(), listItem.Marker())
+	}
+	var task marksplice.Task
+	if task.ID().String() != "" || task.Range() != (marksplice.Range{}) || task.Checked() {
+		t.Fatalf("zero Task behavior = id %v range %v checked %v", task.ID(), task.Range(), task.Checked())
+	}
+	var tableCell marksplice.TableCell
+	if tableCell.ID().String() != "" || tableCell.Range() != (marksplice.Range{}) || tableCell.Header() || tableCell.Column() != 0 {
+		t.Fatalf("zero TableCell behavior = id %v range %v header %v column %d", tableCell.ID(), tableCell.Range(), tableCell.Header(), tableCell.Column())
+	}
+	var fencedCode marksplice.FencedCode
+	if fencedCode.ID().String() != "" || fencedCode.Range() != (marksplice.Range{}) {
+		t.Fatalf("zero FencedCode behavior = id %v range %v", fencedCode.ID(), fencedCode.Range())
+	}
+	var strikethrough marksplice.Strikethrough
+	if strikethrough.ID().String() != "" || strikethrough.Range() != (marksplice.Range{}) {
+		t.Fatalf("zero Strikethrough behavior = id %v range %v", strikethrough.ID(), strikethrough.Range())
+	}
+	var codeSpan marksplice.CodeSpan
+	if codeSpan.ID().String() != "" || codeSpan.Range() != (marksplice.Range{}) {
+		t.Fatalf("zero CodeSpan behavior = id %v range %v", codeSpan.ID(), codeSpan.Range())
+	}
+	var emphasis marksplice.Emphasis
+	if emphasis.ID().String() != "" || emphasis.Range() != (marksplice.Range{}) {
+		t.Fatalf("zero Emphasis behavior = id %v range %v", emphasis.ID(), emphasis.Range())
+	}
+	var strong marksplice.Strong
+	if strong.ID().String() != "" || strong.Range() != (marksplice.Range{}) {
+		t.Fatalf("zero Strong behavior = id %v range %v", strong.ID(), strong.Range())
 	}
 	var change marksplice.ChangeSet
 	if _, err := change.Apply(nil); !errors.Is(err, marksplice.ErrSourceConflict) {

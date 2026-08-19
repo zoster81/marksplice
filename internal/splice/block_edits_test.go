@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+
+	sourcepkg "github.com/zoster81/marksplice/internal/source"
 )
 
 func TestSetTaskCheckedChangesOnlyCheckboxStateByte(t *testing.T) {
@@ -433,6 +435,12 @@ func TestReplaceTableCellPreservesUntouchedTableSource(t *testing.T) {
 			if !found {
 				t.Fatalf("table cell with content %q not found; cells = %+v", tt.targetText, cells)
 			}
+			if !target.Editable {
+				t.Fatal("mapped table cell Editable = false, want true")
+			}
+			if target.TableCellSource.ContentRange != target.ContentRange || target.TableCellSource.Column != target.TableColumn {
+				t.Fatalf("stored table mapping = %+v, target content/column = %v/%d", target.TableCellSource, target.ContentRange, target.TableColumn)
+			}
 
 			prefix := append([]byte(nil), tt.source[:target.ContentRange.Start]...)
 			suffix := append([]byte(nil), tt.source[target.ContentRange.End:]...)
@@ -538,6 +546,12 @@ func TestReplaceSingleLineFencedCodePreservesFenceSource(t *testing.T) {
 			if !found {
 				t.Fatalf("fenced code block with content %q not found; blocks = %+v", tt.targetText, blocks)
 			}
+			if !target.Editable {
+				t.Fatal("mapped fenced code Editable = false, want true")
+			}
+			if target.FencedCodeSource.ContentRange != target.ContentRange || target.FencedCodeSource.FenceChar == 0 || target.FencedCodeSource.FenceLength < 3 {
+				t.Fatalf("stored fenced-code mapping = %+v, target content = %v", target.FencedCodeSource, target.ContentRange)
+			}
 
 			prefix := append([]byte(nil), tt.source[:target.ContentRange.Start]...)
 			suffix := append([]byte(nil), tt.source[target.ContentRange.End:]...)
@@ -597,6 +611,12 @@ func TestUnsupportedSingleLineFencedCodeShapeDoesNotBreakParse(t *testing.T) {
 	blocks := nodesOfKind(doc.Nodes(), KindFencedCode)
 	if len(blocks) != 1 {
 		t.Fatalf("fenced code count = %d, want 1 semantic observation", len(blocks))
+	}
+	if blocks[0].Editable {
+		t.Fatal("unsupported fenced code Editable = true, want false")
+	}
+	if blocks[0].FencedCodeSource != (sourcepkg.FencedCodeMapping{}) {
+		t.Fatalf("unsupported fenced code stored mapping = %+v, want zero", blocks[0].FencedCodeSource)
 	}
 	if _, err := doc.PrepareReplaceFencedCode(blocks[0].ID, []byte("new")); err == nil {
 		t.Fatal("PrepareReplaceFencedCode() error = nil, want fail-closed unsupported source shape")

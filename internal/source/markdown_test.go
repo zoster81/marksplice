@@ -53,6 +53,32 @@ func TestMapSingleLineListItemPreservesMarkerBoundary(t *testing.T) {
 	}
 }
 
+func TestMapTableRowMapsAllCellsWithOneRowBoundary(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("before\n| alpha | beta  |\r\nafter\n")
+	anchor := len("before\n")
+	row, err := MapTableRow(source, anchor)
+	if err != nil {
+		t.Fatalf("MapTableRow() error = %v", err)
+	}
+	if row.Range != (Range{Start: anchor, End: anchor + len("| alpha | beta  |")}) {
+		t.Fatalf("row range = %v, want physical table row", row.Range)
+	}
+	if len(row.Cells) != 2 {
+		t.Fatalf("row cell count = %d, want 2", len(row.Cells))
+	}
+	want := []TableCellMapping{
+		{Range: Range{Start: anchor + 1, End: anchor + 8}, ContentRange: Range{Start: anchor + 2, End: anchor + 7}, Column: 0},
+		{Range: Range{Start: anchor + 9, End: anchor + 16}, ContentRange: Range{Start: anchor + 10, End: anchor + 14}, Column: 1},
+	}
+	for i := range want {
+		if row.Cells[i] != want[i] {
+			t.Fatalf("row cell %d = %+v, want %+v", i, row.Cells[i], want[i])
+		}
+	}
+}
+
 func TestMapTableCellPreservesRawCellBoundary(t *testing.T) {
 	t.Parallel()
 

@@ -17,10 +17,10 @@ func (d *Document) PrepareReplaceStrikethrough(id NodeID, replacement []byte) (C
 		return ChangeSet{}, err
 	}
 
-	mapping, err := source.MapSimpleStrikethrough(d.source, target.ContentRange)
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("map strikethrough source: %w", err)
+	if !target.Editable {
+		return ChangeSet{}, fmt.Errorf("%w: strikethrough source shape is not editable", ErrInvalidTargetKind)
 	}
+	mapping := target.StrikethroughSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "strikethrough replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -65,10 +65,10 @@ func (d *Document) PrepareReplaceCodeSpan(id NodeID, replacement []byte) (Change
 		return ChangeSet{}, err
 	}
 
-	mapping, err := source.MapSimpleCodeSpan(d.source, target.Anchor, target.ContentRange)
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("map code span source: %w", err)
+	if !target.Editable {
+		return ChangeSet{}, fmt.Errorf("%w: code span source shape is not editable", ErrInvalidTargetKind)
 	}
+	mapping := target.CodeSpanSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "code span replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -98,10 +98,10 @@ func (d *Document) prepareReplaceEmphasisLike(id NodeID, replacement []byte, kin
 		return ChangeSet{}, err
 	}
 
-	mapping, err := source.MapSimpleEmphasis(d.source, target.Anchor, target.ContentRange, level)
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("map emphasis source: %w", err)
+	if !target.Editable {
+		return ChangeSet{}, fmt.Errorf("%w: emphasis source shape is not editable", ErrInvalidTargetKind)
 	}
+	mapping := target.EmphasisSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "emphasis replacement")
 	if err != nil {
 		return ChangeSet{}, err

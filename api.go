@@ -26,6 +26,14 @@ const (
 	KindUnknown Kind = iota
 	KindParagraph
 	KindHeading
+	KindListItem
+	KindTask
+	KindTableCell
+	KindFencedCode
+	KindStrikethrough
+	KindCodeSpan
+	KindEmphasis
+	KindStrong
 )
 
 // NodeID identifies a node within one parsed source snapshot.
@@ -73,23 +81,6 @@ func (n Node) Kind() Kind {
 	return n.kind
 }
 
-// Paragraph is immutable typed detail for one promoted top-level paragraph.
-type Paragraph struct {
-	id          NodeID
-	sourceRange Range
-}
-
-// ID returns the paragraph's snapshot-scoped node identity.
-func (p Paragraph) ID() NodeID {
-	return p.id
-}
-
-// Range returns the exact paragraph byte span replaced by PrepareReplaceParagraph.
-// A line ending immediately following the paragraph is outside this range.
-func (p Paragraph) Range() Range {
-	return p.sourceRange
-}
-
 // Document is an immutable parsed Markdown source snapshot.
 type Document struct {
 	document *splice.Document
@@ -124,29 +115,11 @@ func (d *Document) Nodes() []Node {
 
 // Node returns one node summary by snapshot-local ID.
 func (d *Document) Node(id NodeID) (Node, bool) {
-	if d == nil || d.document == nil {
-		return Node{}, false
-	}
-	node, ok := d.document.Node(internalNodeID(id))
+	node, ok := d.internalNode(id)
 	if !ok {
 		return Node{}, false
 	}
 	return publicNode(node)
-}
-
-// Paragraph returns typed detail for one promoted top-level paragraph.
-func (d *Document) Paragraph(id NodeID) (Paragraph, bool) {
-	if d == nil || d.document == nil {
-		return Paragraph{}, false
-	}
-	node, ok := d.document.Node(internalNodeID(id))
-	if !ok || node.Kind != splice.KindParagraph || !node.TopLevel {
-		return Paragraph{}, false
-	}
-	return Paragraph{
-		id:          publicNodeID(node.ID),
-		sourceRange: Range{Start: node.Range.Start, End: node.Range.End},
-	}, true
 }
 
 // ChangeSet is an opaque prepared change bound to one exact source snapshot.
@@ -164,31 +137,22 @@ func (c ChangeSet) Apply(source []byte) ([]byte, error) {
 	return result, nil
 }
 
-// PrepareReplaceParagraph prepares a source-preserving paragraph replacement.
-func (d *Document) PrepareReplaceParagraph(id NodeID, replacement []byte) (ChangeSet, error) {
+func (d *Document) internalNode(id NodeID) (splice.Node, bool) {
 	if d == nil || d.document == nil {
-		return ChangeSet{}, ErrNodeNotFound
+		return splice.Node{}, false
 	}
-	node, ok := d.document.Node(internalNodeID(id))
-	if !ok {
-		return ChangeSet{}, ErrNodeNotFound
-	}
-	if node.Kind != splice.KindParagraph || !node.TopLevel {
-		return ChangeSet{}, ErrInvalidTargetKind
-	}
-	change, err := d.document.PrepareReplace(internalNodeID(id), replacement)
-	if err != nil {
-		return ChangeSet{}, publicError(err)
-	}
-	return ChangeSet{change: change}, nil
+	return d.document.Node(internalNodeID(id))
 }
 
 func publicNode(node splice.Node) (Node, bool) {
-	return publicNodeSummary(splice.NodeSummary{ID: node.ID, Kind: node.Kind, TopLevel: node.TopLevel})
+	return publicNodeSummary(splice.NodeSummary{ID: node.ID, Kind: node.Kind, TopLevel: node.TopLevel, Editable: node.Editable})
 }
 
 func publicNodeSummary(summary splice.NodeSummary) (Node, bool) {
-	if summary.Kind == splice.KindParagraph && !summary.TopLevel {
+	if !summary.Editable {
+		return Node{}, false
+	}
+	if (summary.Kind == splice.KindParagraph || summary.Kind == splice.KindHeading) && !summary.TopLevel {
 		return Node{}, false
 	}
 	kind, ok := publicKind(summary.Kind)
@@ -212,6 +176,22 @@ func publicKind(kind splice.Kind) (Kind, bool) {
 		return KindParagraph, true
 	case splice.KindHeading:
 		return KindHeading, true
+	case splice.KindListItem:
+		return KindListItem, true
+	case splice.KindTask:
+		return KindTask, true
+	case splice.KindTableCell:
+		return KindTableCell, true
+	case splice.KindFencedCode:
+		return KindFencedCode, true
+	case splice.KindStrikethrough:
+		return KindStrikethrough, true
+	case splice.KindCodeSpan:
+		return KindCodeSpan, true
+	case splice.KindEmphasis:
+		return KindEmphasis, true
+	case splice.KindStrong:
+		return KindStrong, true
 	default:
 		return KindUnknown, false
 	}

@@ -35,8 +35,6 @@ func observeNode(source []byte, node ast.Node) (parser.Node, bool, error) {
 		return observeInlineLink(source, typed)
 	case *extensionast.Strikethrough:
 		return observeStrikethrough(source, typed)
-	case *extensionast.TableCell:
-		return observeTableCell(source, typed)
 	case *extensionast.TaskCheckBox:
 		return observeTask(source, typed)
 	default:
@@ -203,9 +201,9 @@ func observeStrikethrough(source []byte, strike *extensionast.Strikethrough) (pa
 	return parser.Node{Kind: parser.KindStrikethrough, Range: range_}, true, nil
 }
 
-func observeTableCell(source []byte, cell *extensionast.TableCell) (parser.Node, bool, error) {
+func observeTableCell(source []byte, cell *extensionast.TableCell, column int) (parser.Node, bool, error) {
 	parent := cell.Parent()
-	if parent == nil || parent.Kind() != extensionast.KindTableHeader && parent.Kind() != extensionast.KindTableRow {
+	if parent == nil || parent.Kind() != extensionast.KindTableHeader && parent.Kind() != extensionast.KindTableRow || parent.Pos() < 0 {
 		return parser.Node{}, false, nil
 	}
 	lines := cell.Lines()
@@ -218,10 +216,11 @@ func observeTableCell(source []byte, cell *extensionast.TableCell) (parser.Node,
 		return parser.Node{}, false, nil
 	}
 	return parser.Node{
-		Kind:        parser.KindTableCell,
-		Range:       range_,
-		TableHeader: parent.Kind() == extensionast.KindTableHeader,
-		TableColumn: tableCellColumn(cell),
+		Kind:           parser.KindTableCell,
+		Range:          range_,
+		TableHeader:    parent.Kind() == extensionast.KindTableHeader,
+		TableColumn:    column,
+		TableRowAnchor: parent.Pos(),
 	}, true, nil
 }
 

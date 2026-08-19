@@ -35,22 +35,23 @@ func (r Range) Valid(total int) bool {
 
 // Node is a parser-independent semantic observation used by Marksplice internals.
 type Node struct {
-	Kind          Kind
-	Range         Range
-	Level         int
-	Checked       bool
-	Ordered       bool
-	Marker        byte
-	TableHeader   bool
-	TableColumn   int
-	Anchor        int
-	Destination   string
-	Label         string
-	Title         string
-	HasTitle      bool
-	Value         string
-	AutoLinkEmail bool
-	TopLevel      bool
+	Kind           Kind
+	Range          Range
+	Level          int
+	Checked        bool
+	Ordered        bool
+	Marker         byte
+	TableHeader    bool
+	TableColumn    int
+	TableRowAnchor int
+	Anchor         int
+	Destination    string
+	Label          string
+	Title          string
+	HasTitle       bool
+	Value          string
+	AutoLinkEmail  bool
+	TopLevel       bool
 }
 
 // Adapter parses Markdown into Marksplice-owned semantic observations.

@@ -63,30 +63,36 @@ type Range = source.Range
 
 // Node is the minimal Marksplice-owned structural view used by the feasibility slice.
 type Node struct {
-	ID                NodeID
-	Kind              Kind
-	Range             Range
-	ContentRange      Range
-	Level             int
-	HeadingStyle      HeadingStyle
-	Checked           bool
-	ListOrdered       bool
-	ListMarker        byte
-	TableHeader       bool
-	TableColumn       int
-	Anchor            int
-	Destination       string
-	Label             string
-	Title             string
-	HasTitle          bool
-	Value             string
-	AutoLinkEmail     bool
-	Key               string
-	FrontMatterFormat source.FrontMatterFormat
-	FrontMatterStyle  source.FrontMatterValueStyle
-	HTMLAttribute     string
-	HTMLQuote         byte
-	TopLevel          bool
+	ID                  NodeID
+	Kind                Kind
+	Range               Range
+	ContentRange        Range
+	Level               int
+	HeadingStyle        HeadingStyle
+	Checked             bool
+	ListOrdered         bool
+	ListMarker          byte
+	TableHeader         bool
+	TableColumn         int
+	Editable            bool
+	TableCellSource     source.TableCellMapping
+	FencedCodeSource    source.FencedCodeMapping
+	StrikethroughSource source.StrikethroughMapping
+	CodeSpanSource      source.CodeSpanMapping
+	EmphasisSource      source.EmphasisMapping
+	Anchor              int
+	Destination         string
+	Label               string
+	Title               string
+	HasTitle            bool
+	Value               string
+	AutoLinkEmail       bool
+	Key                 string
+	FrontMatterFormat   source.FrontMatterFormat
+	FrontMatterStyle    source.FrontMatterValueStyle
+	HTMLAttribute       string
+	HTMLQuote           byte
+	TopLevel            bool
 }
 
 // ChangeSet is a source-bound prepared mutation.
@@ -111,6 +117,7 @@ func Parse(input []byte) (*Document, error) {
 
 	fingerprint := source.Sum(snapshot)
 	nodes := make([]Node, 0, len(observations)+len(frontMatter.Fields))
+	tableRows := make(map[int]tableRowSourceResult)
 	if hasFrontMatter {
 		nodes = append(nodes, frontMatterNodes(fingerprint, frontMatter)...)
 	}
@@ -119,7 +126,7 @@ func Parse(input []byte) (*Document, error) {
 		if hasFrontMatter && rangesOverlap(frontMatter.Range, observationRange) {
 			continue
 		}
-		node, err := nodeFromObservation(snapshot, fingerprint, observation)
+		node, err := nodeFromObservation(snapshot, fingerprint, observation, tableRows)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +144,12 @@ func Parse(input []byte) (*Document, error) {
 	}, nil
 }
 
-func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observation parser.Node) (Node, error) {
+type tableRowSourceResult struct {
+	mapping  source.TableRowMapping
+	editable bool
+}
+
+func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observation parser.Node, tableRows map[int]tableRowSourceResult) (Node, error) {
 	if observation.Kind == parser.KindRawHTML {
 		return nodeFromRawHTMLObservation(snapshot, fingerprint, observation)
 	}
@@ -170,6 +182,9 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 		AutoLinkEmail: observation.AutoLinkEmail,
 		TopLevel:      observation.TopLevel,
 	}
+	if kind == KindParagraph && observation.TopLevel {
+		node.Editable = true
+	}
 	switch kind {
 	case KindHeading:
 		mapping, err := source.MapTopLevelHeading(snapshot, contentRange, observation.Level)
@@ -179,6 +194,7 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 		node.Range = mapping.Range
 		node.ContentRange = mapping.ContentRange
 		node.HeadingStyle = HeadingStyle(mapping.Style)
+		node.Editable = true
 	case KindTask:
 		mapping, err := source.MapTaskMarker(snapshot, observation.Range.Start)
 		if err != nil {
@@ -190,6 +206,7 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 		node.Range = mapping.Range
 		node.ContentRange = mapping.ContentRange
 		node.Checked = mapping.Checked
+		node.Editable = true
 	case KindListItem:
 		mapping, err := source.MapSingleLineListItem(snapshot, contentRange, observation.Ordered, observation.Marker)
 		if err != nil {
@@ -199,9 +216,75 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 		node.ContentRange = mapping.ContentRange
 		node.ListOrdered = mapping.Ordered
 		node.ListMarker = mapping.Marker
+		node.Editable = true
+	case KindTableCell:
+		mapping, editable, err := mapTableCellSource(snapshot, observation, contentRange, tableRows)
+		if err != nil {
+			return Node{}, fmt.Errorf("map table cell source: %w", err)
+		}
+		if editable {
+			node.TableCellSource = mapping
+			node.Editable = true
+		}
+	case KindFencedCode:
+		mapping, err := source.MapSingleLineFencedCode(snapshot, contentRange)
+		if err == nil {
+			node.FencedCodeSource = mapping
+			node.Editable = true
+		} else if !errors.Is(err, source.ErrUnsupportedFencedCodeShape) {
+			return Node{}, fmt.Errorf("map fenced code source: %w", err)
+		}
+	case KindStrikethrough:
+		mapping, err := source.MapSimpleStrikethrough(snapshot, contentRange)
+		if err == nil {
+			node.StrikethroughSource = mapping
+			node.Editable = true
+		} else if !errors.Is(err, source.ErrUnsupportedStrikethroughShape) {
+			return Node{}, fmt.Errorf("map strikethrough source: %w", err)
+		}
+	case KindCodeSpan:
+		mapping, err := source.MapSimpleCodeSpan(snapshot, observation.Anchor, contentRange)
+		if err == nil {
+			node.CodeSpanSource = mapping
+			node.Editable = true
+		} else if !errors.Is(err, source.ErrUnsupportedCodeSpanShape) {
+			return Node{}, fmt.Errorf("map code span source: %w", err)
+		}
+	case KindEmphasis, KindStrong:
+		mapping, err := source.MapSimpleEmphasis(snapshot, observation.Anchor, contentRange, observation.Level)
+		if err == nil {
+			node.EmphasisSource = mapping
+			node.Editable = true
+		} else if !errors.Is(err, source.ErrUnsupportedEmphasisShape) {
+			return Node{}, fmt.Errorf("map emphasis source: %w", err)
+		}
 	}
 	node.ID = makeNodeID(fingerprint, kind, node.Range)
 	return node, nil
+}
+
+func mapTableCellSource(snapshot []byte, observation parser.Node, contentRange Range, cache map[int]tableRowSourceResult) (source.TableCellMapping, bool, error) {
+	result, ok := cache[observation.TableRowAnchor]
+	if !ok {
+		row, err := source.MapTableRow(snapshot, observation.TableRowAnchor)
+		if err != nil {
+			if errors.Is(err, source.ErrUnsupportedTableCellShape) {
+				cache[observation.TableRowAnchor] = tableRowSourceResult{}
+				return source.TableCellMapping{}, false, nil
+			}
+			return source.TableCellMapping{}, false, err
+		}
+		result = tableRowSourceResult{mapping: row, editable: true}
+		cache[observation.TableRowAnchor] = result
+	}
+	if !result.editable || observation.TableColumn < 0 || observation.TableColumn >= len(result.mapping.Cells) {
+		return source.TableCellMapping{}, false, nil
+	}
+	mapping := result.mapping.Cells[observation.TableColumn]
+	if mapping.ContentRange != contentRange {
+		return source.TableCellMapping{}, false, nil
+	}
+	return mapping, true, nil
 }
 
 // Nodes returns a copy of the snapshot-local structural nodes.
@@ -214,6 +297,7 @@ type NodeSummary struct {
 	ID       NodeID
 	Kind     Kind
 	TopLevel bool
+	Editable bool
 }
 
 // NodeCount returns the number of snapshot-local structural nodes.
@@ -227,7 +311,7 @@ func (d *Document) NodeSummaryAt(index int) (NodeSummary, bool) {
 		return NodeSummary{}, false
 	}
 	node := d.nodes[index]
-	return NodeSummary{ID: node.ID, Kind: node.Kind, TopLevel: node.TopLevel}, true
+	return NodeSummary{ID: node.ID, Kind: node.Kind, TopLevel: node.TopLevel, Editable: node.Editable}, true
 }
 
 // Node returns one snapshot-local structural node by ID.

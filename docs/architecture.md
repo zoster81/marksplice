@@ -39,9 +39,9 @@ Current internal boundaries:
 - `internal/parser/goldmark`: Goldmark-specific parsing and AST traversal. No Goldmark type may cross this adapter boundary.
 - `internal/source`: snapshot fingerprints, byte ranges, validated patches, stale-source conflict detection, and patch application.
 - `internal/splice`: implementation document model that combines semantic observations with source snapshots and prepares structural edits.
-- root package `marksplice`: reviewed public API values and operations only; it may wrap internal implementation objects but must not expose Goldmark or `internal/*` types.
+- root package `marksplice`: reviewed public API values and operations only; it may wrap internal implementation objects but must not expose Goldmark or `internal/*` types. Keep public implementation responsibilities separated: core snapshot/enumeration/error plumbing, typed details, and named mutations belong in cohesive files rather than one growing API monolith.
 
-Milestones M1 and M2 have passed. M1 established feasibility and M2 established the first durable public surface from that evidence; internal M1 types and taxonomies are not automatically public API commitments.
+Milestones M1 through M6 have passed. M1 established feasibility, M2 established the first durable public surface, M3 promoted top-level headings, M4 promoted M1-proven list items and tasks, M5 introduced a parse-time editable-capability gate for mapped table cells and fenced code, and M6 applied that gate to simple inline spans; internal M1 types and taxonomies are not automatically public API commitments.
 
 Within the internal implementation, keep orchestration separate from syntax-specific proof logic. Shared mutation plumbing may centralize target lookup, simple replacement preconditions, candidate patch construction, and candidate parsing, while source mappers and semantic validators remain typed and feature-specific when their safety invariants differ. Likewise, shared lexical primitives belong in focused helpers rather than being duplicated across block, inline, link, front-matter, or HTML mapping code.
 
@@ -132,7 +132,7 @@ External URLs remain data unless an explicit caller outside core chooses to act 
 
 Parsing and structural indexing should be linear or near-linear in source size where practical. Mutation planning should avoid quadratic rescanning. Callers should eventually be able to impose byte, node, depth, relationship, and output budgets rather than relying on hidden global limits.
 
-## Public API foundation
+## Public API foundation and promotion
 
 M1 demonstrated the feasibility requirements that gated broader API design. M2 established the following public-boundary rules:
 
@@ -147,3 +147,15 @@ M1 demonstrated the feasibility requirements that gated broader API design. M2 e
 - public document lookup reuses the internal snapshot index rather than maintaining a second index.
 
 These rules intentionally keep the public surface narrower than the M1 implementation. Broader structural operations should be promoted one semantic family at a time without weakening the minimal-patch/fail-closed model.
+
+M3 applies that pattern to top-level headings. Public `Heading` detail exposes snapshot identity, level, Marksplice-owned ATX/Setext style, and the exact content range replaced by heading rename. It does not expose the internal complete heading source range, Goldmark data, or M1 heading structs. `PrepareRenameHeading` delegates to the proven M1 minimal-patch candidate-reparse validation, preserving markers, Setext underlines, spacing, and line endings while rejecting replacements that do not re-establish the same supported heading shape. Public enumeration also requires top-level status so future internal container headings are not promoted automatically.
+
+M4 applies the same pattern to single-line list items and GFM task markers because those families already have exact editable mappings established during document parsing. Public `ListItem` detail exposes only the content range used by replacement plus ordered state and the existing marker/delimiter byte; numeric ordered-list prefixes remain source trivia. Public `Task` detail exposes only the one-byte state range and checked state. Nested list items and tasks are promoted because M1 proved those source-preserving shapes; unlike paragraph and heading promotion, they are not filtered by top-level status.
+
+A semantic observation is not sufficient by itself for public promotion as an actionable node. When an M1 family proves important source-shape facts only lazily during mutation preparation, Marksplice should first make that capability boundary explicit—by persisting/validating an editable mapping in the parsed model or by another reviewed mechanism—before exposing the family as an ordinary public typed detail plus named mutation. This prevents callers from receiving apparently actionable nodes whose source-preserving support is known only after an operation is attempted, and keeps internal source-mapper failure categories out of the public contract.
+
+M5 implements that capability boundary for non-empty GFM table cells and supported single-line fenced code. The immutable internal node stores an `Editable` capability and the validated original source mapping needed by the mutation validator. Expected unsupported source shapes remain semantic internal nodes with `Editable=false`; they do not make document parsing fail and are filtered from the public actionable surface. The capability flag itself is not public API.
+
+For M5 table cells, public detail exposes only ID, the exact content replacement range, header/body state, and zero-based column. Raw cell padding and delimiters remain internal source data. Parse-time table handling is linear in row width: the Goldmark adapter assigns cell columns incrementally during its single AST walk, then passes a parser-independent row anchor to the source layer. A snapshot-local row cache lets `source.MapTableRow` scan each physical table row once and derive all cell mappings for that row, avoiding both sibling back-scans and a full-row source rescan for every cell in wide tables. For fenced code, public detail exposes only ID and the exact content replacement range; fence character/length, indentation, closing-fence facts, and info-string boundaries remain internal validation data. Mutation preparation reuses the stored original mapping rather than rescanning the immutable original source, while candidate reparsing and mapping remain the conservative M1 fail-closed safety oracle.
+
+M6 applies the same parse-time capability rule to simple GFM strikethrough, code spans, emphasis, and strong emphasis. Supported nodes persist their validated `StrikethroughMapping`, `CodeSpanMapping`, or `EmphasisMapping` and are public only when `Editable=true`. Public typed details intentionally expose only snapshot ID and the exact content replacement range; tilde, backtick, `*`/`_`, and delimiter-run facts remain private validation data. Semantic shapes requiring code-span whitespace normalization or compound/nested emphasis delimiters remain internal non-editable observations rather than public mutation targets. Original-source mappings are reused during preparation; candidate reparsing/remapping remains fail closed.
