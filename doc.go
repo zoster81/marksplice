@@ -1,6 +1,6 @@
 // Package marksplice provides source-preserving structural GitHub Flavored Markdown manipulation.
 //
-// Marksplice is currently in its initial feasibility milestone. The stable public
-// API will be designed after the lossless-editing architecture has been proven by
-// the M1 test matrix.
+// Marksplice has passed its lossless-editing feasibility and public-API
+// foundation milestones. Public types remain Marksplice-owned while Goldmark and
+// lossless source-mapping implementation details stay internal.
 package marksplice

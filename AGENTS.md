@@ -9,6 +9,7 @@ Keep responsibilities separated and link rather than duplicate details:
 - `docs/architecture.md` owns durable architecture, API-boundary, source-preservation, security, dependency, and performance decisions.
 - `docs/gfm-conformance.md` owns the normative Markdown profile, GFM source hierarchy, conformance gate, and specification-update policy.
 - `docs/milestones/m1-lossless-editing.md` owns the completed M1 feasibility evidence, matrix, consolidation record, and exit decision.
+- `docs/milestones/m2-public-api-foundation.md` owns the completed M2 public-API foundation, constraints, evidence, and exit decision.
 - `go.mod` and `go.sum` own exact Go dependency versions.
 - `LICENSE` and `NOTICE` own licensing and project attribution.
 - `CONTRIBUTING.md` owns contributor workflow and validation expectations.
@@ -46,7 +47,7 @@ On Windows, when PowerShell is required, prefer `pwsh` (PowerShell 7+) when avai
 
 ## Scope
 
-M1 is complete and records the feasibility proof. Subsequent milestone work must extend the model from the established source-preservation, parser-isolation, stale-source, and fail-closed invariants rather than bypassing them.
+M1 and M2 are complete. M1 records the feasibility proof; M2 records the first durable public API foundation. Future milestones must extend the model from the established source-preservation, parser-isolation, stale-source, typed-detail, and fail-closed invariants rather than bypassing them.
 
 Do not add Scripthold-specific MCP, filesystem authorization, preview/apply, release, or workspace-crawling behavior to Marksplice core.
 

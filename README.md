@@ -6,9 +6,9 @@ Marksplice is an open-source Pure-Go library for understanding and structurally 
 
 ## Status
 
-Marksplice has passed its initial lossless-editing feasibility milestone (M1). The published GitHub Flavored Markdown 0.29 specification is the project's single normative Markdown syntax profile. M1 established that Goldmark can remain isolated behind a GFM-conformance adapter while Marksplice owns lossless source mapping, stale-source safety, and minimal byte patches for representative existing-document edits.
+Marksplice has passed both its lossless-editing feasibility milestone (M1) and its public-API foundation milestone (M2). The published GitHub Flavored Markdown 0.29 specification is the project's single normative Markdown syntax profile. M1 established the Goldmark + Marksplice lossless architecture; M2 established the first reviewed Marksplice-owned public parse/read/lookup/change surface.
 
-The public API is not yet stable; post-M1 API design will be derived from the proven feasibility invariants rather than exposing the internal proof model directly.
+The public API remains intentionally narrow rather than feature-complete. Additional syntax families will be promoted only after their caller-facing semantics and source-preserving operations are reviewed.
 
 ## Design principles
 
@@ -19,7 +19,11 @@ The public API is not yet stable; post-M1 API design will be derived from the pr
 - keep Goldmark behind an internal adapter and expose only Marksplice-owned types;
 - keep filesystem, network, MCP, and host authorization concerns outside the core library.
 
-See [`docs/architecture.md`](docs/architecture.md) for durable design decisions, [`docs/gfm-conformance.md`](docs/gfm-conformance.md) for the normative Markdown/conformance policy, and [`docs/milestones/m1-lossless-editing.md`](docs/milestones/m1-lossless-editing.md) for the completed M1 feasibility evidence and exit decision.
+See [`docs/architecture.md`](docs/architecture.md) for durable design decisions, [`docs/gfm-conformance.md`](docs/gfm-conformance.md) for the normative Markdown/conformance policy, [`docs/milestones/m1-lossless-editing.md`](docs/milestones/m1-lossless-editing.md) for the completed M1 evidence, and [`docs/milestones/m2-public-api-foundation.md`](docs/milestones/m2-public-api-foundation.md) for the completed public-API foundation.
+
+## Public API foundation
+
+The current public surface deliberately promotes only reviewed semantics: immutable snapshots, opaque snapshot-scoped node identities, headings and top-level paragraphs as generic node kinds, typed top-level paragraph ranges, source-bound paragraph replacement, and `errors.Is`-compatible public error categories. Internal M1 syntax coverage is broader than the public API and is not automatically a compatibility commitment.
 
 ## Development
 

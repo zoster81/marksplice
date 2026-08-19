@@ -86,6 +86,7 @@ type Node struct {
 	FrontMatterStyle  source.FrontMatterValueStyle
 	HTMLAttribute     string
 	HTMLQuote         byte
+	TopLevel          bool
 }
 
 // ChangeSet is a source-bound prepared mutation.
@@ -167,6 +168,7 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 		HasTitle:      observation.HasTitle,
 		Value:         observation.Value,
 		AutoLinkEmail: observation.AutoLinkEmail,
+		TopLevel:      observation.TopLevel,
 	}
 	switch kind {
 	case KindHeading:
@@ -205,6 +207,32 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 // Nodes returns a copy of the snapshot-local structural nodes.
 func (d *Document) Nodes() []Node {
 	return append([]Node(nil), d.nodes...)
+}
+
+// NodeSummary is the lightweight common structural data needed for enumeration boundaries.
+type NodeSummary struct {
+	ID       NodeID
+	Kind     Kind
+	TopLevel bool
+}
+
+// NodeCount returns the number of snapshot-local structural nodes.
+func (d *Document) NodeCount() int {
+	return len(d.nodes)
+}
+
+// NodeSummaryAt returns lightweight structural data at one stable snapshot-local index.
+func (d *Document) NodeSummaryAt(index int) (NodeSummary, bool) {
+	if index < 0 || index >= len(d.nodes) {
+		return NodeSummary{}, false
+	}
+	node := d.nodes[index]
+	return NodeSummary{ID: node.ID, Kind: node.Kind, TopLevel: node.TopLevel}, true
+}
+
+// Node returns one snapshot-local structural node by ID.
+func (d *Document) Node(id NodeID) (Node, bool) {
+	return d.nodeByID(id)
 }
 
 func indexNodes(nodes []Node) (map[NodeID]int, error) {

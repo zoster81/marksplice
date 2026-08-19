@@ -9,11 +9,11 @@ import (
 
 // PrepareReplace prepares a minimal replacement for a parsed paragraph node.
 func (d *Document) PrepareReplace(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, ok := d.nodeByID(id)
-	if !ok {
-		return ChangeSet{}, ErrNodeNotFound
+	target, err := d.targetNode(id, KindParagraph)
+	if err != nil {
+		return ChangeSet{}, err
 	}
-	if err := validateParagraphReplacement(target.Kind, replacement); err != nil {
+	if err := validateParagraphReplacement(replacement); err != nil {
 		return ChangeSet{}, err
 	}
 	return d.newChange(target.Range, replacement, "paragraph replacement")
@@ -233,8 +233,8 @@ func validateRenamedHeading(candidate []byte, target Node) error {
 	return ErrInvalidReplacement
 }
 
-func validateParagraphReplacement(kind Kind, replacement []byte) error {
-	if kind != KindParagraph || len(replacement) == 0 {
+func validateParagraphReplacement(replacement []byte) error {
+	if len(replacement) == 0 {
 		return ErrInvalidReplacement
 	}
 

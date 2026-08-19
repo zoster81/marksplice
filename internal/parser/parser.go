@@ -50,6 +50,7 @@ type Node struct {
 	HasTitle      bool
 	Value         string
 	AutoLinkEmail bool
+	TopLevel      bool
 }
 
 // Adapter parses Markdown into Marksplice-owned semantic observations.

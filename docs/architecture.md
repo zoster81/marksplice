@@ -38,9 +38,10 @@ Current internal boundaries:
 
 - `internal/parser/goldmark`: Goldmark-specific parsing and AST traversal. No Goldmark type may cross this adapter boundary.
 - `internal/source`: snapshot fingerprints, byte ranges, validated patches, stale-source conflict detection, and patch application.
-- `internal/splice`: feasibility-level document model that combines semantic observations with source snapshots and prepares structural edits.
+- `internal/splice`: implementation document model that combines semantic observations with source snapshots and prepares structural edits.
+- root package `marksplice`: reviewed public API values and operations only; it may wrap internal implementation objects but must not expose Goldmark or `internal/*` types.
 
-Milestone M1 has passed its feasibility gate. The root public package remains intentionally small while the post-M1 public API is designed from the evidence gathered by the feasibility implementation; internal M1 types are not automatically promises of final public API shape.
+Milestones M1 and M2 have passed. M1 established feasibility and M2 established the first durable public surface from that evidence; internal M1 types and taxonomies are not automatically public API commitments.
 
 Within the internal implementation, keep orchestration separate from syntax-specific proof logic. Shared mutation plumbing may centralize target lookup, simple replacement preconditions, candidate patch construction, and candidate parsing, while source mappers and semantic validators remain typed and feature-specific when their safety invariants differ. Likewise, shared lexical primitives belong in focused helpers rather than being duplicated across block, inline, link, front-matter, or HTML mapping code.
 
@@ -62,7 +63,7 @@ properties
 
 Human-readable labels such as heading text are not sufficient identities because duplicates are valid Markdown.
 
-Node identities are snapshot-scoped, deterministic, and derived from source-bound structural facts. They are not durable identities across arbitrary document revisions.
+Node identities are snapshot-scoped, deterministic, and derived from source-bound structural facts. They are not durable identities across arbitrary document revisions. Public `NodeID` values are opaque and comparable; their diagnostic string form is not a persistence or round-trip format.
 
 An immutable parsed document may maintain a derived snapshot-local `NodeID` index so structural targeting does not require a linear scan for every operation. Building that index must reject duplicate IDs rather than silently choosing one node; the ordered node collection remains the source of structural iteration order.
 
@@ -131,15 +132,18 @@ External URLs remain data unless an explicit caller outside core chooses to act 
 
 Parsing and structural indexing should be linear or near-linear in source size where practical. Mutation planning should avoid quadratic rescanning. Callers should eventually be able to impose byte, node, depth, relationship, and output budgets rather than relying on hidden global limits.
 
-## Post-M1 public API direction
+## Public API foundation
 
-M1 has demonstrated the feasibility requirements that gated broader API design:
+M1 demonstrated the feasibility requirements that gated broader API design. M2 established the following public-boundary rules:
 
-- semantic parsing through the internal Goldmark adapter;
-- exact source ranges sufficient for useful local edits;
-- byte preservation outside changed spans across representative structures;
-- stale-source conflict rejection;
-- deterministic malformed/ambiguous behavior;
-- acceptable complexity and testability of the combined semantic + lossless model.
+- exported signatures contain only Marksplice-owned or standard-library types;
+- generic public `Node` values expose only reviewed common semantics, initially snapshot-scoped identity and promoted kind;
+- internal node kinds are not published automatically; each public kind is promoted only after its caller-facing semantics are reviewed;
+- operation-oriented internal source ranges are not exposed as one generic node-span contract. Position/range semantics belong to typed details or focused accessors that define exactly what the bytes represent;
+- the first typed detail is a top-level `Paragraph`, whose range is the exact span used by paragraph replacement and excludes the following line ending;
+- public paragraph mutation is limited to top-level paragraphs because that is the M1 shape whose replacement semantics were proven; container paragraphs remain internal until separately proven;
+- public prepared changes are opaque and preserve M1 snapshot-conflict behavior;
+- public sentinel errors are owned by the root package and internal failure categories are translated while preserving `errors.Is` semantics;
+- public document lookup reuses the internal snapshot index rather than maintaining a second index.
 
-Passing the gate does not freeze the current internal feasibility API. The stable public API and broader structural operations should now be designed from these proven invariants, keeping Goldmark details internal and preserving the minimal-patch/fail-closed model.
+These rules intentionally keep the public surface narrower than the M1 implementation. Broader structural operations should be promoted one semantic family at a time without weakening the minimal-patch/fail-closed model.

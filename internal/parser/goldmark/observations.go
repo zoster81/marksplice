@@ -55,7 +55,11 @@ func observeParagraph(source []byte, paragraph *ast.Paragraph) (parser.Node, boo
 	if !range_.Valid(len(source)) {
 		return parser.Node{}, false, fmt.Errorf("goldmark paragraph range [%d,%d) is outside source length %d", range_.Start, range_.End, len(source))
 	}
-	return parser.Node{Kind: parser.KindParagraph, Range: range_}, true, nil
+	return parser.Node{
+		Kind:     parser.KindParagraph,
+		Range:    range_,
+		TopLevel: paragraph.Parent() != nil && paragraph.Parent().Kind() == ast.KindDocument,
+	}, true, nil
 }
 
 func observeHeading(source []byte, heading *ast.Heading) (parser.Node, bool, error) {
@@ -72,7 +76,7 @@ func observeHeading(source []byte, heading *ast.Heading) (parser.Node, bool, err
 	if !range_.Valid(len(source)) {
 		return parser.Node{}, false, fmt.Errorf("goldmark heading content range [%d,%d) is outside source length %d", range_.Start, range_.End, len(source))
 	}
-	return parser.Node{Kind: parser.KindHeading, Range: range_, Level: heading.Level}, true, nil
+	return parser.Node{Kind: parser.KindHeading, Range: range_, Level: heading.Level, TopLevel: true}, true, nil
 }
 
 func observeReferenceDefinition(source []byte, definition *ast.LinkReferenceDefinition) (parser.Node, bool, error) {
