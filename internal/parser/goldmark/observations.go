@@ -33,6 +33,8 @@ func observeNode(source []byte, node ast.Node) (parser.Node, bool, error) {
 		return observeRawHTML(source, typed)
 	case *ast.Link:
 		return observeInlineLink(source, typed)
+	case *ast.Image:
+		return observeImage(source, typed)
 	case *extensionast.Strikethrough:
 		return observeStrikethrough(source, typed)
 	case *extensionast.TaskCheckBox:
@@ -191,6 +193,17 @@ func observeInlineLink(source []byte, link *ast.Link) (parser.Node, bool, error)
 		Title:       string(link.Title),
 		HasTitle:    link.Title != nil,
 	}, true, nil
+}
+
+func observeImage(source []byte, image *ast.Image) (parser.Node, bool, error) {
+	if image.Pos() < 0 {
+		return parser.Node{}, false, nil
+	}
+	range_, ok := simplePlainTextInlineRange(source, image)
+	if !ok {
+		return parser.Node{}, false, nil
+	}
+	return parser.Node{Kind: parser.KindImage, Range: range_, Anchor: image.Pos()}, true, nil
 }
 
 func observeStrikethrough(source []byte, strike *extensionast.Strikethrough) (parser.Node, bool, error) {

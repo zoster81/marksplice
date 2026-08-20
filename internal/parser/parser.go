@@ -20,6 +20,7 @@ const (
 	KindStrong
 	KindRawHTML
 	KindHTMLBlock
+	KindImage
 )
 
 // Range is a half-open byte range [Start, End) in the parsed source snapshot.

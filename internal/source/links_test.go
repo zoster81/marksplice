@@ -90,6 +90,77 @@ func TestMapSimpleInlineLinkRejectsUnprovenShape(t *testing.T) {
 	}
 }
 
+func TestMapSimpleImagePreservesDestinationBoundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		source    []byte
+		anchor    int
+		alt       Range
+		wantRange Range
+		wantDest  Range
+		wantTitle Range
+		wantAngle bool
+	}{
+		{
+			name:      "raw destination with title and CRLF",
+			source:    []byte("before ![alt](old/path  \"A title\") after\r\n"),
+			anchor:    7,
+			alt:       Range{Start: 9, End: 12},
+			wantRange: Range{Start: 7, End: 34},
+			wantDest:  Range{Start: 14, End: 22},
+			wantTitle: Range{Start: 25, End: 32},
+		},
+		{
+			name:      "angle destination preserves wrapper outside range",
+			source:    []byte("![alt](  <old path> 'title' )\n"),
+			anchor:    0,
+			alt:       Range{Start: 2, End: 5},
+			wantRange: Range{Start: 0, End: 29},
+			wantDest:  Range{Start: 10, End: 18},
+			wantTitle: Range{Start: 21, End: 26},
+			wantAngle: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := MapSimpleImage(tt.source, tt.anchor, tt.alt)
+			if err != nil {
+				t.Fatalf("MapSimpleImage() error = %v", err)
+			}
+			if got.Range != tt.wantRange || got.AltRange != tt.alt || got.DestinationRange != tt.wantDest || got.TitleRange != tt.wantTitle || got.AngleDestination != tt.wantAngle || !got.HasTitle {
+				t.Fatalf("mapping = %+v, want range %v alt %v destination %v title %v angle %v", got, tt.wantRange, tt.alt, tt.wantDest, tt.wantTitle, tt.wantAngle)
+			}
+		})
+	}
+}
+
+func TestMapSimpleImageRejectsUnprovenShape(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source []byte
+		anchor int
+		alt    Range
+	}{
+		{name: "link instead of image", source: []byte("[alt](old/path)\n"), anchor: 0, alt: Range{Start: 1, End: 4}},
+		{name: "reference image", source: []byte("![alt][id]\n"), anchor: 0, alt: Range{Start: 2, End: 5}},
+		{name: "empty destination", source: []byte("![alt]()\n"), anchor: 0, alt: Range{Start: 2, End: 5}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := MapSimpleImage(tt.source, tt.anchor, tt.alt)
+			if !errors.Is(err, ErrUnsupportedImageShape) {
+				t.Fatalf("MapSimpleImage() error = %v, want ErrUnsupportedImageShape", err)
+			}
+		})
+	}
+}
+
 func TestMapSingleLineReferenceDefinitionPreservesDestinationBoundaries(t *testing.T) {
 	t.Parallel()
 

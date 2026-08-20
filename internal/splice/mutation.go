@@ -39,7 +39,11 @@ func validateNonEmptySingleLine(replacement []byte) error {
 }
 
 func (d *Document) newChange(range_ Range, replacement []byte, operation string) (ChangeSet, error) {
-	change, err := source.NewChangeSet(d.source, []source.Patch{{Range: range_, Replacement: replacement}})
+	return d.newChanges([]source.Patch{{Range: range_, Replacement: replacement}}, operation)
+}
+
+func (d *Document) newChanges(patches []source.Patch, operation string) (ChangeSet, error) {
+	change, err := source.NewChangeSet(d.source, patches)
 	if err != nil {
 		return ChangeSet{}, fmt.Errorf("prepare %s: %w", operation, err)
 	}
@@ -47,7 +51,11 @@ func (d *Document) newChange(range_ Range, replacement []byte, operation string)
 }
 
 func (d *Document) prepareCandidateChange(range_ Range, replacement []byte, operation string) (ChangeSet, []byte, error) {
-	change, err := d.newChange(range_, replacement, operation)
+	return d.prepareCandidateChanges([]source.Patch{{Range: range_, Replacement: replacement}}, operation)
+}
+
+func (d *Document) prepareCandidateChanges(patches []source.Patch, operation string) (ChangeSet, []byte, error) {
+	change, err := d.newChanges(patches, operation)
 	if err != nil {
 		return ChangeSet{}, nil, err
 	}

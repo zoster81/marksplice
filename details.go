@@ -235,6 +235,19 @@ func (l InlineLink) ID() NodeID { return l.id }
 // Label, parentheses, destination wrappers, title syntax, and surrounding source are outside this range.
 func (l InlineLink) Range() Range { return l.sourceRange }
 
+// Image is immutable typed detail for one promoted simple inline image.
+type Image struct {
+	id          NodeID
+	sourceRange Range
+}
+
+// ID returns the image's snapshot-scoped node identity.
+func (i Image) ID() NodeID { return i.id }
+
+// Range returns the exact destination span replaced by PrepareReplaceImageDestination.
+// The image marker, alt text, parentheses, destination wrappers, title syntax, and surrounding source are outside this range.
+func (i Image) Range() Range { return i.sourceRange }
+
 // ReferenceDefinition is immutable typed detail for one promoted single-line reference definition.
 type ReferenceDefinition struct {
 	id          NodeID
@@ -438,6 +451,15 @@ func (d *Document) InlineLink(id NodeID) (InlineLink, bool) {
 		return InlineLink{}, false
 	}
 	return InlineLink{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
+}
+
+// Image returns typed detail for one promoted simple inline image.
+func (d *Document) Image(id NodeID) (Image, bool) {
+	node, err := d.promotedNode(id, splice.KindImage, false)
+	if err != nil {
+		return Image{}, false
+	}
+	return Image{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
 }
 
 // ReferenceDefinition returns typed detail for one promoted single-line reference definition.

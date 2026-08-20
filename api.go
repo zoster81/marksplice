@@ -11,7 +11,7 @@ import (
 var (
 	// ErrNodeNotFound reports that a snapshot-local node ID does not exist.
 	ErrNodeNotFound = errors.New("node not found")
-	// ErrInvalidReplacement reports replacement bytes that cannot preserve the requested structure.
+	// ErrInvalidReplacement reports a requested mutation that cannot preserve the required structure.
 	ErrInvalidReplacement = errors.New("invalid replacement")
 	// ErrInvalidTargetKind reports that an operation does not support the targeted node kind.
 	ErrInvalidTargetKind = errors.New("invalid target kind")
@@ -40,6 +40,7 @@ const (
 	KindFrontMatterField
 	KindHTMLComment
 	KindHTMLAnchor
+	KindImage
 )
 
 // NodeID identifies a node within one parsed source snapshot.
@@ -126,6 +127,15 @@ func (d *Document) Node(id NodeID) (Node, bool) {
 		return Node{}, false
 	}
 	return publicNode(node)
+}
+
+// SourceRange returns a copy of one valid byte range from the immutable source snapshot.
+// Caller mutations of the returned bytes do not affect the document.
+func (d *Document) SourceRange(range_ Range) ([]byte, bool) {
+	if d == nil || d.document == nil {
+		return nil, false
+	}
+	return d.document.SourceRange(splice.Range{Start: range_.Start, End: range_.End})
 }
 
 // ChangeSet is an opaque prepared change bound to one exact source snapshot.
@@ -230,6 +240,8 @@ func publicKind(kind splice.Kind) (Kind, bool) {
 		return KindHTMLComment, true
 	case splice.KindHTMLAnchor:
 		return KindHTMLAnchor, true
+	case splice.KindImage:
+		return KindImage, true
 	default:
 		return KindUnknown, false
 	}

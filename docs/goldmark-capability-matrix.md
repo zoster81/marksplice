@@ -13,7 +13,7 @@ Exact dependency versions belong in `go.mod` and `go.sum`; this document records
 | Lists | identify lists/items and nesting semantics | preserve markers, numbering, indentation, task-marker spelling, and untouched item source |
 | Fenced code | identify code blocks and info semantics | preserve fence character, length, indentation, spacing, and untouched body bytes |
 | Tables | provide table semantics through extension support | preserve table layout/alignment bytes outside explicitly changed cells/rows |
-| Links/images | identify destinations/titles/relationships | preserve inline/reference syntax choices and exact destination/source boundaries |
+| Links/images | identify link/image semantics and relationships; image destination/title details are not part of the pinned `ast.Image` public API | preserve inline/reference syntax choices and exact destination/source boundaries; derive simple image destination/title boundaries in Marksplice's source layer without private Goldmark access |
 | Reference definitions | parse reference semantics | retain exact definition spelling/layout and safe mutation boundaries |
 | YAML/TOML front matter | no responsibility in the default GFM profile | recognize only proven leading metadata envelopes in a separate source layer, preserve unknown envelope content opaquely, and patch exact safe scalar values without enabling another Markdown dialect |
 | HTML/unsupported syntax | expose GFM `RawHTML` and `HTMLBlock` semantics/source segments | map proven comment/anchor boundaries for minimal edits and conservatively preserve all other raw/HTML block regions as opaque source |

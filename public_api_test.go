@@ -217,6 +217,10 @@ func TestPublicZeroAndEmptyReadValuesAreDeterministic(t *testing.T) {
 	if inlineLink.ID().String() != "" || inlineLink.Range() != (marksplice.Range{}) {
 		t.Fatalf("zero InlineLink behavior = id %v range %v", inlineLink.ID(), inlineLink.Range())
 	}
+	var image marksplice.Image
+	if image.ID().String() != "" || image.Range() != (marksplice.Range{}) {
+		t.Fatalf("zero Image behavior = id %v range %v", image.ID(), image.Range())
+	}
 	var referenceDefinition marksplice.ReferenceDefinition
 	if referenceDefinition.ID().String() != "" || referenceDefinition.Range() != (marksplice.Range{}) {
 		t.Fatalf("zero ReferenceDefinition behavior = id %v range %v", referenceDefinition.ID(), referenceDefinition.Range())

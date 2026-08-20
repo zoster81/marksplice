@@ -56,6 +56,61 @@ func MapSimpleInlineLink(input []byte, anchor int, label Range, destination, tit
 	return mapping, nil
 }
 
+// ImageMapping binds one simple inline image to its exact source destination.
+type ImageMapping struct {
+	Range            Range
+	AltRange         Range
+	DestinationRange Range
+	TitleRange       Range
+	AngleDestination bool
+	HasTitle         bool
+}
+
+// MapSimpleImage maps a single-line plain-text-alt inline image to its source destination.
+func MapSimpleImage(input []byte, anchor int, alt Range) (ImageMapping, error) {
+	if anchor < 0 || anchor+1 >= len(input) || input[anchor] != '!' || input[anchor+1] != '[' || !alt.Valid(len(input)) || alt.Start == alt.End {
+		return ImageMapping{}, fmt.Errorf("%w: invalid anchor or alt range", ErrUnsupportedImageShape)
+	}
+	lineEnd := physicalLineEnd(input, alt.End)
+	if alt.Start != anchor+2 || alt.End >= lineEnd || input[alt.End] != ']' || alt.End+1 >= lineEnd || input[alt.End+1] != '(' {
+		return ImageMapping{}, fmt.Errorf("%w: alt text is not followed by an inline-image destination", ErrUnsupportedImageShape)
+	}
+	if containsLineBreak(input[anchor : alt.End+2]) {
+		return ImageMapping{}, fmt.Errorf("%w: image prefix crosses a physical line", ErrUnsupportedImageShape)
+	}
+
+	pos := skipHorizontalSpace(input, alt.End+2, lineEnd)
+	destinationRange, angle, next, ok := scanMarkdownLinkDestination(input, pos, lineEnd)
+	if !ok {
+		return ImageMapping{}, fmt.Errorf("%w: unsupported or empty image destination", ErrUnsupportedImageShape)
+	}
+
+	mapping := ImageMapping{
+		AltRange:         alt,
+		DestinationRange: destinationRange,
+		AngleDestination: angle,
+	}
+	spacesStart := next
+	pos = skipHorizontalSpace(input, next, lineEnd)
+	if pos < lineEnd && input[pos] != ')' {
+		if pos == spacesStart {
+			return ImageMapping{}, fmt.Errorf("%w: image title is not separated from destination", ErrUnsupportedImageShape)
+		}
+		titleRange, titleNext, ok := scanMarkdownLinkTitle(input, pos, lineEnd)
+		if !ok {
+			return ImageMapping{}, fmt.Errorf("%w: unsupported image title", ErrUnsupportedImageShape)
+		}
+		mapping.TitleRange = titleRange
+		mapping.HasTitle = true
+		pos = skipHorizontalSpace(input, titleNext, lineEnd)
+	}
+	if pos >= lineEnd || input[pos] != ')' {
+		return ImageMapping{}, fmt.Errorf("%w: missing inline-image closing parenthesis", ErrUnsupportedImageShape)
+	}
+	mapping.Range = Range{Start: anchor, End: pos + 1}
+	return mapping, nil
+}
+
 // ReferenceDefinitionMapping binds one single-line link reference definition to its exact destination.
 type ReferenceDefinitionMapping struct {
 	Range            Range

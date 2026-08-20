@@ -18,6 +18,76 @@ func (d *Document) PrepareRenameHeading(id NodeID, replacement []byte) (ChangeSe
 	return publicChangeSet(d.document.PrepareRenameHeading(internalNodeID(id), replacement))
 }
 
+// PrepareRemoveSection prepares source-preserving removal of one complete promoted section subtree.
+func (d *Document) PrepareRemoveSection(headingID NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(headingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveSection(internalNodeID(headingID)))
+}
+
+// PrepareReplaceSection prepares source-preserving replacement of one complete promoted section subtree.
+func (d *Document) PrepareReplaceSection(headingID NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(headingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceSection(internalNodeID(headingID), replacement))
+}
+
+// PrepareInsertSectionBefore prepares insertion of one sibling section subtree immediately before the target section.
+func (d *Document) PrepareInsertSectionBefore(headingID NodeID, fragment []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(headingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareInsertSectionBefore(internalNodeID(headingID), fragment))
+}
+
+// PrepareInsertSectionAfter prepares insertion of one sibling section subtree immediately after the target section subtree.
+func (d *Document) PrepareInsertSectionAfter(headingID NodeID, fragment []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(headingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareInsertSectionAfter(internalNodeID(headingID), fragment))
+}
+
+// PrepareAppendSectionChild prepares appending one direct child section subtree to a promoted parent section.
+func (d *Document) PrepareAppendSectionChild(parentHeadingID NodeID, fragment []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(parentHeadingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareAppendSectionChild(internalNodeID(parentHeadingID), fragment))
+}
+
+// PrepareMoveSectionBefore prepares moving one complete promoted section subtree immediately before a same-level anchor section.
+func (d *Document) PrepareMoveSectionBefore(headingID, anchorHeadingID NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(headingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	if _, err := d.promotedNode(anchorHeadingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareMoveSectionBefore(internalNodeID(headingID), internalNodeID(anchorHeadingID)))
+}
+
+// PrepareMoveSectionAfter prepares moving one complete promoted section subtree immediately after a same-level anchor subtree.
+func (d *Document) PrepareMoveSectionAfter(headingID, anchorHeadingID NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(headingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	if _, err := d.promotedNode(anchorHeadingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareMoveSectionAfter(internalNodeID(headingID), internalNodeID(anchorHeadingID)))
+}
+
+// PrepareReplaceSectionBody prepares source-preserving replacement of one promoted section's direct body.
+func (d *Document) PrepareReplaceSectionBody(headingID NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(headingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceSectionBody(internalNodeID(headingID), replacement))
+}
+
 // PrepareReplaceListItem prepares a source-preserving replacement of promoted list-item content.
 func (d *Document) PrepareReplaceListItem(id NodeID, replacement []byte) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindListItem, false); err != nil {
@@ -88,6 +158,14 @@ func (d *Document) PrepareReplaceInlineLinkDestination(id NodeID, replacement []
 		return ChangeSet{}, err
 	}
 	return publicChangeSet(d.document.PrepareReplaceInlineLinkDestination(internalNodeID(id), replacement))
+}
+
+// PrepareReplaceImageDestination prepares a source-preserving replacement of a promoted image destination.
+func (d *Document) PrepareReplaceImageDestination(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindImage, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceImageDestination(internalNodeID(id), replacement))
 }
 
 // PrepareReplaceReferenceDefinitionDestination prepares a source-preserving replacement of a promoted reference-definition destination.

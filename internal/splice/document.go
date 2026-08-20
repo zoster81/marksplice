@@ -44,6 +44,7 @@ const (
 	KindHTMLComment
 	KindHTMLAnchor
 	KindHTMLOpaque
+	KindImage
 )
 
 // HeadingStyle identifies the source syntax of a heading.
@@ -88,6 +89,7 @@ type Node struct {
 	FencedCodeSource          source.FencedCodeMapping
 	StrikethroughSource       source.StrikethroughMapping
 	InlineLinkSource          source.InlineLinkMapping
+	ImageSource               source.ImageMapping
 	ReferenceDefinitionSource source.ReferenceDefinitionMapping
 	AutoLinkSource            source.AutoLinkMapping
 	CodeSpanSource            source.CodeSpanMapping
@@ -287,6 +289,15 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 		} else if !errors.Is(err, source.ErrUnsupportedInlineLinkShape) {
 			return Node{}, fmt.Errorf("map inline link source: %w", err)
 		}
+	case KindImage:
+		mapping, err := source.MapSimpleImage(snapshot, observation.Anchor, contentRange)
+		if err == nil {
+			node.ContentRange = mapping.DestinationRange
+			node.ImageSource = mapping
+			node.Editable = true
+		} else if !errors.Is(err, source.ErrUnsupportedImageShape) {
+			return Node{}, fmt.Errorf("map image source: %w", err)
+		}
 	case KindReferenceDefinition:
 		mapping, err := source.MapSingleLineReferenceDefinition(snapshot, contentRange, observation.Label, observation.Destination, observation.Title, observation.HasTitle)
 		if err == nil {
@@ -382,6 +393,14 @@ func (d *Document) Node(id NodeID) (Node, bool) {
 	return d.nodeByID(id)
 }
 
+// SourceRange returns a copy of one valid byte range from the immutable source snapshot.
+func (d *Document) SourceRange(range_ Range) ([]byte, bool) {
+	if d == nil || !range_.Valid(len(d.source)) {
+		return nil, false
+	}
+	return append([]byte(nil), d.source[range_.Start:range_.End]...), true
+}
+
 func indexNodes(nodes []Node) (map[NodeID]int, error) {
 	index := make(map[NodeID]int, len(nodes))
 	for i, node := range nodes {
@@ -433,6 +452,8 @@ func mapKind(kind parser.Kind) (Kind, error) {
 		return KindHTMLOpaque, nil
 	case parser.KindRawHTML:
 		return KindHTMLOpaque, nil
+	case parser.KindImage:
+		return KindImage, nil
 	default:
 		return KindUnknown, fmt.Errorf("unsupported parser node kind %d", kind)
 	}
