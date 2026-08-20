@@ -14,6 +14,9 @@ Keep responsibilities separated and link rather than duplicate details:
 - `docs/milestones/m4-list-public-api.md` owns the completed M4 list-item/task public API scope, evidence, deferred-family rationale, and exit decision.
 - `docs/milestones/m5-mapped-block-public-api.md` owns the completed M5 parse-time editable mapping, table-cell/fenced-code public API scope, evidence, and exit decision.
 - `docs/milestones/m6-simple-inline-public-api.md` owns the completed M6 simple-inline parse-time mapping, public API scope, unsupported-shape filtering, evidence, and exit decision.
+- `docs/milestones/m7-link-public-api.md` owns the completed M7 link parse-time mapping and public API scope, evidence, consolidation record, and exit decision.
+- `docs/milestones/m8-metadata-html-public-api.md` owns the completed M8 front-matter/HTML public API scope, parse-time capability evidence, consolidation record, and exit decision.
+- `docs/milestones/m9-section-model.md` owns the completed M9 read-only section semantics, hierarchy/range algorithm, evidence, and exit decision.
 - `go.mod` and `go.sum` own exact Go dependency versions.
 - `LICENSE` and `NOTICE` own licensing and project attribution.
 - `CONTRIBUTING.md` owns contributor workflow and validation expectations.
@@ -51,7 +54,7 @@ On Windows, when PowerShell is required, prefer `pwsh` (PowerShell 7+) when avai
 
 ## Scope
 
-M1 through M6 are complete. M1 records the feasibility proof; M2 records the first durable public API foundation; M3 applies the typed-detail/named-operation pattern to top-level headings; M4 applies it to M1-proven single-line list items and GFM task markers; M5 adds a parse-time editable-capability gate and promotes mapped non-empty table cells and supported single-line fenced code; M6 applies the same gate to simple strikethrough, code spans, emphasis, and strong. Future milestones must extend the model from the established source-preservation, parser-isolation, stale-source, typed-detail, mapped-capability, and fail-closed invariants rather than bypassing them.
+M1 through M9 are complete. M1 records the feasibility proof; M2 records the first durable public API foundation; M3 applies the typed-detail/named-operation pattern to top-level headings; M4 applies it to M1-proven single-line list items and GFM task markers; M5 adds a parse-time editable-capability gate and promotes mapped non-empty table cells and supported single-line fenced code; M6 applies the same gate to simple strikethrough, code spans, emphasis, and strong; M7 applies it to simple inline links, single-line reference definitions, and supported GFM autolinks; M8 promotes M1-proven simple leading front-matter scalar fields plus simple HTML comments/anchors while preserving opaque HTML; M9 adds an O(h) read-only section hierarchy with exact direct-body/subtree ranges anchored to heading IDs. Future milestones must extend the model from the established source-preservation, parser-isolation, stale-source, typed-detail, mapped-capability, section-hierarchy, and fail-closed invariants rather than bypassing them.
 
 Do not add Scripthold-specific MCP, filesystem authorization, preview/apply, release, or workspace-crawling behavior to Marksplice core.
 

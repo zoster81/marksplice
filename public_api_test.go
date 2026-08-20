@@ -213,6 +213,30 @@ func TestPublicZeroAndEmptyReadValuesAreDeterministic(t *testing.T) {
 	if strong.ID().String() != "" || strong.Range() != (marksplice.Range{}) {
 		t.Fatalf("zero Strong behavior = id %v range %v", strong.ID(), strong.Range())
 	}
+	var inlineLink marksplice.InlineLink
+	if inlineLink.ID().String() != "" || inlineLink.Range() != (marksplice.Range{}) {
+		t.Fatalf("zero InlineLink behavior = id %v range %v", inlineLink.ID(), inlineLink.Range())
+	}
+	var referenceDefinition marksplice.ReferenceDefinition
+	if referenceDefinition.ID().String() != "" || referenceDefinition.Range() != (marksplice.Range{}) {
+		t.Fatalf("zero ReferenceDefinition behavior = id %v range %v", referenceDefinition.ID(), referenceDefinition.Range())
+	}
+	var autoLink marksplice.AutoLink
+	if autoLink.ID().String() != "" || autoLink.Range() != (marksplice.Range{}) {
+		t.Fatalf("zero AutoLink behavior = id %v range %v", autoLink.ID(), autoLink.Range())
+	}
+	var frontMatterField marksplice.FrontMatterField
+	if frontMatterField.ID().String() != "" || frontMatterField.Range() != (marksplice.Range{}) || frontMatterField.Key() != "" || frontMatterField.Format() != marksplice.FrontMatterFormatUnknown {
+		t.Fatalf("zero FrontMatterField behavior = id %v range %v key %q format %v", frontMatterField.ID(), frontMatterField.Range(), frontMatterField.Key(), frontMatterField.Format())
+	}
+	var htmlComment marksplice.HTMLComment
+	if htmlComment.ID().String() != "" || htmlComment.Range() != (marksplice.Range{}) {
+		t.Fatalf("zero HTMLComment behavior = id %v range %v", htmlComment.ID(), htmlComment.Range())
+	}
+	var htmlAnchor marksplice.HTMLAnchor
+	if htmlAnchor.ID().String() != "" || htmlAnchor.Range() != (marksplice.Range{}) || htmlAnchor.Attribute() != marksplice.HTMLAnchorAttributeUnknown {
+		t.Fatalf("zero HTMLAnchor behavior = id %v range %v attribute %v", htmlAnchor.ID(), htmlAnchor.Range(), htmlAnchor.Attribute())
+	}
 	var change marksplice.ChangeSet
 	if _, err := change.Apply(nil); !errors.Is(err, marksplice.ErrSourceConflict) {
 		t.Fatalf("zero ChangeSet.Apply(nil) error = %v, want ErrSourceConflict", err)

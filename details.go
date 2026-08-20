@@ -11,6 +11,24 @@ const (
 	HeadingStyleSetext
 )
 
+// FrontMatterFormat identifies the source envelope format of a promoted front-matter field.
+type FrontMatterFormat uint8
+
+const (
+	FrontMatterFormatUnknown FrontMatterFormat = iota
+	FrontMatterFormatYAML
+	FrontMatterFormatTOML
+)
+
+// HTMLAnchorAttribute identifies the semantic anchor attribute targeted by an HTMLAnchor.
+type HTMLAnchorAttribute uint8
+
+const (
+	HTMLAnchorAttributeUnknown HTMLAnchorAttribute = iota
+	HTMLAnchorAttributeID
+	HTMLAnchorAttributeName
+)
+
 // Paragraph is immutable typed detail for one promoted top-level paragraph.
 type Paragraph struct {
 	id          NodeID
@@ -204,6 +222,96 @@ func (s Strong) ID() NodeID { return s.id }
 // Range returns the exact strong content span replaced by PrepareReplaceStrong.
 func (s Strong) Range() Range { return s.sourceRange }
 
+// InlineLink is immutable typed detail for one promoted simple inline link.
+type InlineLink struct {
+	id          NodeID
+	sourceRange Range
+}
+
+// ID returns the inline link's snapshot-scoped node identity.
+func (l InlineLink) ID() NodeID { return l.id }
+
+// Range returns the exact destination span replaced by PrepareReplaceInlineLinkDestination.
+// Label, parentheses, destination wrappers, title syntax, and surrounding source are outside this range.
+func (l InlineLink) Range() Range { return l.sourceRange }
+
+// ReferenceDefinition is immutable typed detail for one promoted single-line reference definition.
+type ReferenceDefinition struct {
+	id          NodeID
+	sourceRange Range
+}
+
+// ID returns the reference definition's snapshot-scoped node identity.
+func (r ReferenceDefinition) ID() NodeID { return r.id }
+
+// Range returns the exact destination span replaced by PrepareReplaceReferenceDefinitionDestination.
+// Label, colon, destination wrappers, title syntax, indentation, trailing spaces, and line endings are outside this range.
+func (r ReferenceDefinition) Range() Range { return r.sourceRange }
+
+// AutoLink is immutable typed detail for one promoted single-line GFM autolink.
+type AutoLink struct {
+	id          NodeID
+	sourceRange Range
+}
+
+// ID returns the autolink's snapshot-scoped node identity.
+func (a AutoLink) ID() NodeID { return a.id }
+
+// Range returns the exact autolink token content replaced by PrepareReplaceAutoLink.
+// Angle brackets, when present, and surrounding source are outside this range.
+func (a AutoLink) Range() Range { return a.sourceRange }
+
+// FrontMatterField is immutable typed detail for one promoted simple leading YAML/TOML scalar field.
+type FrontMatterField struct {
+	id          NodeID
+	sourceRange Range
+	key         string
+	format      FrontMatterFormat
+}
+
+// ID returns the field's snapshot-scoped node identity.
+func (f FrontMatterField) ID() NodeID { return f.id }
+
+// Range returns the exact scalar value span replaced by PrepareReplaceFrontMatterValue.
+// Delimiters, key spelling, separator spacing, quote wrappers, comments, and line endings are outside this range.
+func (f FrontMatterField) Range() Range { return f.sourceRange }
+
+// Key returns the recognized simple scalar field key.
+func (f FrontMatterField) Key() string { return f.key }
+
+// Format returns whether the field belongs to a YAML or TOML front-matter envelope.
+func (f FrontMatterField) Format() FrontMatterFormat { return f.format }
+
+// HTMLComment is immutable typed detail for one promoted single-line HTML comment payload.
+type HTMLComment struct {
+	id          NodeID
+	sourceRange Range
+}
+
+// ID returns the HTML comment's snapshot-scoped node identity.
+func (c HTMLComment) ID() NodeID { return c.id }
+
+// Range returns the exact comment payload span replaced by PrepareReplaceHTMLComment.
+// Comment delimiters and preserved inner horizontal padding are outside this range.
+func (c HTMLComment) Range() Range { return c.sourceRange }
+
+// HTMLAnchor is immutable typed detail for one promoted simple quoted id/name attribute on an <a> tag.
+type HTMLAnchor struct {
+	id          NodeID
+	sourceRange Range
+	attribute   HTMLAnchorAttribute
+}
+
+// ID returns the HTML anchor's snapshot-scoped node identity.
+func (a HTMLAnchor) ID() NodeID { return a.id }
+
+// Range returns the exact quoted attribute value span replaced by PrepareReplaceHTMLAnchor.
+// Tag/attribute spelling, spacing, quote wrappers, and other attributes are outside this range.
+func (a HTMLAnchor) Range() Range { return a.sourceRange }
+
+// Attribute returns whether the promoted anchor targets an id or name attribute.
+func (a HTMLAnchor) Attribute() HTMLAnchorAttribute { return a.attribute }
+
 // Paragraph returns typed detail for one promoted top-level paragraph.
 func (d *Document) Paragraph(id NodeID) (Paragraph, bool) {
 	node, err := d.promotedNode(id, splice.KindParagraph, true)
@@ -323,6 +431,77 @@ func (d *Document) Strong(id NodeID) (Strong, bool) {
 	return Strong{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
 }
 
+// InlineLink returns typed detail for one promoted simple inline link.
+func (d *Document) InlineLink(id NodeID) (InlineLink, bool) {
+	node, err := d.promotedNode(id, splice.KindInlineLink, false)
+	if err != nil {
+		return InlineLink{}, false
+	}
+	return InlineLink{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
+}
+
+// ReferenceDefinition returns typed detail for one promoted single-line reference definition.
+func (d *Document) ReferenceDefinition(id NodeID) (ReferenceDefinition, bool) {
+	node, err := d.promotedNode(id, splice.KindReferenceDefinition, false)
+	if err != nil {
+		return ReferenceDefinition{}, false
+	}
+	return ReferenceDefinition{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
+}
+
+// AutoLink returns typed detail for one promoted single-line GFM autolink.
+func (d *Document) AutoLink(id NodeID) (AutoLink, bool) {
+	node, err := d.promotedNode(id, splice.KindAutoLink, false)
+	if err != nil {
+		return AutoLink{}, false
+	}
+	return AutoLink{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
+}
+
+// FrontMatterField returns typed detail for one promoted simple leading YAML/TOML scalar field.
+func (d *Document) FrontMatterField(id NodeID) (FrontMatterField, bool) {
+	node, err := d.promotedNodeKinds(id, false, splice.KindYAMLFrontMatterField, splice.KindTOMLFrontMatterField)
+	if err != nil {
+		return FrontMatterField{}, false
+	}
+	format, ok := publicFrontMatterFormat(node.FrontMatterFormat)
+	if !ok {
+		return FrontMatterField{}, false
+	}
+	return FrontMatterField{
+		id:          publicNodeID(node.ID),
+		sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End},
+		key:         node.Key,
+		format:      format,
+	}, true
+}
+
+// HTMLComment returns typed detail for one promoted single-line HTML comment.
+func (d *Document) HTMLComment(id NodeID) (HTMLComment, bool) {
+	node, err := d.promotedNode(id, splice.KindHTMLComment, false)
+	if err != nil {
+		return HTMLComment{}, false
+	}
+	return HTMLComment{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
+}
+
+// HTMLAnchor returns typed detail for one promoted simple quoted id/name attribute on an <a> tag.
+func (d *Document) HTMLAnchor(id NodeID) (HTMLAnchor, bool) {
+	node, err := d.promotedNode(id, splice.KindHTMLAnchor, false)
+	if err != nil {
+		return HTMLAnchor{}, false
+	}
+	attribute, ok := publicHTMLAnchorAttribute(node.HTMLAttribute)
+	if !ok {
+		return HTMLAnchor{}, false
+	}
+	return HTMLAnchor{
+		id:          publicNodeID(node.ID),
+		sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End},
+		attribute:   attribute,
+	}, true
+}
+
 func publicHeadingStyle(style splice.HeadingStyle) (HeadingStyle, bool) {
 	switch style {
 	case splice.HeadingStyleATX:
@@ -331,5 +510,27 @@ func publicHeadingStyle(style splice.HeadingStyle) (HeadingStyle, bool) {
 		return HeadingStyleSetext, true
 	default:
 		return HeadingStyleUnknown, false
+	}
+}
+
+func publicFrontMatterFormat(format splice.FrontMatterFormat) (FrontMatterFormat, bool) {
+	switch format {
+	case splice.FrontMatterFormatYAML:
+		return FrontMatterFormatYAML, true
+	case splice.FrontMatterFormatTOML:
+		return FrontMatterFormatTOML, true
+	default:
+		return FrontMatterFormatUnknown, false
+	}
+}
+
+func publicHTMLAnchorAttribute(attribute string) (HTMLAnchorAttribute, bool) {
+	switch attribute {
+	case "id":
+		return HTMLAnchorAttributeID, true
+	case "name":
+		return HTMLAnchorAttributeName, true
+	default:
+		return HTMLAnchorAttributeUnknown, false
 	}
 }

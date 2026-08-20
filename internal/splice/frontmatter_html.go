@@ -24,8 +24,9 @@ func frontMatterNodes(fingerprint source.Fingerprint, mapping source.FrontMatter
 			Kind:              kind,
 			Range:             field.Range,
 			ContentRange:      field.ValueRange,
+			Editable:          true,
 			Key:               field.Key,
-			FrontMatterFormat: field.Format,
+			FrontMatterFormat: FrontMatterFormat(field.Format),
 			FrontMatterStyle:  field.Style,
 		}
 		node.ID = makeNodeID(fingerprint, kind, node.Range)
@@ -49,12 +50,14 @@ func nodeFromRawHTMLObservation(snapshot []byte, fingerprint source.Fingerprint,
 		node.Kind = KindHTMLComment
 		node.Range = mapping.Range
 		node.ContentRange = mapping.ContentRange
+		node.Editable = true
 	} else if mapping, err := source.MapSimpleHTMLAnchor(snapshot, raw); err == nil {
 		node.Kind = KindHTMLAnchor
 		node.Range = mapping.Range
 		node.ContentRange = mapping.ContentRange
 		node.HTMLAttribute = mapping.Attribute
 		node.HTMLQuote = mapping.Quote
+		node.Editable = true
 	}
 	node.ID = makeNodeID(fingerprint, node.Kind, node.Range)
 	return node, nil
@@ -66,19 +69,15 @@ func (d *Document) PrepareReplaceFrontMatterValue(id NodeID, replacement []byte)
 	if !ok {
 		return ChangeSet{}, ErrNodeNotFound
 	}
-	if target.Kind != KindYAMLFrontMatterField && target.Kind != KindTOMLFrontMatterField {
+	if (target.Kind != KindYAMLFrontMatterField && target.Kind != KindTOMLFrontMatterField) || !target.Editable {
 		return ChangeSet{}, ErrInvalidTargetKind
 	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
 
-	mapping, ok := source.MapLeadingFrontMatter(d.source)
-	if !ok || mapping.Format != target.FrontMatterFormat {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	field, ok := frontMatterFieldForTarget(mapping, target)
-	if !ok {
+	mapping := d.frontMatter
+	if mapping.Format == source.FrontMatterUnknown || mapping.Format != source.FrontMatterFormat(target.FrontMatterFormat) {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
 
@@ -86,33 +85,23 @@ func (d *Document) PrepareReplaceFrontMatterValue(id NodeID, replacement []byte)
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if err := validateFrontMatterReplacement(candidate, target, mapping, field, len(replacement)); err != nil {
+	if err := validateFrontMatterReplacement(candidate, target, mapping, len(replacement)); err != nil {
 		return ChangeSet{}, err
 	}
 	return change, nil
 }
 
-func frontMatterFieldForTarget(mapping source.FrontMatterMapping, target Node) (source.FrontMatterFieldMapping, bool) {
-	for _, field := range mapping.Fields {
-		if field.Key == target.Key && field.Format == target.FrontMatterFormat && field.Style == target.FrontMatterStyle &&
-			field.Range == target.Range && field.ValueRange == target.ContentRange {
-			return field, true
-		}
-	}
-	return source.FrontMatterFieldMapping{}, false
-}
-
-func validateFrontMatterReplacement(candidate []byte, target Node, original source.FrontMatterMapping, originalField source.FrontMatterFieldMapping, replacementLength int) error {
+func validateFrontMatterReplacement(candidate []byte, target Node, original frontMatterEnvelope, replacementLength int) error {
 	mapping, ok := source.MapLeadingFrontMatter(candidate)
 	if !ok || mapping.Format != original.Format || mapping.OpeningRange != original.OpeningRange {
 		return ErrInvalidReplacement
 	}
-	delta := replacementLength - (originalField.ValueRange.End - originalField.ValueRange.Start)
+	delta := replacementLength - (target.ContentRange.End - target.ContentRange.Start)
 	if mapping.ClosingRange != shiftedEnd(original.ClosingRange, delta) {
 		return ErrInvalidReplacement
 	}
 	for _, field := range mapping.Fields {
-		if field.Key != target.Key || field.Format != target.FrontMatterFormat || field.Style != target.FrontMatterStyle {
+		if field.Key != target.Key || field.Format != source.FrontMatterFormat(target.FrontMatterFormat) || field.Style != target.FrontMatterStyle {
 			continue
 		}
 		if field.Range == shiftedEnd(target.Range, delta) &&
@@ -125,7 +114,7 @@ func validateFrontMatterReplacement(candidate []byte, target Node, original sour
 
 // PrepareReplaceHTMLComment prepares a source-preserving replacement of one simple inline HTML comment payload.
 func (d *Document) PrepareReplaceHTMLComment(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.targetNode(id, KindHTMLComment)
+	target, err := d.editableTargetNode(id, KindHTMLComment, "HTML comment")
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -133,21 +122,17 @@ func (d *Document) PrepareReplaceHTMLComment(id NodeID, replacement []byte) (Cha
 		return ChangeSet{}, err
 	}
 
-	mapping, err := source.MapHTMLComment(d.source, target.Range)
-	if err != nil || mapping.ContentRange != target.ContentRange {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "HTML comment replacement")
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if err := validateHTMLCommentReplacement(candidate, target, mapping, len(replacement)); err != nil {
+	if err := validateHTMLCommentReplacement(candidate, target, len(replacement)); err != nil {
 		return ChangeSet{}, err
 	}
 	return change, nil
 }
 
-func validateHTMLCommentReplacement(candidate []byte, target Node, original source.HTMLCommentMapping, replacementLength int) error {
+func validateHTMLCommentReplacement(candidate []byte, target Node, replacementLength int) error {
 	observations, err := parseCandidate(candidate)
 	if err != nil {
 		return err
@@ -160,8 +145,8 @@ func validateHTMLCommentReplacement(candidate []byte, target Node, original sour
 		raw := Range{Start: observation.Range.Start, End: observation.Range.End}
 		mapping, err := source.MapHTMLComment(candidate, raw)
 		if err == nil &&
-			mapping.Range == shiftedEnd(original.Range, delta) &&
-			mapping.ContentRange == rangeWithLength(original.ContentRange.Start, replacementLength) {
+			mapping.Range == shiftedEnd(target.Range, delta) &&
+			mapping.ContentRange == rangeWithLength(target.ContentRange.Start, replacementLength) {
 			return nil
 		}
 	}
@@ -170,7 +155,7 @@ func validateHTMLCommentReplacement(candidate []byte, target Node, original sour
 
 // PrepareReplaceHTMLAnchor prepares a source-preserving replacement of one simple quoted id/name attribute on an <a> tag.
 func (d *Document) PrepareReplaceHTMLAnchor(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.targetNode(id, KindHTMLAnchor)
+	target, err := d.editableTargetNode(id, KindHTMLAnchor, "HTML anchor")
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -178,21 +163,17 @@ func (d *Document) PrepareReplaceHTMLAnchor(id NodeID, replacement []byte) (Chan
 		return ChangeSet{}, err
 	}
 
-	mapping, err := source.MapSimpleHTMLAnchor(d.source, target.Range)
-	if err != nil || mapping.ContentRange != target.ContentRange || mapping.Attribute != target.HTMLAttribute || mapping.Quote != target.HTMLQuote {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "HTML anchor replacement")
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if err := validateHTMLAnchorReplacement(candidate, target, mapping, len(replacement)); err != nil {
+	if err := validateHTMLAnchorReplacement(candidate, target, len(replacement)); err != nil {
 		return ChangeSet{}, err
 	}
 	return change, nil
 }
 
-func validateHTMLAnchorReplacement(candidate []byte, target Node, original source.HTMLAnchorMapping, replacementLength int) error {
+func validateHTMLAnchorReplacement(candidate []byte, target Node, replacementLength int) error {
 	observations, err := parseCandidate(candidate)
 	if err != nil {
 		return err
@@ -205,9 +186,9 @@ func validateHTMLAnchorReplacement(candidate []byte, target Node, original sourc
 		raw := Range{Start: observation.Range.Start, End: observation.Range.End}
 		mapping, err := source.MapSimpleHTMLAnchor(candidate, raw)
 		if err == nil &&
-			mapping.Range == shiftedEnd(original.Range, delta) &&
-			mapping.ContentRange == rangeWithLength(original.ContentRange.Start, replacementLength) &&
-			mapping.Attribute == original.Attribute && mapping.Quote == original.Quote {
+			mapping.Range == shiftedEnd(target.Range, delta) &&
+			mapping.ContentRange == rangeWithLength(target.ContentRange.Start, replacementLength) &&
+			mapping.Attribute == target.HTMLAttribute && mapping.Quote == target.HTMLQuote {
 			return nil
 		}
 	}

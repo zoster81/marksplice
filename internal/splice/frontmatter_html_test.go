@@ -4,7 +4,48 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+
+	sourcepkg "github.com/zoster81/marksplice/internal/source"
 )
+
+func TestFrontMatterAndHTMLMappingsPersistAtParseTime(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("---\ntitle: old\n---\n\nparagraph <!-- old comment --> <a id=\"old-anchor\">x</a> <span id=\"opaque\">y</span>\n")
+	doc, err := Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if doc.frontMatter.Format != sourcepkg.FrontMatterYAML {
+		t.Fatalf("stored front matter format = %v, want YAML", doc.frontMatter.Format)
+	}
+
+	fields := nodesOfKind(doc.Nodes(), KindYAMLFrontMatterField)
+	comments := nodesOfKind(doc.Nodes(), KindHTMLComment)
+	anchors := nodesOfKind(doc.Nodes(), KindHTMLAnchor)
+	opaque := nodesOfKind(doc.Nodes(), KindHTMLOpaque)
+	if len(fields) != 1 || len(comments) != 1 || len(anchors) != 1 || len(opaque) == 0 {
+		t.Fatalf("field/comment/anchor/opaque counts = %d/%d/%d/%d, want 1/1/1/>=1; nodes = %+v", len(fields), len(comments), len(anchors), len(opaque), doc.Nodes())
+	}
+
+	field := fields[0]
+	if !field.Editable || field.ContentRange.Start >= field.ContentRange.End || field.Key != "title" || field.FrontMatterFormat != FrontMatterFormatYAML {
+		t.Fatalf("stored front matter field facts = %+v", field)
+	}
+	comment := comments[0]
+	if !comment.Editable || comment.ContentRange.Start >= comment.ContentRange.End || comment.Range.Start >= comment.ContentRange.Start {
+		t.Fatalf("stored HTML comment facts = %+v", comment)
+	}
+	anchor := anchors[0]
+	if !anchor.Editable || anchor.ContentRange.Start >= anchor.ContentRange.End || anchor.HTMLAttribute != "id" || anchor.HTMLQuote != '"' {
+		t.Fatalf("stored HTML anchor facts = %+v", anchor)
+	}
+	for _, node := range opaque {
+		if node.Editable {
+			t.Fatalf("opaque HTML unexpectedly editable: %+v", node)
+		}
+	}
+}
 
 func TestReplaceYAMLFrontMatterValuePreservesEnvelopeAndUnrelatedSource(t *testing.T) {
 	t.Parallel()

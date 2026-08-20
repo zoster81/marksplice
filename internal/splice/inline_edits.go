@@ -1,8 +1,6 @@
 package splice
 
 import (
-	"fmt"
-
 	"github.com/zoster81/marksplice/internal/parser"
 	"github.com/zoster81/marksplice/internal/source"
 )
@@ -29,7 +27,7 @@ func (d *Document) PrepareReplaceStrikethrough(id NodeID, replacement []byte) (C
 
 // PrepareReplaceAutoLink prepares a source-preserving replacement of one angle or bare autolink token.
 func (d *Document) PrepareReplaceAutoLink(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.targetNode(id, KindAutoLink)
+	target, err := d.editableTargetNode(id, KindAutoLink, "autolink")
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -37,10 +35,7 @@ func (d *Document) PrepareReplaceAutoLink(id NodeID, replacement []byte) (Change
 		return ChangeSet{}, err
 	}
 
-	mapping, err := source.MapAutoLink(d.source, target.Anchor, target.ContentRange, target.Value, target.AutoLinkEmail)
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("map autolink source: %w", err)
-	}
+	mapping := target.AutoLinkSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "autolink replacement")
 	if err != nil {
 		return ChangeSet{}, err

@@ -82,6 +82,54 @@ func (d *Document) PrepareReplaceStrong(id NodeID, replacement []byte) (ChangeSe
 	return publicChangeSet(d.document.PrepareReplaceStrong(internalNodeID(id), replacement))
 }
 
+// PrepareReplaceInlineLinkDestination prepares a source-preserving replacement of a promoted inline-link destination.
+func (d *Document) PrepareReplaceInlineLinkDestination(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindInlineLink, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceInlineLinkDestination(internalNodeID(id), replacement))
+}
+
+// PrepareReplaceReferenceDefinitionDestination prepares a source-preserving replacement of a promoted reference-definition destination.
+func (d *Document) PrepareReplaceReferenceDefinitionDestination(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindReferenceDefinition, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceReferenceDefinitionDestination(internalNodeID(id), replacement))
+}
+
+// PrepareReplaceAutoLink prepares a source-preserving replacement of a promoted GFM autolink token.
+func (d *Document) PrepareReplaceAutoLink(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindAutoLink, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceAutoLink(internalNodeID(id), replacement))
+}
+
+// PrepareReplaceFrontMatterValue prepares a source-preserving replacement of a promoted simple front-matter scalar value.
+func (d *Document) PrepareReplaceFrontMatterValue(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNodeKinds(id, false, splice.KindYAMLFrontMatterField, splice.KindTOMLFrontMatterField); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceFrontMatterValue(internalNodeID(id), replacement))
+}
+
+// PrepareReplaceHTMLComment prepares a source-preserving replacement of a promoted HTML comment payload.
+func (d *Document) PrepareReplaceHTMLComment(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindHTMLComment, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceHTMLComment(internalNodeID(id), replacement))
+}
+
+// PrepareReplaceHTMLAnchor prepares a source-preserving replacement of a promoted HTML anchor id/name value.
+func (d *Document) PrepareReplaceHTMLAnchor(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindHTMLAnchor, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceHTMLAnchor(internalNodeID(id), replacement))
+}
+
 func publicChangeSet(change splice.ChangeSet, err error) (ChangeSet, error) {
 	if err != nil {
 		return ChangeSet{}, publicError(err)

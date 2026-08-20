@@ -6,6 +6,64 @@ import (
 	"testing"
 )
 
+func TestLinkMappingsPersistAtParseTimeAndUnsupportedInlineLinkStaysNonEditable(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("[label](<old/path> \"title\")\n\n[id]: old/ref 'title'\n\n<https://old.example/path>\n\n[empty]()\n")
+	doc, err := Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	links := nodesOfKind(doc.Nodes(), KindInlineLink)
+	definitions := nodesOfKind(doc.Nodes(), KindReferenceDefinition)
+	autolinks := nodesOfKind(doc.Nodes(), KindAutoLink)
+	if len(links) != 2 || len(definitions) != 1 || len(autolinks) != 1 {
+		t.Fatalf("link/definition/autolink counts = %d/%d/%d, want 2/1/1; nodes = %+v", len(links), len(definitions), len(autolinks), doc.Nodes())
+	}
+
+	var editableLink, unsupportedLink Node
+	for _, link := range links {
+		switch link.Destination {
+		case "old/path":
+			editableLink = link
+		case "":
+			unsupportedLink = link
+		}
+	}
+	if editableLink.ID == "" || unsupportedLink.ID == "" {
+		t.Fatalf("editable/unsupported inline links not found; links = %+v", links)
+	}
+	if !editableLink.Editable || editableLink.InlineLinkSource.DestinationRange != editableLink.ContentRange {
+		t.Fatalf("editable inline link mapping = editable %v destination %v content %v", editableLink.Editable, editableLink.InlineLinkSource.DestinationRange, editableLink.ContentRange)
+	}
+	if got := string(source[editableLink.ContentRange.Start:editableLink.ContentRange.End]); got != "old/path" {
+		t.Fatalf("inline link destination bytes = %q, want old/path", got)
+	}
+	if unsupportedLink.Editable || unsupportedLink.InlineLinkSource.DestinationRange != (Range{}) {
+		t.Fatalf("unsupported inline link mapping = editable %v destination %v, want false/zero", unsupportedLink.Editable, unsupportedLink.InlineLinkSource.DestinationRange)
+	}
+	if _, err := doc.PrepareReplaceInlineLinkDestination(unsupportedLink.ID, []byte("new/path")); !errors.Is(err, ErrInvalidTargetKind) {
+		t.Fatalf("PrepareReplaceInlineLinkDestination(unsupported) error = %v, want ErrInvalidTargetKind", err)
+	}
+
+	definition := definitions[0]
+	if !definition.Editable || definition.ReferenceDefinitionSource.DestinationRange != definition.ContentRange {
+		t.Fatalf("reference definition mapping = editable %v destination %v content %v", definition.Editable, definition.ReferenceDefinitionSource.DestinationRange, definition.ContentRange)
+	}
+	if got := string(source[definition.ContentRange.Start:definition.ContentRange.End]); got != "old/ref" {
+		t.Fatalf("reference definition destination bytes = %q, want old/ref", got)
+	}
+
+	autolink := autolinks[0]
+	if !autolink.Editable || autolink.AutoLinkSource.ContentRange != autolink.ContentRange {
+		t.Fatalf("autolink mapping = editable %v mapped content %v content %v", autolink.Editable, autolink.AutoLinkSource.ContentRange, autolink.ContentRange)
+	}
+	if got := string(source[autolink.ContentRange.Start:autolink.ContentRange.End]); got != "https://old.example/path" {
+		t.Fatalf("autolink bytes = %q, want https://old.example/path", got)
+	}
+}
+
 func TestReplaceSimpleInlineLinkDestinationPreservesSourceSyntax(t *testing.T) {
 	t.Parallel()
 

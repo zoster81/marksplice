@@ -1,15 +1,13 @@
 package splice
 
 import (
-	"fmt"
-
 	"github.com/zoster81/marksplice/internal/parser"
 	"github.com/zoster81/marksplice/internal/source"
 )
 
 // PrepareReplaceInlineLinkDestination prepares a source-preserving destination replacement for one simple inline link.
 func (d *Document) PrepareReplaceInlineLinkDestination(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.targetNode(id, KindInlineLink)
+	target, err := d.editableTargetNode(id, KindInlineLink, "inline link")
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -17,10 +15,7 @@ func (d *Document) PrepareReplaceInlineLinkDestination(id NodeID, replacement []
 		return ChangeSet{}, err
 	}
 
-	mapping, err := source.MapSimpleInlineLink(d.source, target.Anchor, target.ContentRange, target.Destination, target.Title, target.HasTitle)
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("map inline link source: %w", err)
-	}
+	mapping := target.InlineLinkSource
 	change, candidate, err := d.prepareCandidateChange(mapping.DestinationRange, replacement, "inline link destination replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -33,7 +28,7 @@ func (d *Document) PrepareReplaceInlineLinkDestination(id NodeID, replacement []
 
 // PrepareReplaceReferenceDefinitionDestination prepares a source-preserving destination replacement for one single-line reference definition.
 func (d *Document) PrepareReplaceReferenceDefinitionDestination(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.targetNode(id, KindReferenceDefinition)
+	target, err := d.editableTargetNode(id, KindReferenceDefinition, "reference definition")
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -41,10 +36,7 @@ func (d *Document) PrepareReplaceReferenceDefinitionDestination(id NodeID, repla
 		return ChangeSet{}, err
 	}
 
-	mapping, err := source.MapSingleLineReferenceDefinition(d.source, target.Range, target.Label, target.Destination, target.Title, target.HasTitle)
-	if err != nil {
-		return ChangeSet{}, fmt.Errorf("map reference definition source: %w", err)
-	}
+	mapping := target.ReferenceDefinitionSource
 	change, candidate, err := d.prepareCandidateChange(mapping.DestinationRange, replacement, "reference definition destination replacement")
 	if err != nil {
 		return ChangeSet{}, err

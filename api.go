@@ -34,6 +34,12 @@ const (
 	KindCodeSpan
 	KindEmphasis
 	KindStrong
+	KindInlineLink
+	KindReferenceDefinition
+	KindAutoLink
+	KindFrontMatterField
+	KindHTMLComment
+	KindHTMLAnchor
 )
 
 // NodeID identifies a node within one parsed source snapshot.
@@ -145,14 +151,23 @@ func (d *Document) internalNode(id NodeID) (splice.Node, bool) {
 }
 
 func (d *Document) promotedNode(id NodeID, expected splice.Kind, requireTopLevel bool) (splice.Node, error) {
+	return d.promotedNodeKinds(id, requireTopLevel, expected)
+}
+
+func (d *Document) promotedNodeKinds(id NodeID, requireTopLevel bool, expected ...splice.Kind) (splice.Node, error) {
 	node, ok := d.internalNode(id)
 	if !ok {
 		return splice.Node{}, ErrNodeNotFound
 	}
-	if node.Kind != expected || !node.Editable || requireTopLevel && !node.TopLevel {
+	if !node.Editable || requireTopLevel && !node.TopLevel {
 		return splice.Node{}, ErrInvalidTargetKind
 	}
-	return node, nil
+	for _, kind := range expected {
+		if node.Kind == kind {
+			return node, nil
+		}
+	}
+	return splice.Node{}, ErrInvalidTargetKind
 }
 
 func publicNode(node splice.Node) (Node, bool) {
@@ -203,6 +218,18 @@ func publicKind(kind splice.Kind) (Kind, bool) {
 		return KindEmphasis, true
 	case splice.KindStrong:
 		return KindStrong, true
+	case splice.KindInlineLink:
+		return KindInlineLink, true
+	case splice.KindReferenceDefinition:
+		return KindReferenceDefinition, true
+	case splice.KindAutoLink:
+		return KindAutoLink, true
+	case splice.KindYAMLFrontMatterField, splice.KindTOMLFrontMatterField:
+		return KindFrontMatterField, true
+	case splice.KindHTMLComment:
+		return KindHTMLComment, true
+	case splice.KindHTMLAnchor:
+		return KindHTMLAnchor, true
 	default:
 		return KindUnknown, false
 	}

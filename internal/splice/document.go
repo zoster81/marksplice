@@ -55,6 +55,15 @@ const (
 	HeadingStyleSetext  HeadingStyle = HeadingStyle(source.HeadingStyleSetext)
 )
 
+// FrontMatterFormat identifies a recognized leading metadata envelope format.
+type FrontMatterFormat uint8
+
+const (
+	FrontMatterFormatUnknown FrontMatterFormat = FrontMatterFormat(source.FrontMatterUnknown)
+	FrontMatterFormatYAML    FrontMatterFormat = FrontMatterFormat(source.FrontMatterYAML)
+	FrontMatterFormatTOML    FrontMatterFormat = FrontMatterFormat(source.FrontMatterTOML)
+)
+
 // NodeID is deterministic within one source snapshot.
 type NodeID string
 
@@ -63,46 +72,58 @@ type Range = source.Range
 
 // Node is the minimal Marksplice-owned structural view used by the feasibility slice.
 type Node struct {
-	ID                  NodeID
-	Kind                Kind
-	Range               Range
-	ContentRange        Range
-	Level               int
-	HeadingStyle        HeadingStyle
-	Checked             bool
-	ListOrdered         bool
-	ListMarker          byte
-	TableHeader         bool
-	TableColumn         int
-	Editable            bool
-	TableCellSource     source.TableCellMapping
-	FencedCodeSource    source.FencedCodeMapping
-	StrikethroughSource source.StrikethroughMapping
-	CodeSpanSource      source.CodeSpanMapping
-	EmphasisSource      source.EmphasisMapping
-	Anchor              int
-	Destination         string
-	Label               string
-	Title               string
-	HasTitle            bool
-	Value               string
-	AutoLinkEmail       bool
-	Key                 string
-	FrontMatterFormat   source.FrontMatterFormat
-	FrontMatterStyle    source.FrontMatterValueStyle
-	HTMLAttribute       string
-	HTMLQuote           byte
-	TopLevel            bool
+	ID                        NodeID
+	Kind                      Kind
+	Range                     Range
+	ContentRange              Range
+	Level                     int
+	HeadingStyle              HeadingStyle
+	Checked                   bool
+	ListOrdered               bool
+	ListMarker                byte
+	TableHeader               bool
+	TableColumn               int
+	Editable                  bool
+	TableCellSource           source.TableCellMapping
+	FencedCodeSource          source.FencedCodeMapping
+	StrikethroughSource       source.StrikethroughMapping
+	InlineLinkSource          source.InlineLinkMapping
+	ReferenceDefinitionSource source.ReferenceDefinitionMapping
+	AutoLinkSource            source.AutoLinkMapping
+	CodeSpanSource            source.CodeSpanMapping
+	EmphasisSource            source.EmphasisMapping
+	Anchor                    int
+	Destination               string
+	Label                     string
+	Title                     string
+	HasTitle                  bool
+	Value                     string
+	AutoLinkEmail             bool
+	Key                       string
+	FrontMatterFormat         FrontMatterFormat
+	FrontMatterStyle          source.FrontMatterValueStyle
+	HTMLAttribute             string
+	HTMLQuote                 byte
+	TopLevel                  bool
 }
 
 // ChangeSet is a source-bound prepared mutation.
 type ChangeSet = source.ChangeSet
 
+type frontMatterEnvelope struct {
+	Format       source.FrontMatterFormat
+	OpeningRange Range
+	ClosingRange Range
+}
+
 // Document is an immutable parsed source snapshot used by the feasibility slice.
 type Document struct {
-	source    []byte
-	nodes     []Node
-	nodeIndex map[NodeID]int
+	source       []byte
+	nodes        []Node
+	nodeIndex    map[NodeID]int
+	sections     []Section
+	sectionIndex map[NodeID]int
+	frontMatter  frontMatterEnvelope
 }
 
 // Parse creates a snapshot-local Marksplice model using the internal Goldmark adapter.
@@ -137,10 +158,25 @@ func Parse(input []byte) (*Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("index structural nodes: %w", err)
 	}
+	sections, sectionIndex, err := buildSections(snapshot, nodes)
+	if err != nil {
+		return nil, fmt.Errorf("index sections: %w", err)
+	}
+	storedFrontMatter := frontMatterEnvelope{}
+	if hasFrontMatter {
+		storedFrontMatter = frontMatterEnvelope{
+			Format:       frontMatter.Format,
+			OpeningRange: frontMatter.OpeningRange,
+			ClosingRange: frontMatter.ClosingRange,
+		}
+	}
 	return &Document{
-		source:    snapshot,
-		nodes:     nodes,
-		nodeIndex: nodeIndex,
+		source:       snapshot,
+		nodes:        nodes,
+		nodeIndex:    nodeIndex,
+		sections:     sections,
+		sectionIndex: sectionIndex,
+		frontMatter:  storedFrontMatter,
 	}, nil
 }
 
@@ -241,6 +277,33 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 			node.Editable = true
 		} else if !errors.Is(err, source.ErrUnsupportedStrikethroughShape) {
 			return Node{}, fmt.Errorf("map strikethrough source: %w", err)
+		}
+	case KindInlineLink:
+		mapping, err := source.MapSimpleInlineLink(snapshot, observation.Anchor, contentRange, observation.Destination, observation.Title, observation.HasTitle)
+		if err == nil {
+			node.ContentRange = mapping.DestinationRange
+			node.InlineLinkSource = mapping
+			node.Editable = true
+		} else if !errors.Is(err, source.ErrUnsupportedInlineLinkShape) {
+			return Node{}, fmt.Errorf("map inline link source: %w", err)
+		}
+	case KindReferenceDefinition:
+		mapping, err := source.MapSingleLineReferenceDefinition(snapshot, contentRange, observation.Label, observation.Destination, observation.Title, observation.HasTitle)
+		if err == nil {
+			node.ContentRange = mapping.DestinationRange
+			node.ReferenceDefinitionSource = mapping
+			node.Editable = true
+		} else if !errors.Is(err, source.ErrUnsupportedReferenceDefinitionShape) {
+			return Node{}, fmt.Errorf("map reference definition source: %w", err)
+		}
+	case KindAutoLink:
+		mapping, err := source.MapAutoLink(snapshot, observation.Anchor, contentRange, observation.Value, observation.AutoLinkEmail)
+		if err == nil {
+			node.ContentRange = mapping.ContentRange
+			node.AutoLinkSource = mapping
+			node.Editable = true
+		} else if !errors.Is(err, source.ErrUnsupportedAutoLinkShape) {
+			return Node{}, fmt.Errorf("map autolink source: %w", err)
 		}
 	case KindCodeSpan:
 		mapping, err := source.MapSimpleCodeSpan(snapshot, observation.Anchor, contentRange)
