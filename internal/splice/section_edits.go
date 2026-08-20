@@ -265,7 +265,7 @@ func (d *Document) prepareMoveSection(id, anchorID NodeID, after bool) (ChangeSe
 		return ChangeSet{}, err
 	}
 
-	movedOffset, ok := movedSectionCandidateOffset(moved.Range, insertAt)
+	movedOffset, ok := movedRangeCandidateOffset(moved.Range, insertAt)
 	if !ok {
 		return ChangeSet{}, ErrInvalidReplacement
 	}

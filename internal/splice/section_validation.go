@@ -185,18 +185,6 @@ func sameSectionOrder(left, right []Section) bool {
 	return true
 }
 
-func movedSectionCandidateOffset(moved Range, insertAt int) (int, bool) {
-	length := moved.End - moved.Start
-	switch {
-	case insertAt <= moved.Start:
-		return insertAt, true
-	case insertAt >= moved.End:
-		return insertAt - length, true
-	default:
-		return 0, false
-	}
-}
-
 func (d *Document) validateSectionHeadingSequence(candidate []byte, candidateDocument *Document, expected []Section) error {
 	if candidateDocument.SectionCount() != len(expected) {
 		return ErrInvalidReplacement
@@ -232,20 +220,4 @@ func (d *Document) validateSectionHeadingSequence(candidate []byte, candidateDoc
 
 func sectionStartsInside(section Section, range_ Range) bool {
 	return section.Range.Start >= range_.Start && section.Range.Start < range_.End
-}
-
-func rangeAfterPatch(range_, patch Range, replacementLength int) (Range, bool) {
-	delta := replacementLength - (patch.End - patch.Start)
-	switch {
-	case range_.End <= patch.Start:
-		return range_, true
-	case range_.Start >= patch.End:
-		return shiftedRange(range_, delta), true
-	default:
-		return Range{}, false
-	}
-}
-
-func shiftedRange(range_ Range, delta int) Range {
-	return Range{Start: range_.Start + delta, End: range_.End + delta}
 }

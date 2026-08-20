@@ -3,6 +3,7 @@ package splice
 import (
 	"bytes"
 	"fmt"
+	"sort"
 
 	"github.com/zoster81/marksplice/internal/parser"
 	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
@@ -80,4 +81,64 @@ func shiftedEnd(range_ Range, delta int) Range {
 
 func rangeWithLength(start, length int) Range {
 	return Range{Start: start, End: start + length}
+}
+
+type patchTransform struct {
+	Range             Range
+	ReplacementLength int
+}
+
+func rangeAfterPatch(range_, patch Range, replacementLength int) (Range, bool) {
+	return rangeAfterPatches(range_, []patchTransform{{Range: patch, ReplacementLength: replacementLength}})
+}
+
+func rangeAfterPatches(range_ Range, patches []patchTransform) (Range, bool) {
+	ordered := append([]patchTransform(nil), patches...)
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].Range.Start == ordered[j].Range.Start {
+			return ordered[i].Range.End < ordered[j].Range.End
+		}
+		return ordered[i].Range.Start < ordered[j].Range.Start
+	})
+
+	for i, patch := range ordered {
+		if patch.ReplacementLength < 0 || patch.Range.Start < 0 || patch.Range.End < patch.Range.Start {
+			return Range{}, false
+		}
+		if i > 0 {
+			previous := ordered[i-1].Range
+			if patch.Range.Start == previous.Start || patch.Range.Start < previous.End {
+				return Range{}, false
+			}
+		}
+	}
+
+	delta := 0
+	for _, patch := range ordered {
+		switch {
+		case range_.End <= patch.Range.Start:
+			return shiftedRange(range_, delta), true
+		case range_.Start >= patch.Range.End:
+			delta += patch.ReplacementLength - (patch.Range.End - patch.Range.Start)
+		default:
+			return Range{}, false
+		}
+	}
+	return shiftedRange(range_, delta), true
+}
+
+func movedRangeCandidateOffset(moved Range, insertAt int) (int, bool) {
+	length := moved.End - moved.Start
+	switch {
+	case insertAt <= moved.Start:
+		return insertAt, true
+	case insertAt >= moved.End:
+		return insertAt - length, true
+	default:
+		return 0, false
+	}
+}
+
+func shiftedRange(range_ Range, delta int) Range {
+	return Range{Start: range_.Start + delta, End: range_.End + delta}
 }

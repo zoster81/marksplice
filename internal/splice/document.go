@@ -82,6 +82,7 @@ type Node struct {
 	Checked                   bool
 	ListOrdered               bool
 	ListMarker                byte
+	ListItemSource            source.ListItemMapping
 	TableHeader               bool
 	TableColumn               int
 	Editable                  bool
@@ -254,6 +255,7 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 		node.ContentRange = mapping.ContentRange
 		node.ListOrdered = mapping.Ordered
 		node.ListMarker = mapping.Marker
+		node.ListItemSource = mapping
 		node.Editable = true
 	case KindTableCell:
 		mapping, editable, err := mapTableCellSource(snapshot, observation, contentRange, tableRows)

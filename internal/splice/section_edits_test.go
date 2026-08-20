@@ -338,13 +338,13 @@ func TestMovedSectionCandidateOffsetAccountsForRemoval(t *testing.T) {
 	t.Parallel()
 
 	moved := Range{Start: 20, End: 40}
-	if got, ok := movedSectionCandidateOffset(moved, 5); !ok || got != 5 {
+	if got, ok := movedRangeCandidateOffset(moved, 5); !ok || got != 5 {
 		t.Fatalf("backward offset = %d, %v; want 5,true", got, ok)
 	}
-	if got, ok := movedSectionCandidateOffset(moved, 80); !ok || got != 60 {
+	if got, ok := movedRangeCandidateOffset(moved, 80); !ok || got != 60 {
 		t.Fatalf("forward offset = %d, %v; want 60,true", got, ok)
 	}
-	if _, ok := movedSectionCandidateOffset(moved, 30); ok {
+	if _, ok := movedRangeCandidateOffset(moved, 30); ok {
 		t.Fatal("inside-subtree offset ok = true, want false")
 	}
 }

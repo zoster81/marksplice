@@ -15,6 +15,7 @@ func TestMapSingleLineListItemPreservesMarkerBoundary(t *testing.T) {
 		ordered     bool
 		marker      byte
 		wantRange   Range
+		wantLine    Range
 		wantContent Range
 	}{
 		{
@@ -24,6 +25,7 @@ func TestMapSingleLineListItemPreservesMarkerBoundary(t *testing.T) {
 			ordered:     false,
 			marker:      '*',
 			wantRange:   Range{Start: 2, End: 12},
+			wantLine:    Range{Start: 0, End: 14},
 			wantContent: Range{Start: 6, End: 12},
 		},
 		{
@@ -33,6 +35,7 @@ func TestMapSingleLineListItemPreservesMarkerBoundary(t *testing.T) {
 			ordered:     true,
 			marker:      ')',
 			wantRange:   Range{Start: 2, End: 11},
+			wantLine:    Range{Start: 0, End: 12},
 			wantContent: Range{Start: 7, End: 11},
 		},
 	}
@@ -46,8 +49,8 @@ func TestMapSingleLineListItemPreservesMarkerBoundary(t *testing.T) {
 			if err != nil {
 				t.Fatalf("MapSingleLineListItem() error = %v", err)
 			}
-			if got.Range != tt.wantRange || got.ContentRange != tt.wantContent || got.Ordered != tt.ordered || got.Marker != tt.marker {
-				t.Fatalf("mapping = %+v, want range %v content %v ordered %v marker %q", got, tt.wantRange, tt.wantContent, tt.ordered, tt.marker)
+			if got.Range != tt.wantRange || got.LineRange != tt.wantLine || got.ContentRange != tt.wantContent || got.Ordered != tt.ordered || got.Marker != tt.marker {
+				t.Fatalf("mapping = %+v, want range %v line %v content %v ordered %v marker %q", got, tt.wantRange, tt.wantLine, tt.wantContent, tt.ordered, tt.marker)
 			}
 		})
 	}

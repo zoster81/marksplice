@@ -113,6 +113,7 @@ func MapTaskMarker(input []byte, anchor int) (TaskMapping, error) {
 // ListItemMapping binds one single-line list item to its exact source marker and content.
 type ListItemMapping struct {
 	Range        Range
+	LineRange    Range
 	ContentRange Range
 	Ordered      bool
 	Marker       byte
@@ -135,8 +136,13 @@ func MapSingleLineListItem(input []byte, content Range, ordered bool, marker byt
 		return ListItemMapping{}, fmt.Errorf("%w: marker %q does not match semantic list item", ErrUnsupportedListItemShape, marker)
 	}
 
+	lineRangeEnd := lineEnd
+	if next, ok := nextPhysicalLineStart(input, lineEnd); ok {
+		lineRangeEnd = next
+	}
 	return ListItemMapping{
 		Range:        Range{Start: lineStart + markerStart, End: lineEnd},
+		LineRange:    Range{Start: lineStart, End: lineRangeEnd},
 		ContentRange: content,
 		Ordered:      ordered,
 		Marker:       marker,

@@ -96,6 +96,52 @@ func (d *Document) PrepareReplaceListItem(id NodeID, replacement []byte) (Change
 	return publicChangeSet(d.document.PrepareReplaceListItem(internalNodeID(id), replacement))
 }
 
+// PrepareRemoveListItem prepares removal of one complete promoted leaf list-item line.
+func (d *Document) PrepareRemoveListItem(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindListItem, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveListItem(internalNodeID(id)))
+}
+
+// PrepareInsertListItemBefore prepares insertion of one same-shape promoted leaf sibling immediately before the anchor item.
+func (d *Document) PrepareInsertListItemBefore(anchorID NodeID, fragment []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(anchorID, splice.KindListItem, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareInsertListItemBefore(internalNodeID(anchorID), fragment))
+}
+
+// PrepareInsertListItemAfter prepares insertion of one same-shape promoted leaf sibling immediately after the anchor item.
+func (d *Document) PrepareInsertListItemAfter(anchorID NodeID, fragment []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(anchorID, splice.KindListItem, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareInsertListItemAfter(internalNodeID(anchorID), fragment))
+}
+
+// PrepareMoveListItemBefore prepares moving one complete promoted leaf list-item line immediately before a same-shape anchor item.
+func (d *Document) PrepareMoveListItemBefore(id, anchorID NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindListItem, false); err != nil {
+		return ChangeSet{}, err
+	}
+	if _, err := d.promotedNode(anchorID, splice.KindListItem, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareMoveListItemBefore(internalNodeID(id), internalNodeID(anchorID)))
+}
+
+// PrepareMoveListItemAfter prepares moving one complete promoted leaf list-item line immediately after a same-shape anchor item.
+func (d *Document) PrepareMoveListItemAfter(id, anchorID NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindListItem, false); err != nil {
+		return ChangeSet{}, err
+	}
+	if _, err := d.promotedNode(anchorID, splice.KindListItem, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareMoveListItemAfter(internalNodeID(id), internalNodeID(anchorID)))
+}
+
 // PrepareSetTaskChecked prepares a source-preserving GFM task state change.
 func (d *Document) PrepareSetTaskChecked(id NodeID, checked bool) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindTask, false); err != nil {
