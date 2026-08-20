@@ -17,17 +17,14 @@ func MapSimpleInlineLink(input []byte, anchor int, label Range, destination, tit
 	if anchor < 0 || anchor >= len(input) || input[anchor] != '[' || !label.Valid(len(input)) || label.Start == label.End {
 		return InlineLinkMapping{}, fmt.Errorf("%w: invalid anchor or label range", ErrUnsupportedInlineLinkShape)
 	}
-	lineStart := physicalLineStart(input, anchor)
 	lineEnd := physicalLineEnd(input, label.End)
 	if label.Start != anchor+1 || label.End >= lineEnd || input[label.End] != ']' || label.End+1 >= lineEnd || input[label.End+1] != '(' {
 		return InlineLinkMapping{}, fmt.Errorf("%w: label is not followed by an inline-link destination", ErrUnsupportedInlineLinkShape)
 	}
-	for _, b := range input[anchor : label.End+2] {
-		if b == '\r' || b == '\n' {
-			return InlineLinkMapping{}, fmt.Errorf("%w: link prefix crosses a physical line", ErrUnsupportedInlineLinkShape)
-		}
+	if containsLineBreak(input[anchor : label.End+2]) {
+		return InlineLinkMapping{}, fmt.Errorf("%w: link prefix crosses a physical line", ErrUnsupportedInlineLinkShape)
 	}
-	if lineStart > anchor || destination == "" {
+	if destination == "" {
 		return InlineLinkMapping{}, fmt.Errorf("%w: unsupported empty destination", ErrUnsupportedInlineLinkShape)
 	}
 
@@ -75,10 +72,8 @@ func MapSingleLineReferenceDefinition(input []byte, observation Range, label, de
 	}
 	lineStart := physicalLineStart(input, observation.Start)
 	lineEnd := physicalLineEnd(input, observation.End)
-	for _, b := range input[lineStart:lineEnd] {
-		if b == '\r' || b == '\n' {
-			return ReferenceDefinitionMapping{}, fmt.Errorf("%w: definition crosses a physical line", ErrUnsupportedReferenceDefinitionShape)
-		}
+	if containsLineBreak(input[lineStart:lineEnd]) {
+		return ReferenceDefinitionMapping{}, fmt.Errorf("%w: definition crosses a physical line", ErrUnsupportedReferenceDefinitionShape)
 	}
 
 	pos := lineStart
@@ -139,10 +134,8 @@ func MapAutoLink(input []byte, anchor int, content Range, value string, email bo
 	if anchor < 0 || anchor >= len(input) || !content.Valid(len(input)) || content.Start == content.End || string(input[content.Start:content.End]) != value {
 		return AutoLinkMapping{}, fmt.Errorf("%w: invalid anchor/content or semantic value mismatch", ErrUnsupportedAutoLinkShape)
 	}
-	for _, b := range input[content.Start:content.End] {
-		if b == '\r' || b == '\n' {
-			return AutoLinkMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedAutoLinkShape)
-		}
+	if containsLineBreak(input[content.Start:content.End]) {
+		return AutoLinkMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedAutoLinkShape)
 	}
 
 	if input[anchor] == '<' {

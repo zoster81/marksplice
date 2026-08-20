@@ -20,6 +20,17 @@ func (d *Document) targetNode(id NodeID, expected Kind) (Node, error) {
 	return target, nil
 }
 
+func (d *Document) editableTargetNode(id NodeID, expected Kind, description string) (Node, error) {
+	target, err := d.targetNode(id, expected)
+	if err != nil {
+		return Node{}, err
+	}
+	if !target.Editable {
+		return Node{}, fmt.Errorf("%w: %s source shape is not editable", ErrInvalidTargetKind, description)
+	}
+	return target, nil
+}
+
 func validateNonEmptySingleLine(replacement []byte) error {
 	if len(replacement) == 0 || bytes.ContainsAny(replacement, "\r\n") {
 		return ErrInvalidReplacement

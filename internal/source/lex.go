@@ -1,5 +1,14 @@
 package source
 
+func containsLineBreak(input []byte) bool {
+	for _, b := range input {
+		if b == '\r' || b == '\n' {
+			return true
+		}
+	}
+	return false
+}
+
 func trimHorizontalSpaceRange(line []byte, range_ Range) Range {
 	for range_.Start < range_.End && isHorizontalSpace(line[range_.Start]) {
 		range_.Start++

@@ -144,6 +144,17 @@ func (d *Document) internalNode(id NodeID) (splice.Node, bool) {
 	return d.document.Node(internalNodeID(id))
 }
 
+func (d *Document) promotedNode(id NodeID, expected splice.Kind, requireTopLevel bool) (splice.Node, error) {
+	node, ok := d.internalNode(id)
+	if !ok {
+		return splice.Node{}, ErrNodeNotFound
+	}
+	if node.Kind != expected || !node.Editable || requireTopLevel && !node.TopLevel {
+		return splice.Node{}, ErrInvalidTargetKind
+	}
+	return node, nil
+}
+
 func publicNode(node splice.Node) (Node, bool) {
 	return publicNodeSummary(splice.NodeSummary{ID: node.ID, Kind: node.Kind, TopLevel: node.TopLevel, Editable: node.Editable})
 }

@@ -122,10 +122,8 @@ func MapSingleLineListItem(input []byte, content Range, ordered bool, marker byt
 	if !content.Valid(len(input)) || content.Start == content.End {
 		return ListItemMapping{}, fmt.Errorf("%w: invalid content range", ErrUnsupportedListItemShape)
 	}
-	for _, b := range input[content.Start:content.End] {
-		if b == '\r' || b == '\n' {
-			return ListItemMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedListItemShape)
-		}
+	if containsLineBreak(input[content.Start:content.End]) {
+		return ListItemMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedListItemShape)
 	}
 	lineStart := physicalLineStart(input, content.Start)
 	lineEnd := physicalLineEnd(input, content.End)
@@ -223,10 +221,8 @@ func MapTableCell(input []byte, content Range, column int) (TableCellMapping, er
 	if !content.Valid(len(input)) || content.Start == content.End || column < 0 {
 		return TableCellMapping{}, fmt.Errorf("%w: invalid content range or column", ErrUnsupportedTableCellShape)
 	}
-	for _, b := range input[content.Start:content.End] {
-		if b == '\r' || b == '\n' {
-			return TableCellMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedTableCellShape)
-		}
+	if containsLineBreak(input[content.Start:content.End]) {
+		return TableCellMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedTableCellShape)
 	}
 
 	row, err := MapTableRow(input, content.Start)
@@ -295,10 +291,8 @@ func MapSingleLineFencedCode(input []byte, content Range) (FencedCodeMapping, er
 	if !content.Valid(len(input)) || content.Start == content.End {
 		return FencedCodeMapping{}, fmt.Errorf("%w: invalid or empty content range", ErrUnsupportedFencedCodeShape)
 	}
-	for _, b := range input[content.Start:content.End] {
-		if b == '\r' || b == '\n' {
-			return FencedCodeMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedFencedCodeShape)
-		}
+	if containsLineBreak(input[content.Start:content.End]) {
+		return FencedCodeMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedFencedCodeShape)
 	}
 
 	contentLineStart := physicalLineStart(input, content.Start)

@@ -9,16 +9,12 @@ import (
 
 // PrepareReplaceStrikethrough prepares a source-preserving replacement of one simple GFM strikethrough's plain-text content.
 func (d *Document) PrepareReplaceStrikethrough(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.targetNode(id, KindStrikethrough)
+	target, err := d.editableTargetNode(id, KindStrikethrough, "strikethrough")
 	if err != nil {
 		return ChangeSet{}, err
 	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
-	}
-
-	if !target.Editable {
-		return ChangeSet{}, fmt.Errorf("%w: strikethrough source shape is not editable", ErrInvalidTargetKind)
 	}
 	mapping := target.StrikethroughSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "strikethrough replacement")
@@ -57,16 +53,12 @@ func (d *Document) PrepareReplaceAutoLink(id NodeID, replacement []byte) (Change
 
 // PrepareReplaceCodeSpan prepares a source-preserving replacement of one simple single-line code span.
 func (d *Document) PrepareReplaceCodeSpan(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.targetNode(id, KindCodeSpan)
+	target, err := d.editableTargetNode(id, KindCodeSpan, "code span")
 	if err != nil {
 		return ChangeSet{}, err
 	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
-	}
-
-	if !target.Editable {
-		return ChangeSet{}, fmt.Errorf("%w: code span source shape is not editable", ErrInvalidTargetKind)
 	}
 	mapping := target.CodeSpanSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "code span replacement")
@@ -90,16 +82,12 @@ func (d *Document) PrepareReplaceStrong(id NodeID, replacement []byte) (ChangeSe
 }
 
 func (d *Document) prepareReplaceEmphasisLike(id NodeID, replacement []byte, kind Kind, parserKind parser.Kind, level int) (ChangeSet, error) {
-	target, err := d.targetNode(id, kind)
+	target, err := d.editableTargetNode(id, kind, "emphasis")
 	if err != nil {
 		return ChangeSet{}, err
 	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
-	}
-
-	if !target.Editable {
-		return ChangeSet{}, fmt.Errorf("%w: emphasis source shape is not editable", ErrInvalidTargetKind)
 	}
 	mapping := target.EmphasisSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "emphasis replacement")

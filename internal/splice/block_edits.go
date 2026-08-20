@@ -1,8 +1,6 @@
 package splice
 
 import (
-	"fmt"
-
 	"github.com/zoster81/marksplice/internal/parser"
 	"github.com/zoster81/marksplice/internal/source"
 )
@@ -41,16 +39,12 @@ func (d *Document) PrepareReplaceListItem(id NodeID, replacement []byte) (Change
 
 // PrepareReplaceTableCell prepares a source-preserving replacement of one non-empty GFM table cell.
 func (d *Document) PrepareReplaceTableCell(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.targetNode(id, KindTableCell)
+	target, err := d.editableTargetNode(id, KindTableCell, "table cell")
 	if err != nil {
 		return ChangeSet{}, err
 	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
-	}
-
-	if !target.Editable {
-		return ChangeSet{}, fmt.Errorf("%w: table cell source shape is not editable", ErrInvalidTargetKind)
 	}
 	mapping := target.TableCellSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "table cell replacement")
@@ -66,16 +60,12 @@ func (d *Document) PrepareReplaceTableCell(id NodeID, replacement []byte) (Chang
 
 // PrepareReplaceFencedCode prepares a source-preserving replacement of one single-line fenced code block's content.
 func (d *Document) PrepareReplaceFencedCode(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.targetNode(id, KindFencedCode)
+	target, err := d.editableTargetNode(id, KindFencedCode, "fenced code")
 	if err != nil {
 		return ChangeSet{}, err
 	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
-	}
-
-	if !target.Editable {
-		return ChangeSet{}, fmt.Errorf("%w: fenced code source shape is not editable", ErrInvalidTargetKind)
 	}
 	mapping := target.FencedCodeSource
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "fenced code replacement")

@@ -206,8 +206,8 @@ func (s Strong) Range() Range { return s.sourceRange }
 
 // Paragraph returns typed detail for one promoted top-level paragraph.
 func (d *Document) Paragraph(id NodeID) (Paragraph, bool) {
-	node, ok := d.internalNode(id)
-	if !ok || node.Kind != splice.KindParagraph || !node.Editable || !node.TopLevel {
+	node, err := d.promotedNode(id, splice.KindParagraph, true)
+	if err != nil {
 		return Paragraph{}, false
 	}
 	return Paragraph{
@@ -218,8 +218,8 @@ func (d *Document) Paragraph(id NodeID) (Paragraph, bool) {
 
 // Heading returns typed detail for one promoted top-level heading.
 func (d *Document) Heading(id NodeID) (Heading, bool) {
-	node, ok := d.internalNode(id)
-	if !ok || node.Kind != splice.KindHeading || !node.Editable || !node.TopLevel {
+	node, err := d.promotedNode(id, splice.KindHeading, true)
+	if err != nil {
 		return Heading{}, false
 	}
 	style, ok := publicHeadingStyle(node.HeadingStyle)
@@ -236,8 +236,8 @@ func (d *Document) Heading(id NodeID) (Heading, bool) {
 
 // ListItem returns typed detail for one promoted single-line list item.
 func (d *Document) ListItem(id NodeID) (ListItem, bool) {
-	node, ok := d.internalNode(id)
-	if !ok || node.Kind != splice.KindListItem || !node.Editable {
+	node, err := d.promotedNode(id, splice.KindListItem, false)
+	if err != nil {
 		return ListItem{}, false
 	}
 	return ListItem{
@@ -250,8 +250,8 @@ func (d *Document) ListItem(id NodeID) (ListItem, bool) {
 
 // Task returns typed detail for one promoted GFM task marker.
 func (d *Document) Task(id NodeID) (Task, bool) {
-	node, ok := d.internalNode(id)
-	if !ok || node.Kind != splice.KindTask || !node.Editable {
+	node, err := d.promotedNode(id, splice.KindTask, false)
+	if err != nil {
 		return Task{}, false
 	}
 	return Task{
@@ -263,8 +263,8 @@ func (d *Document) Task(id NodeID) (Task, bool) {
 
 // TableCell returns typed detail for one promoted non-empty GFM table cell.
 func (d *Document) TableCell(id NodeID) (TableCell, bool) {
-	node, ok := d.internalNode(id)
-	if !ok || node.Kind != splice.KindTableCell || !node.Editable {
+	node, err := d.promotedNode(id, splice.KindTableCell, false)
+	if err != nil {
 		return TableCell{}, false
 	}
 	return TableCell{
@@ -277,8 +277,8 @@ func (d *Document) TableCell(id NodeID) (TableCell, bool) {
 
 // FencedCode returns typed detail for one promoted single-line fenced code block.
 func (d *Document) FencedCode(id NodeID) (FencedCode, bool) {
-	node, ok := d.internalNode(id)
-	if !ok || node.Kind != splice.KindFencedCode || !node.Editable {
+	node, err := d.promotedNode(id, splice.KindFencedCode, false)
+	if err != nil {
 		return FencedCode{}, false
 	}
 	return FencedCode{
@@ -289,8 +289,8 @@ func (d *Document) FencedCode(id NodeID) (FencedCode, bool) {
 
 // Strikethrough returns typed detail for one promoted simple GFM strikethrough.
 func (d *Document) Strikethrough(id NodeID) (Strikethrough, bool) {
-	node, ok := d.internalNode(id)
-	if !ok || node.Kind != splice.KindStrikethrough || !node.Editable {
+	node, err := d.promotedNode(id, splice.KindStrikethrough, false)
+	if err != nil {
 		return Strikethrough{}, false
 	}
 	return Strikethrough{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
@@ -298,8 +298,8 @@ func (d *Document) Strikethrough(id NodeID) (Strikethrough, bool) {
 
 // CodeSpan returns typed detail for one promoted simple single-line code span.
 func (d *Document) CodeSpan(id NodeID) (CodeSpan, bool) {
-	node, ok := d.internalNode(id)
-	if !ok || node.Kind != splice.KindCodeSpan || !node.Editable {
+	node, err := d.promotedNode(id, splice.KindCodeSpan, false)
+	if err != nil {
 		return CodeSpan{}, false
 	}
 	return CodeSpan{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
@@ -307,8 +307,8 @@ func (d *Document) CodeSpan(id NodeID) (CodeSpan, bool) {
 
 // Emphasis returns typed detail for one promoted simple emphasis span.
 func (d *Document) Emphasis(id NodeID) (Emphasis, bool) {
-	node, ok := d.internalNode(id)
-	if !ok || node.Kind != splice.KindEmphasis || !node.Editable {
+	node, err := d.promotedNode(id, splice.KindEmphasis, false)
+	if err != nil {
 		return Emphasis{}, false
 	}
 	return Emphasis{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
@@ -316,8 +316,8 @@ func (d *Document) Emphasis(id NodeID) (Emphasis, bool) {
 
 // Strong returns typed detail for one promoted simple strong-emphasis span.
 func (d *Document) Strong(id NodeID) (Strong, bool) {
-	node, ok := d.internalNode(id)
-	if !ok || node.Kind != splice.KindStrong || !node.Editable {
+	node, err := d.promotedNode(id, splice.KindStrong, false)
+	if err != nil {
 		return Strong{}, false
 	}
 	return Strong{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true

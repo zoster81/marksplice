@@ -14,10 +14,8 @@ func MapSimpleCodeSpan(input []byte, anchor int, content Range) (CodeSpanMapping
 	if anchor < 0 || anchor >= len(input) || !content.Valid(len(input)) || content.Start == content.End || input[anchor] != '`' {
 		return CodeSpanMapping{}, fmt.Errorf("%w: invalid anchor or content", ErrUnsupportedCodeSpanShape)
 	}
-	for _, b := range input[content.Start:content.End] {
-		if b == '\r' || b == '\n' {
-			return CodeSpanMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedCodeSpanShape)
-		}
+	if containsLineBreak(input[content.Start:content.End]) {
+		return CodeSpanMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedCodeSpanShape)
 	}
 
 	lineStart := physicalLineStart(input, anchor)
@@ -58,10 +56,8 @@ func MapSimpleEmphasis(input []byte, anchor int, content Range, level int) (Emph
 	if marker != '*' && marker != '_' {
 		return EmphasisMapping{}, fmt.Errorf("%w: unsupported delimiter %q", ErrUnsupportedEmphasisShape, marker)
 	}
-	for _, b := range input[content.Start:content.End] {
-		if b == '\r' || b == '\n' {
-			return EmphasisMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedEmphasisShape)
-		}
+	if containsLineBreak(input[content.Start:content.End]) {
+		return EmphasisMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedEmphasisShape)
 	}
 
 	lineStart := physicalLineStart(input, anchor)
@@ -107,10 +103,8 @@ func MapSimpleStrikethrough(input []byte, content Range) (StrikethroughMapping, 
 	if !content.Valid(len(input)) || content.Start == content.End {
 		return StrikethroughMapping{}, fmt.Errorf("%w: invalid or empty content range", ErrUnsupportedStrikethroughShape)
 	}
-	for _, b := range input[content.Start:content.End] {
-		if b == '\r' || b == '\n' {
-			return StrikethroughMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedStrikethroughShape)
-		}
+	if containsLineBreak(input[content.Start:content.End]) {
+		return StrikethroughMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedStrikethroughShape)
 	}
 
 	left := 0

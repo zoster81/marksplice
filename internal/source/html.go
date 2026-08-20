@@ -23,10 +23,8 @@ func MapHTMLComment(input []byte, raw Range) (HTMLCommentMapping, error) {
 	if !bytes.HasPrefix(value, []byte("<!--")) || !bytes.HasSuffix(value, []byte("-->")) {
 		return HTMLCommentMapping{}, ErrUnsupportedHTMLShape
 	}
-	for _, b := range value {
-		if b == '\r' || b == '\n' {
-			return HTMLCommentMapping{}, ErrUnsupportedHTMLShape
-		}
+	if containsLineBreak(value) {
+		return HTMLCommentMapping{}, ErrUnsupportedHTMLShape
 	}
 
 	start := raw.Start + 4
@@ -211,10 +209,6 @@ func htmlAnchorAttributeName(name []byte) (string, bool) {
 		return "name", true
 	}
 	return "", false
-}
-
-func containsLineBreak(input []byte) bool {
-	return bytes.IndexByte(input, '\r') >= 0 || bytes.IndexByte(input, '\n') >= 0
 }
 
 func isHTMLNameByte(b byte) bool {
