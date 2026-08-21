@@ -23,6 +23,8 @@ func observeNode(source []byte, node ast.Node) (parser.Node, bool, error) {
 		return observeHTMLBlock(source, typed)
 	case *ast.ListItem:
 		return observeListItem(source, typed)
+	case *extensionast.TableRow:
+		return observeTableRow(source, typed)
 	case *ast.AutoLink:
 		return observeAutoLink(source, typed)
 	case *ast.CodeSpan:
@@ -244,6 +246,26 @@ func observeStrikethrough(source []byte, strike *extensionast.Strikethrough) (pa
 		return parser.Node{}, false, nil
 	}
 	return parser.Node{Kind: parser.KindStrikethrough, Range: range_}, true, nil
+}
+
+func observeTableRow(source []byte, row *extensionast.TableRow) (parser.Node, bool, error) {
+	table, ok := row.Parent().(*extensionast.Table)
+	if !ok || row.Pos() < 0 || table.Pos() < 0 || row.ChildCount() == 0 {
+		return parser.Node{}, false, nil
+	}
+	start := row.Pos()
+	end := paragraphContentEnd(source, start)
+	range_ := parser.Range{Start: start, End: end}
+	if !range_.Valid(len(source)) || range_.Start == range_.End {
+		return parser.Node{}, false, nil
+	}
+	return parser.Node{
+		Kind:             parser.KindTableRow,
+		Range:            range_,
+		TableRowAnchor:   start,
+		TableAnchor:      table.Pos(),
+		TableColumnCount: row.ChildCount(),
+	}, true, nil
 }
 
 func observeTableCell(source []byte, cell *extensionast.TableCell, column int) (parser.Node, bool) {

@@ -68,6 +68,9 @@ func TestMapTableRowMapsAllCellsWithOneRowBoundary(t *testing.T) {
 	if row.Range != (Range{Start: anchor, End: anchor + len("| alpha | beta  |")}) {
 		t.Fatalf("row range = %v, want physical table row", row.Range)
 	}
+	if row.LineRange != (Range{Start: anchor, End: anchor + len("| alpha | beta  |\r\n")}) {
+		t.Fatalf("row line range = %v, want complete CRLF-owned physical row", row.LineRange)
+	}
 	if len(row.Cells) != 2 {
 		t.Fatalf("row cell count = %d, want 2", len(row.Cells))
 	}
@@ -79,6 +82,20 @@ func TestMapTableRowMapsAllCellsWithOneRowBoundary(t *testing.T) {
 		if row.Cells[i] != want[i] {
 			t.Fatalf("row cell %d = %+v, want %+v", i, row.Cells[i], want[i])
 		}
+	}
+}
+
+func TestMapTableRowLineRangeAtEOFHasNoSyntheticTerminator(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| alpha | beta |")
+	row, err := MapTableRow(source, 0)
+	if err != nil {
+		t.Fatalf("MapTableRow() error = %v", err)
+	}
+	want := Range{Start: 0, End: len(source)}
+	if row.Range != want || row.LineRange != want {
+		t.Fatalf("row ranges = %v/%v, want %v/%v", row.Range, row.LineRange, want, want)
 	}
 }
 

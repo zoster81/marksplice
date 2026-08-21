@@ -4,7 +4,7 @@ import "github.com/zoster81/marksplice/internal/source"
 
 // PrepareRemoveSection prepares removal of one complete derived section subtree.
 func (d *Document) PrepareRemoveSection(id NodeID) (ChangeSet, error) {
-	section, err := d.sectionTarget(id)
+	section, _, err := d.sectionTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -27,7 +27,7 @@ func (d *Document) PrepareRemoveSection(id NodeID) (ChangeSet, error) {
 
 // PrepareReplaceSection prepares replacement of one complete derived section subtree.
 func (d *Document) PrepareReplaceSection(id NodeID, replacement []byte) (ChangeSet, error) {
-	section, err := d.sectionTarget(id)
+	section, sectionIndex, err := d.sectionTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -36,10 +36,6 @@ func (d *Document) PrepareReplaceSection(id NodeID, replacement []byte) (ChangeS
 		return ChangeSet{}, err
 	}
 
-	sectionIndex, ok := d.sectionIndex[id]
-	if !ok {
-		return ChangeSet{}, ErrInvalidTargetKind
-	}
 	subtreeEnd := sectionSubtreeEndIndex(d.sections, sectionIndex, section.Range)
 
 	change, candidate, err := d.prepareCandidateChange(section.Range, replacement, "section replacement")
@@ -84,7 +80,7 @@ func (d *Document) PrepareInsertSectionAfter(id NodeID, fragment []byte) (Change
 }
 
 func (d *Document) prepareInsertSection(id NodeID, fragment []byte, after bool) (ChangeSet, error) {
-	section, err := d.sectionTarget(id)
+	section, sectionIndex, err := d.sectionTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -93,10 +89,6 @@ func (d *Document) prepareInsertSection(id NodeID, fragment []byte, after bool) 
 		return ChangeSet{}, err
 	}
 
-	sectionIndex, ok := d.sectionIndex[id]
-	if !ok {
-		return ChangeSet{}, ErrInvalidTargetKind
-	}
 	insertionIndex := sectionIndex
 	insertAt := section.Range.Start
 	operation := "section insertion before"
@@ -139,7 +131,7 @@ func (d *Document) prepareInsertSection(id NodeID, fragment []byte, after bool) 
 
 // PrepareAppendSectionChild prepares appending one direct child section subtree to a parent section.
 func (d *Document) PrepareAppendSectionChild(id NodeID, fragment []byte) (ChangeSet, error) {
-	parent, err := d.sectionTarget(id)
+	parent, parentIndex, err := d.sectionTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -149,10 +141,6 @@ func (d *Document) PrepareAppendSectionChild(id NodeID, fragment []byte) (Change
 	fragmentDocument, err := parseSectionFragment(fragment, parent.Level+1)
 	if err != nil {
 		return ChangeSet{}, err
-	}
-	parentIndex, ok := d.sectionIndex[id]
-	if !ok {
-		return ChangeSet{}, ErrInvalidTargetKind
 	}
 	insertionIndex := sectionSubtreeEndIndex(d.sections, parentIndex, parent.Range)
 	insertAt := parent.Range.End
@@ -206,11 +194,11 @@ func (d *Document) prepareMoveSection(id, anchorID NodeID, after bool) (ChangeSe
 	if id == anchorID {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	moved, err := d.sectionTarget(id)
+	moved, movedIndex, err := d.sectionTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	anchor, err := d.sectionTarget(anchorID)
+	anchor, _, err := d.sectionTarget(anchorID)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -218,10 +206,6 @@ func (d *Document) prepareMoveSection(id, anchorID NodeID, after bool) (ChangeSe
 		return ChangeSet{}, ErrInvalidReplacement
 	}
 
-	movedIndex, ok := d.sectionIndex[id]
-	if !ok {
-		return ChangeSet{}, ErrInvalidTargetKind
-	}
 	movedEnd := sectionSubtreeEndIndex(d.sections, movedIndex, moved.Range)
 	expected, movedCandidateIndex, anchorCandidateIndex, ok := sectionOrderAfterMove(d.sections, movedIndex, movedEnd, anchorID, after)
 	if !ok {
@@ -282,7 +266,7 @@ func (d *Document) prepareMoveSection(id, anchorID NodeID, after bool) (ChangeSe
 
 // PrepareReplaceSectionBody prepares replacement of one section's direct body while preserving its section hierarchy.
 func (d *Document) PrepareReplaceSectionBody(id NodeID, replacement []byte) (ChangeSet, error) {
-	section, err := d.sectionTarget(id)
+	section, sectionIndex, err := d.sectionTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -294,10 +278,6 @@ func (d *Document) PrepareReplaceSectionBody(id NodeID, replacement []byte) (Cha
 	candidateDocument, err := d.validateSectionHeadingPatch(candidate, section.BodyRange, len(replacement), d.sections)
 	if err != nil {
 		return ChangeSet{}, err
-	}
-	sectionIndex, ok := d.sectionIndex[id]
-	if !ok {
-		return ChangeSet{}, ErrInvalidTargetKind
 	}
 	candidateSection, ok := candidateDocument.SectionAt(sectionIndex)
 	if !ok {

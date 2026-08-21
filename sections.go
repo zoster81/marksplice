@@ -58,6 +58,22 @@ func (d *Document) Section(headingID NodeID) (Section, bool) {
 	return publicSection(section), true
 }
 
+// SectionChildHeadingIDs returns one section's immediate child heading identities in source order.
+func (d *Document) SectionChildHeadingIDs(headingID NodeID) ([]NodeID, bool) {
+	if d == nil || d.document == nil {
+		return nil, false
+	}
+	internalIDs, ok := d.document.SectionChildHeadingIDs(internalNodeID(headingID))
+	if !ok {
+		return nil, false
+	}
+	ids := make([]NodeID, len(internalIDs))
+	for index, id := range internalIDs {
+		ids[index] = publicNodeID(id)
+	}
+	return ids, true
+}
+
 func publicSection(section splice.Section) Section {
 	result := Section{
 		headingID:   publicNodeID(section.HeadingID),

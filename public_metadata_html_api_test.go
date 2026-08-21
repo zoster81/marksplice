@@ -11,149 +11,155 @@ import (
 func TestPublicFrontMatterAndHTMLDetailsPreserveSource(t *testing.T) {
 	t.Parallel()
 
-	t.Run("YAML front matter field", func(t *testing.T) {
-		t.Parallel()
+	t.Run("YAML front matter field", testPublicYAMLFrontMatterFieldPreservesSource)
+	t.Run("TOML front matter field", testPublicTOMLFrontMatterFieldPreservesSource)
+	t.Run("HTML comment", testPublicHTMLCommentPreservesSource)
+	t.Run("HTML anchor id", testPublicHTMLAnchorIDPreservesSource)
+	t.Run("HTML anchor name", testPublicHTMLAnchorNameDetail)
+}
 
-		source := []byte("---\r\ntitle: 'old title'  # keep\r\ncount: 2\r\n---\r\n\r\nbody\r\n")
-		doc, err := marksplice.Parse(source)
-		if err != nil {
-			t.Fatalf("Parse() error = %v", err)
-		}
-		field := findNodeOfKind(t, doc, marksplice.KindFrontMatterField)
-		detail, ok := doc.FrontMatterField(field.ID())
-		if !ok {
-			t.Fatalf("FrontMatterField(%q) ok = false", field.ID())
-		}
-		if detail.Key() != "title" || detail.Format() != marksplice.FrontMatterFormatYAML {
-			t.Fatalf("front matter detail = key %q format %v, want title/YAML", detail.Key(), detail.Format())
-		}
-		if got := string(source[detail.Range().Start:detail.Range().End]); got != "old title" {
-			t.Fatalf("front matter range bytes = %q, want old title", got)
-		}
+func testPublicYAMLFrontMatterFieldPreservesSource(t *testing.T) {
+	t.Parallel()
 
-		change, err := doc.PrepareReplaceFrontMatterValue(field.ID(), []byte("new title"))
-		if err != nil {
-			t.Fatalf("PrepareReplaceFrontMatterValue() error = %v", err)
-		}
-		got, err := change.Apply(source)
-		if err != nil {
-			t.Fatalf("Apply() error = %v", err)
-		}
-		want := []byte("---\r\ntitle: 'new title'  # keep\r\ncount: 2\r\n---\r\n\r\nbody\r\n")
-		assertReplacementPreservesOutsideRange(t, source, got, want, detail.Range(), []byte("new title"))
-	})
+	source := []byte("---\r\ntitle: 'old title'  # keep\r\ncount: 2\r\n---\r\n\r\nbody\r\n")
+	doc, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	field := findNodeOfKind(t, doc, marksplice.KindFrontMatterField)
+	detail, ok := doc.FrontMatterField(field.ID())
+	if !ok {
+		t.Fatalf("FrontMatterField(%q) ok = false", field.ID())
+	}
+	if detail.Key() != "title" || detail.Format() != marksplice.FrontMatterFormatYAML {
+		t.Fatalf("front matter detail = key %q format %v, want title/YAML", detail.Key(), detail.Format())
+	}
+	if got := string(source[detail.Range().Start:detail.Range().End]); got != "old title" {
+		t.Fatalf("front matter range bytes = %q, want old title", got)
+	}
 
-	t.Run("TOML front matter field", func(t *testing.T) {
-		t.Parallel()
+	change, err := doc.PrepareReplaceFrontMatterValue(field.ID(), []byte("new title"))
+	if err != nil {
+		t.Fatalf("PrepareReplaceFrontMatterValue() error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	want := []byte("---\r\ntitle: 'new title'  # keep\r\ncount: 2\r\n---\r\n\r\nbody\r\n")
+	assertReplacementPreservesOutsideRange(t, source, got, want, detail.Range(), []byte("new title"))
+}
 
-		source := []byte("+++\ntitle = \"old title\" # keep\nenabled = true\n+++\n\nbody\n")
-		doc, err := marksplice.Parse(source)
-		if err != nil {
-			t.Fatalf("Parse() error = %v", err)
-		}
-		var field marksplice.Node
-		for _, node := range doc.Nodes() {
-			if node.Kind() != marksplice.KindFrontMatterField {
-				continue
-			}
-			detail, ok := doc.FrontMatterField(node.ID())
-			if ok && detail.Key() == "title" {
-				field = node
-				break
-			}
-		}
-		if field.ID().String() == "" {
-			t.Fatal("public TOML title field not found")
-		}
-		detail, _ := doc.FrontMatterField(field.ID())
-		if detail.Format() != marksplice.FrontMatterFormatTOML {
-			t.Fatalf("FrontMatterField.Format() = %v, want TOML", detail.Format())
-		}
-		change, err := doc.PrepareReplaceFrontMatterValue(field.ID(), []byte("new title"))
-		if err != nil {
-			t.Fatalf("PrepareReplaceFrontMatterValue() error = %v", err)
-		}
-		got, err := change.Apply(source)
-		if err != nil {
-			t.Fatalf("Apply() error = %v", err)
-		}
-		want := []byte("+++\ntitle = \"new title\" # keep\nenabled = true\n+++\n\nbody\n")
-		assertReplacementPreservesOutsideRange(t, source, got, want, detail.Range(), []byte("new title"))
-	})
+func testPublicTOMLFrontMatterFieldPreservesSource(t *testing.T) {
+	t.Parallel()
 
-	t.Run("HTML comment", func(t *testing.T) {
-		t.Parallel()
+	source := []byte("+++\ntitle = \"old title\" # keep\nenabled = true\n+++\n\nbody\n")
+	doc, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	var field marksplice.Node
+	for _, node := range doc.Nodes() {
+		if node.Kind() != marksplice.KindFrontMatterField {
+			continue
+		}
+		detail, ok := doc.FrontMatterField(node.ID())
+		if ok && detail.Key() == "title" {
+			field = node
+			break
+		}
+	}
+	if field.ID().String() == "" {
+		t.Fatal("public TOML title field not found")
+	}
+	detail, _ := doc.FrontMatterField(field.ID())
+	if detail.Format() != marksplice.FrontMatterFormatTOML {
+		t.Fatalf("FrontMatterField.Format() = %v, want TOML", detail.Format())
+	}
+	change, err := doc.PrepareReplaceFrontMatterValue(field.ID(), []byte("new title"))
+	if err != nil {
+		t.Fatalf("PrepareReplaceFrontMatterValue() error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	want := []byte("+++\ntitle = \"new title\" # keep\nenabled = true\n+++\n\nbody\n")
+	assertReplacementPreservesOutsideRange(t, source, got, want, detail.Range(), []byte("new title"))
+}
 
-		source := []byte("before <!--  old comment  --> after\r\n")
-		doc, err := marksplice.Parse(source)
-		if err != nil {
-			t.Fatalf("Parse() error = %v", err)
-		}
-		node := findNodeOfKind(t, doc, marksplice.KindHTMLComment)
-		detail, ok := doc.HTMLComment(node.ID())
-		if !ok {
-			t.Fatalf("HTMLComment(%q) ok = false", node.ID())
-		}
-		if got := string(source[detail.Range().Start:detail.Range().End]); got != "old comment" {
-			t.Fatalf("HTML comment range bytes = %q, want old comment", got)
-		}
-		change, err := doc.PrepareReplaceHTMLComment(node.ID(), []byte("new comment"))
-		if err != nil {
-			t.Fatalf("PrepareReplaceHTMLComment() error = %v", err)
-		}
-		got, err := change.Apply(source)
-		if err != nil {
-			t.Fatalf("Apply() error = %v", err)
-		}
-		want := []byte("before <!--  new comment  --> after\r\n")
-		assertReplacementPreservesOutsideRange(t, source, got, want, detail.Range(), []byte("new comment"))
-	})
+func testPublicHTMLCommentPreservesSource(t *testing.T) {
+	t.Parallel()
 
-	t.Run("HTML anchor id", func(t *testing.T) {
-		t.Parallel()
+	source := []byte("before <!--  old comment  --> after\r\n")
+	doc, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	node := findNodeOfKind(t, doc, marksplice.KindHTMLComment)
+	detail, ok := doc.HTMLComment(node.ID())
+	if !ok {
+		t.Fatalf("HTMLComment(%q) ok = false", node.ID())
+	}
+	if got := string(source[detail.Range().Start:detail.Range().End]); got != "old comment" {
+		t.Fatalf("HTML comment range bytes = %q, want old comment", got)
+	}
+	change, err := doc.PrepareReplaceHTMLComment(node.ID(), []byte("new comment"))
+	if err != nil {
+		t.Fatalf("PrepareReplaceHTMLComment() error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	want := []byte("before <!--  new comment  --> after\r\n")
+	assertReplacementPreservesOutsideRange(t, source, got, want, detail.Range(), []byte("new comment"))
+}
 
-		source := []byte("before <A class='x' ID=\"old-anchor\">text</A> after\n")
-		doc, err := marksplice.Parse(source)
-		if err != nil {
-			t.Fatalf("Parse() error = %v", err)
-		}
-		node := findNodeOfKind(t, doc, marksplice.KindHTMLAnchor)
-		detail, ok := doc.HTMLAnchor(node.ID())
-		if !ok {
-			t.Fatalf("HTMLAnchor(%q) ok = false", node.ID())
-		}
-		if detail.Attribute() != marksplice.HTMLAnchorAttributeID {
-			t.Fatalf("HTMLAnchor.Attribute() = %v, want ID", detail.Attribute())
-		}
-		if got := string(source[detail.Range().Start:detail.Range().End]); got != "old-anchor" {
-			t.Fatalf("HTML anchor range bytes = %q, want old-anchor", got)
-		}
-		change, err := doc.PrepareReplaceHTMLAnchor(node.ID(), []byte("new-anchor"))
-		if err != nil {
-			t.Fatalf("PrepareReplaceHTMLAnchor() error = %v", err)
-		}
-		got, err := change.Apply(source)
-		if err != nil {
-			t.Fatalf("Apply() error = %v", err)
-		}
-		want := []byte("before <A class='x' ID=\"new-anchor\">text</A> after\n")
-		assertReplacementPreservesOutsideRange(t, source, got, want, detail.Range(), []byte("new-anchor"))
-	})
+func testPublicHTMLAnchorIDPreservesSource(t *testing.T) {
+	t.Parallel()
 
-	t.Run("HTML anchor name", func(t *testing.T) {
-		t.Parallel()
+	source := []byte("before <A class='x' ID=\"old-anchor\">text</A> after\n")
+	doc, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	node := findNodeOfKind(t, doc, marksplice.KindHTMLAnchor)
+	detail, ok := doc.HTMLAnchor(node.ID())
+	if !ok {
+		t.Fatalf("HTMLAnchor(%q) ok = false", node.ID())
+	}
+	if detail.Attribute() != marksplice.HTMLAnchorAttributeID {
+		t.Fatalf("HTMLAnchor.Attribute() = %v, want ID", detail.Attribute())
+	}
+	if got := string(source[detail.Range().Start:detail.Range().End]); got != "old-anchor" {
+		t.Fatalf("HTML anchor range bytes = %q, want old-anchor", got)
+	}
+	change, err := doc.PrepareReplaceHTMLAnchor(node.ID(), []byte("new-anchor"))
+	if err != nil {
+		t.Fatalf("PrepareReplaceHTMLAnchor() error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	want := []byte("before <A class='x' ID=\"new-anchor\">text</A> after\n")
+	assertReplacementPreservesOutsideRange(t, source, got, want, detail.Range(), []byte("new-anchor"))
+}
 
-		source := []byte("<a NAME='old-name'>text</a>\n")
-		doc, err := marksplice.Parse(source)
-		if err != nil {
-			t.Fatalf("Parse() error = %v", err)
-		}
-		node := findNodeOfKind(t, doc, marksplice.KindHTMLAnchor)
-		detail, ok := doc.HTMLAnchor(node.ID())
-		if !ok || detail.Attribute() != marksplice.HTMLAnchorAttributeName {
-			t.Fatalf("HTMLAnchor detail = %+v, %v; want name attribute", detail, ok)
-		}
-	})
+func testPublicHTMLAnchorNameDetail(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("<a NAME='old-name'>text</a>\n")
+	doc, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	node := findNodeOfKind(t, doc, marksplice.KindHTMLAnchor)
+	detail, ok := doc.HTMLAnchor(node.ID())
+	if !ok || detail.Attribute() != marksplice.HTMLAnchorAttributeName {
+		t.Fatalf("HTMLAnchor detail = %+v, %v; want name attribute", detail, ok)
+	}
 }
 
 func TestPublicFrontMatterAndHTMLFilterUnsupportedShapesAndPreserveErrors(t *testing.T) {

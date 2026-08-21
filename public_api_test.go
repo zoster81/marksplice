@@ -169,6 +169,16 @@ func TestPublicParagraphDetailExposesPreciseTopLevelByteRange(t *testing.T) {
 func TestPublicZeroAndEmptyReadValuesAreDeterministic(t *testing.T) {
 	t.Parallel()
 
+	assertPublicZeroStructuralValues(t)
+	assertPublicZeroMappedBlockValues(t)
+	assertPublicZeroInlineAndLinkValues(t)
+	assertPublicZeroMetadataValues(t)
+	assertPublicZeroChangeAndEmptyDocument(t)
+}
+
+func assertPublicZeroStructuralValues(t *testing.T) {
+	t.Helper()
+
 	var node marksplice.Node
 	if node.ID().String() != "" || node.Kind() != marksplice.KindUnknown {
 		t.Fatalf("zero Node accessors returned non-zero values: id=%v kind=%v", node.ID(), node.Kind())
@@ -189,14 +199,31 @@ func TestPublicZeroAndEmptyReadValuesAreDeterministic(t *testing.T) {
 	if task.ID().String() != "" || task.Range() != (marksplice.Range{}) || task.Checked() {
 		t.Fatalf("zero Task behavior = id %v range %v checked %v", task.ID(), task.Range(), task.Checked())
 	}
+}
+
+func assertPublicZeroMappedBlockValues(t *testing.T) {
+	t.Helper()
+
 	var tableCell marksplice.TableCell
 	if tableCell.ID().String() != "" || tableCell.Range() != (marksplice.Range{}) || tableCell.Header() || tableCell.Column() != 0 {
 		t.Fatalf("zero TableCell behavior = id %v range %v header %v column %d", tableCell.ID(), tableCell.Range(), tableCell.Header(), tableCell.Column())
+	}
+	if rowID, ok := tableCell.RowID(); ok || rowID.String() != "" {
+		t.Fatalf("zero TableCell.RowID() = %v, %v; want zero, false", rowID, ok)
+	}
+	var tableRow marksplice.TableRow
+	if tableRow.ID().String() != "" || tableRow.Range() != (marksplice.Range{}) || tableRow.ColumnCount() != 0 {
+		t.Fatalf("zero TableRow behavior = id %v range %v columns %d", tableRow.ID(), tableRow.Range(), tableRow.ColumnCount())
 	}
 	var fencedCode marksplice.FencedCode
 	if fencedCode.ID().String() != "" || fencedCode.Range() != (marksplice.Range{}) {
 		t.Fatalf("zero FencedCode behavior = id %v range %v", fencedCode.ID(), fencedCode.Range())
 	}
+}
+
+func assertPublicZeroInlineAndLinkValues(t *testing.T) {
+	t.Helper()
+
 	var strikethrough marksplice.Strikethrough
 	if strikethrough.ID().String() != "" || strikethrough.Range() != (marksplice.Range{}) {
 		t.Fatalf("zero Strikethrough behavior = id %v range %v", strikethrough.ID(), strikethrough.Range())
@@ -229,6 +256,11 @@ func TestPublicZeroAndEmptyReadValuesAreDeterministic(t *testing.T) {
 	if autoLink.ID().String() != "" || autoLink.Range() != (marksplice.Range{}) {
 		t.Fatalf("zero AutoLink behavior = id %v range %v", autoLink.ID(), autoLink.Range())
 	}
+}
+
+func assertPublicZeroMetadataValues(t *testing.T) {
+	t.Helper()
+
 	var frontMatterField marksplice.FrontMatterField
 	if frontMatterField.ID().String() != "" || frontMatterField.Range() != (marksplice.Range{}) || frontMatterField.Key() != "" || frontMatterField.Format() != marksplice.FrontMatterFormatUnknown {
 		t.Fatalf("zero FrontMatterField behavior = id %v range %v key %q format %v", frontMatterField.ID(), frontMatterField.Range(), frontMatterField.Key(), frontMatterField.Format())
@@ -241,11 +273,15 @@ func TestPublicZeroAndEmptyReadValuesAreDeterministic(t *testing.T) {
 	if htmlAnchor.ID().String() != "" || htmlAnchor.Range() != (marksplice.Range{}) || htmlAnchor.Attribute() != marksplice.HTMLAnchorAttributeUnknown {
 		t.Fatalf("zero HTMLAnchor behavior = id %v range %v attribute %v", htmlAnchor.ID(), htmlAnchor.Range(), htmlAnchor.Attribute())
 	}
+}
+
+func assertPublicZeroChangeAndEmptyDocument(t *testing.T) {
+	t.Helper()
+
 	var change marksplice.ChangeSet
 	if _, err := change.Apply(nil); !errors.Is(err, marksplice.ErrSourceConflict) {
 		t.Fatalf("zero ChangeSet.Apply(nil) error = %v, want ErrSourceConflict", err)
 	}
-
 	doc, err := marksplice.Parse(nil)
 	if err != nil {
 		t.Fatalf("Parse(nil) error = %v", err)

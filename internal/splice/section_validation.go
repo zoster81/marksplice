@@ -5,19 +5,19 @@ import (
 	"fmt"
 )
 
-func (d *Document) sectionTarget(id NodeID) (Section, error) {
+func (d *Document) sectionTarget(id NodeID) (Section, int, error) {
 	target, err := d.editableTargetNode(id, KindHeading, "section")
 	if err != nil {
-		return Section{}, err
+		return Section{}, 0, err
 	}
 	if !target.TopLevel {
-		return Section{}, ErrInvalidTargetKind
+		return Section{}, 0, ErrInvalidTargetKind
 	}
-	section, ok := d.SectionByHeadingID(id)
+	section, index, ok := d.sectionByHeadingID(id)
 	if !ok {
-		return Section{}, ErrInvalidTargetKind
+		return Section{}, 0, ErrInvalidTargetKind
 	}
-	return section, nil
+	return section, index, nil
 }
 
 func parseSectionFragment(replacement []byte, level int) (*Document, error) {
@@ -207,7 +207,7 @@ func (d *Document) validateMovedSectionHeading(candidate []byte, candidateDocume
 }
 
 func (d *Document) sameMovedSectionParent(candidateDocument *Document, originalSection, candidateSection Section, movedStart, candidateStart, relativeIndex int) bool {
-	parentIndex, ok := d.sectionIndex[originalSection.ParentHeadingID]
+	_, parentIndex, ok := d.sectionByHeadingID(originalSection.ParentHeadingID)
 	parentOffset := parentIndex - movedStart
 	if !originalSection.HasParent || !ok || parentOffset < 0 || parentOffset >= relativeIndex {
 		return false

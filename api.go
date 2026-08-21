@@ -41,6 +41,7 @@ const (
 	KindHTMLComment
 	KindHTMLAnchor
 	KindImage
+	KindTableRow
 )
 
 // NodeID identifies a node within one parsed source snapshot.
@@ -218,6 +219,8 @@ func publicKind(kind splice.Kind) (Kind, bool) {
 		return KindTask, true
 	case splice.KindTableCell:
 		return KindTableCell, true
+	case splice.KindTableRow:
+		return KindTableRow, true
 	case splice.KindFencedCode:
 		return KindFencedCode, true
 	case splice.KindStrikethrough:

@@ -167,6 +167,7 @@ func (t Task) Checked() bool {
 type TableCell struct {
 	id          NodeID
 	sourceRange Range
+	rowID       NodeID
 	header      bool
 	column      int
 }
@@ -187,10 +188,36 @@ func (c TableCell) Header() bool {
 	return c.header
 }
 
+// RowID returns the promoted GFM body row that owns this cell.
+// The boolean is false for header cells and when no promoted body-row identity is available.
+func (c TableCell) RowID() (NodeID, bool) {
+	if c.rowID.value == "" {
+		return NodeID{}, false
+	}
+	return c.rowID, true
+}
+
 // Column returns the zero-based column index within the mapped table row.
 func (c TableCell) Column() int {
 	return c.column
 }
+
+// TableRow is immutable typed detail for one promoted GFM table body row.
+type TableRow struct {
+	id          NodeID
+	sourceRange Range
+	columnCount int
+}
+
+// ID returns the table row's snapshot-scoped node identity.
+func (r TableRow) ID() NodeID { return r.id }
+
+// Range returns the exact complete physical body-row span used by structural row operations.
+// When present, the row's own line terminator is included; header and delimiter rows are never part of this range.
+func (r TableRow) Range() Range { return r.sourceRange }
+
+// ColumnCount returns the semantic/source-proven number of columns in the body row.
+func (r TableRow) ColumnCount() int { return r.columnCount }
 
 // FencedCode is immutable typed detail for one promoted single-line fenced code block.
 type FencedCode struct {
@@ -442,8 +469,39 @@ func (d *Document) TableCell(id NodeID) (TableCell, bool) {
 	return TableCell{
 		id:          publicNodeID(node.ID),
 		sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End},
+		rowID:       publicNodeID(node.TableRowID),
 		header:      node.TableHeader,
 		column:      node.TableColumn,
+	}, true
+}
+
+// TableRowCellIDs returns the promoted non-empty cells owned by one promoted body row in source order.
+// Empty cells are omitted because M5 does not assign them public cell identities.
+func (d *Document) TableRowCellIDs(rowID NodeID) ([]NodeID, bool) {
+	if d == nil || d.document == nil {
+		return nil, false
+	}
+	internalIDs, ok := d.document.TableRowCellIDs(internalNodeID(rowID))
+	if !ok {
+		return nil, false
+	}
+	ids := make([]NodeID, len(internalIDs))
+	for index, id := range internalIDs {
+		ids[index] = publicNodeID(id)
+	}
+	return ids, true
+}
+
+// TableRow returns typed detail for one promoted GFM table body row.
+func (d *Document) TableRow(id NodeID) (TableRow, bool) {
+	node, err := d.promotedNode(id, splice.KindTableRow, false)
+	if err != nil {
+		return TableRow{}, false
+	}
+	return TableRow{
+		id:          publicNodeID(node.ID),
+		sourceRange: Range{Start: node.TableRowSource.LineRange.Start, End: node.TableRowSource.LineRange.End},
+		columnCount: node.TableColumnCount,
 	}, true
 }
 

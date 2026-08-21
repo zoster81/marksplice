@@ -21,6 +21,7 @@ const (
 	KindRawHTML
 	KindHTMLBlock
 	KindImage
+	KindTableRow
 )
 
 // Range is a half-open byte range [Start, End) in the parsed source snapshot.
@@ -49,6 +50,8 @@ type Node struct {
 	TableHeader          bool
 	TableColumn          int
 	TableRowAnchor       int
+	TableAnchor          int
+	TableColumnCount     int
 	Anchor               int
 	Destination          string
 	Label                string

@@ -188,8 +188,9 @@ type TableCellMapping struct {
 
 // TableRowMapping binds one physical GFM table row to all of its lossless cell spans.
 type TableRowMapping struct {
-	Range Range
-	Cells []TableCellMapping
+	Range     Range
+	LineRange Range
+	Cells     []TableCellMapping
 }
 
 // MapTableRow maps all cells in one physical GFM table row with a single row scan.
@@ -217,9 +218,14 @@ func MapTableRow(input []byte, anchor int) (TableRowMapping, error) {
 			Column:       column,
 		}
 	}
+	lineRangeEnd := lineEnd
+	if next, ok := nextPhysicalLineStart(input, lineEnd); ok {
+		lineRangeEnd = next
+	}
 	return TableRowMapping{
-		Range: Range{Start: lineStart, End: lineEnd},
-		Cells: cells,
+		Range:     Range{Start: lineStart, End: lineEnd},
+		LineRange: Range{Start: lineStart, End: lineRangeEnd},
+		Cells:     cells,
 	}, nil
 }
 

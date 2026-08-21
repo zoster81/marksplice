@@ -166,6 +166,60 @@ func (d *Document) PrepareSetTaskChecked(id NodeID, checked bool) (ChangeSet, er
 	return publicChangeSet(d.document.PrepareSetTaskChecked(internalNodeID(id), checked))
 }
 
+// PrepareReplaceTableRow prepares source-preserving replacement of one complete promoted GFM table body row.
+func (d *Document) PrepareReplaceTableRow(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindTableRow, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceTableRow(internalNodeID(id), replacement))
+}
+
+// PrepareRemoveTableRow prepares source-preserving removal of one promoted GFM table body row.
+func (d *Document) PrepareRemoveTableRow(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindTableRow, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveTableRow(internalNodeID(id)))
+}
+
+// PrepareInsertTableRowBefore prepares insertion of one complete compatible body row before a promoted row.
+func (d *Document) PrepareInsertTableRowBefore(anchorID NodeID, fragment []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(anchorID, splice.KindTableRow, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareInsertTableRowBefore(internalNodeID(anchorID), fragment))
+}
+
+// PrepareInsertTableRowAfter prepares insertion of one complete compatible body row after a promoted row.
+func (d *Document) PrepareInsertTableRowAfter(anchorID NodeID, fragment []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(anchorID, splice.KindTableRow, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareInsertTableRowAfter(internalNodeID(anchorID), fragment))
+}
+
+// PrepareMoveTableRowBefore prepares moving one complete body row before another promoted row in the same table.
+func (d *Document) PrepareMoveTableRowBefore(id, anchorID NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindTableRow, false); err != nil {
+		return ChangeSet{}, err
+	}
+	if _, err := d.promotedNode(anchorID, splice.KindTableRow, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareMoveTableRowBefore(internalNodeID(id), internalNodeID(anchorID)))
+}
+
+// PrepareMoveTableRowAfter prepares moving one complete body row after another promoted row in the same table.
+func (d *Document) PrepareMoveTableRowAfter(id, anchorID NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindTableRow, false); err != nil {
+		return ChangeSet{}, err
+	}
+	if _, err := d.promotedNode(anchorID, splice.KindTableRow, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareMoveTableRowAfter(internalNodeID(id), internalNodeID(anchorID)))
+}
+
 // PrepareReplaceTableCell prepares a source-preserving replacement of promoted table-cell content.
 func (d *Document) PrepareReplaceTableCell(id NodeID, replacement []byte) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindTableCell, false); err != nil {

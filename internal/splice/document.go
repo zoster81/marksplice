@@ -45,6 +45,7 @@ const (
 	KindHTMLAnchor
 	KindHTMLOpaque
 	KindImage
+	KindTableRow
 )
 
 // HeadingStyle identifies the source syntax of a heading.
@@ -94,8 +95,15 @@ type Node struct {
 	ListItemSource            source.ListItemMapping
 	TableHeader               bool
 	TableColumn               int
+	TableRowAnchor            int
+	TableRowID                NodeID
+	TableAnchor               int
+	TableColumnCount          int
+	TableRowCellStart         int
+	TableRowCellCount         int
 	Editable                  bool
 	TableCellSource           source.TableCellMapping
+	TableRowSource            source.TableRowMapping
 	FencedCodeSource          source.FencedCodeMapping
 	StrikethroughSource       source.StrikethroughMapping
 	InlineLinkSource          source.InlineLinkMapping
@@ -130,13 +138,15 @@ type frontMatterEnvelope struct {
 
 // Document is an immutable parsed source snapshot used by the feasibility slice.
 type Document struct {
-	source       []byte
-	nodes        []Node
-	nodeIndex    map[NodeID]int
-	listChildIDs []NodeID
-	sections     []Section
-	sectionIndex map[NodeID]int
-	frontMatter  frontMatterEnvelope
+	source        []byte
+	nodes         []Node
+	nodeIndex     map[NodeID]int
+	listChildIDs  []NodeID
+	tableCellIDs  []NodeID
+	tableRowCount int
+	sections      []Section
+	sectionIndex  map[NodeID]int
+	frontMatter   frontMatterEnvelope
 }
 
 // Parse creates a snapshot-local Marksplice model using the internal Goldmark adapter.
@@ -173,6 +183,10 @@ func Parse(input []byte) (*Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve list item subtrees: %w", err)
 	}
+	tableModel, err := resolveTableRowCells(nodes)
+	if err != nil {
+		return nil, fmt.Errorf("resolve table row cells: %w", err)
+	}
 
 	nodeIndex, err := indexNodes(nodes)
 	if err != nil {
@@ -191,13 +205,15 @@ func Parse(input []byte) (*Document, error) {
 		}
 	}
 	return &Document{
-		source:       snapshot,
-		nodes:        nodes,
-		nodeIndex:    nodeIndex,
-		listChildIDs: listChildIDs,
-		sections:     sections,
-		sectionIndex: sectionIndex,
-		frontMatter:  storedFrontMatter,
+		source:        snapshot,
+		nodes:         nodes,
+		nodeIndex:     nodeIndex,
+		listChildIDs:  listChildIDs,
+		tableCellIDs:  tableModel.cellIDs,
+		tableRowCount: tableModel.rowCount,
+		sections:      sections,
+		sectionIndex:  sectionIndex,
+		frontMatter:   storedFrontMatter,
 	}, nil
 }
 
@@ -288,6 +304,8 @@ func mapKind(kind parser.Kind) (Kind, error) {
 		return KindListItem, nil
 	case parser.KindTableCell:
 		return KindTableCell, nil
+	case parser.KindTableRow:
+		return KindTableRow, nil
 	case parser.KindFencedCode:
 		return KindFencedCode, nil
 	case parser.KindStrikethrough:

@@ -53,6 +53,9 @@ func baseNodeFromObservation(kind Kind, contentRange Range, observation parser.N
 		ListDirectChildCount: observation.ListDirectChildCount,
 		TableHeader:          observation.TableHeader,
 		TableColumn:          observation.TableColumn,
+		TableRowAnchor:       observation.TableRowAnchor,
+		TableAnchor:          observation.TableAnchor,
+		TableColumnCount:     observation.TableColumnCount,
 		Anchor:               observation.Anchor,
 		Destination:          observation.Destination,
 		Label:                observation.Label,
@@ -78,6 +81,8 @@ func mapBlockNodeSource(snapshot []byte, observation parser.Node, contentRange R
 		return mapListItemNodeSource(snapshot, observation, contentRange, node)
 	case KindTableCell:
 		return mapTableCellNodeSource(snapshot, observation, contentRange, tableRows, node)
+	case KindTableRow:
+		return mapTableRowNodeSource(snapshot, observation, tableRows, node)
 	case KindFencedCode:
 		return mapFencedCodeNodeSource(snapshot, contentRange, node)
 	default:
@@ -143,6 +148,23 @@ func mapListItemNodeSource(snapshot []byte, observation parser.Node, contentRang
 	node.ListOrdered = mapping.Ordered
 	node.ListMarker = mapping.Marker
 	node.ListItemSource = mapping
+	node.Editable = true
+	return nil
+}
+
+func mapTableRowNodeSource(snapshot []byte, observation parser.Node, tableRows map[int]tableRowSourceResult, node *Node) error {
+	mapping, editable, err := mapTableRowSource(snapshot, observation.TableRowAnchor, tableRows)
+	if err != nil {
+		return fmt.Errorf("map table row source: %w", err)
+	}
+	if !editable || observation.TableColumnCount <= 0 || len(mapping.Cells) != observation.TableColumnCount {
+		return nil
+	}
+	node.Range = mapping.LineRange
+	node.ContentRange = mapping.Range
+	node.TableAnchor = observation.TableAnchor
+	node.TableColumnCount = observation.TableColumnCount
+	node.TableRowSource = mapping
 	node.Editable = true
 	return nil
 }
@@ -267,24 +289,32 @@ func mapEmphasisNodeSource(snapshot []byte, observation parser.Node, contentRang
 	return fmt.Errorf("map emphasis source: %w", err)
 }
 
-func mapTableCellSource(snapshot []byte, observation parser.Node, contentRange Range, cache map[int]tableRowSourceResult) (source.TableCellMapping, bool, error) {
-	result, ok := cache[observation.TableRowAnchor]
+func mapTableRowSource(snapshot []byte, anchor int, cache map[int]tableRowSourceResult) (source.TableRowMapping, bool, error) {
+	result, ok := cache[anchor]
 	if !ok {
-		row, err := source.MapTableRow(snapshot, observation.TableRowAnchor)
+		row, err := source.MapTableRow(snapshot, anchor)
 		if err != nil {
 			if errors.Is(err, source.ErrUnsupportedTableCellShape) {
-				cache[observation.TableRowAnchor] = tableRowSourceResult{}
-				return source.TableCellMapping{}, false, nil
+				cache[anchor] = tableRowSourceResult{}
+				return source.TableRowMapping{}, false, nil
 			}
-			return source.TableCellMapping{}, false, err
+			return source.TableRowMapping{}, false, err
 		}
 		result = tableRowSourceResult{mapping: row, editable: true}
-		cache[observation.TableRowAnchor] = result
+		cache[anchor] = result
 	}
-	if !result.editable || observation.TableColumn < 0 || observation.TableColumn >= len(result.mapping.Cells) {
+	return result.mapping, result.editable, nil
+}
+
+func mapTableCellSource(snapshot []byte, observation parser.Node, contentRange Range, cache map[int]tableRowSourceResult) (source.TableCellMapping, bool, error) {
+	row, editable, err := mapTableRowSource(snapshot, observation.TableRowAnchor, cache)
+	if err != nil {
+		return source.TableCellMapping{}, false, err
+	}
+	if !editable || observation.TableColumn < 0 || observation.TableColumn >= len(row.Cells) {
 		return source.TableCellMapping{}, false, nil
 	}
-	mapping := result.mapping.Cells[observation.TableColumn]
+	mapping := row.Cells[observation.TableColumn]
 	if mapping.ContentRange != contentRange {
 		return source.TableCellMapping{}, false, nil
 	}
