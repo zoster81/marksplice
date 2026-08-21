@@ -77,12 +77,15 @@ func (h Heading) Style() HeadingStyle {
 
 // ListItem is immutable typed detail for one promoted single-line list item.
 type ListItem struct {
-	id          NodeID
-	sourceRange Range
-	ordered     bool
-	marker      byte
-	parentID    NodeID
-	hasChildren bool
+	id              NodeID
+	sourceRange     Range
+	subtreeRange    Range
+	hasSubtreeRange bool
+	ordered         bool
+	marker          byte
+	parentID        NodeID
+	childIDs        []NodeID
+	hasChildren     bool
 }
 
 // ID returns the list item's snapshot-scoped node identity.
@@ -94,6 +97,15 @@ func (i ListItem) ID() NodeID {
 // Indentation, list numbering, marker/delimiter bytes, post-marker spacing, and line endings are outside this range.
 func (i ListItem) Range() Range {
 	return i.sourceRange
+}
+
+// SubtreeRange returns the exact complete supported subtree source span used by structural list-item operations.
+// The boolean is false when Marksplice cannot prove that every semantic descendant belongs to the supported list-item model.
+func (i ListItem) SubtreeRange() (Range, bool) {
+	if !i.hasSubtreeRange {
+		return Range{}, false
+	}
+	return i.subtreeRange, true
 }
 
 // Ordered reports whether the item belongs to an ordered list.
@@ -116,7 +128,14 @@ func (i ListItem) ParentID() (NodeID, bool) {
 	return i.parentID, true
 }
 
-// HasChildren reports whether the supported single-line item owns one or more direct child lists.
+// ChildIDs returns the immediate supported list-item child identities in source order.
+// Semantic children outside the promoted public subset are omitted.
+func (i ListItem) ChildIDs() []NodeID {
+	return append([]NodeID(nil), i.childIDs...)
+}
+
+// HasChildren reports whether the supported single-line item owns one or more semantic direct child list items.
+// It can be true even when ChildIDs is empty because unsupported children are not assigned public identities.
 func (i ListItem) HasChildren() bool {
 	return i.hasChildren
 }
@@ -377,14 +396,28 @@ func (d *Document) ListItem(id NodeID) (ListItem, bool) {
 	if err != nil {
 		return ListItem{}, false
 	}
-	return ListItem{
+	internalChildIDs, ok := d.document.ListItemChildIDs(node.ID)
+	if !ok {
+		return ListItem{}, false
+	}
+	childIDs := make([]NodeID, len(internalChildIDs))
+	for index, childID := range internalChildIDs {
+		childIDs[index] = publicNodeID(childID)
+	}
+	item := ListItem{
 		id:          publicNodeID(node.ID),
 		sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End},
 		ordered:     node.ListOrdered,
 		marker:      node.ListMarker,
 		parentID:    publicNodeID(node.ListParentID),
+		childIDs:    childIDs,
 		hasChildren: node.ListHasChildren,
-	}, true
+	}
+	if node.ListSubtreeComplete {
+		item.subtreeRange = Range{Start: node.ListItemSource.LineRange.Start, End: node.ListSubtreeEnd}
+		item.hasSubtreeRange = true
+	}
+	return item, true
 }
 
 // Task returns typed detail for one promoted GFM task marker.

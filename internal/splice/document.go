@@ -87,6 +87,8 @@ type Node struct {
 	ListParentID              NodeID
 	ListHasChildren           bool
 	ListDirectChildCount      int
+	ListChildStart            int
+	ListChildCount            int
 	ListSubtreeComplete       bool
 	ListSubtreeEnd            int
 	ListItemSource            source.ListItemMapping
@@ -131,6 +133,7 @@ type Document struct {
 	source       []byte
 	nodes        []Node
 	nodeIndex    map[NodeID]int
+	listChildIDs []NodeID
 	sections     []Section
 	sectionIndex map[NodeID]int
 	frontMatter  frontMatterEnvelope
@@ -166,7 +169,8 @@ func Parse(input []byte) (*Document, error) {
 	if err := resolveListItemParentIDs(nodes); err != nil {
 		return nil, fmt.Errorf("resolve list item parents: %w", err)
 	}
-	if err := resolveListItemSubtrees(nodes); err != nil {
+	listChildIDs, err := resolveListItemSubtrees(nodes)
+	if err != nil {
 		return nil, fmt.Errorf("resolve list item subtrees: %w", err)
 	}
 
@@ -190,6 +194,7 @@ func Parse(input []byte) (*Document, error) {
 		source:       snapshot,
 		nodes:        nodes,
 		nodeIndex:    nodeIndex,
+		listChildIDs: listChildIDs,
 		sections:     sections,
 		sectionIndex: sectionIndex,
 		frontMatter:  storedFrontMatter,
@@ -234,6 +239,22 @@ func (d *Document) SourceRange(range_ Range) ([]byte, bool) {
 		return nil, false
 	}
 	return append([]byte(nil), d.source[range_.Start:range_.End]...), true
+}
+
+// ListItemChildIDs returns a copied, source-ordered list of one supported list item's immediate supported child IDs.
+func (d *Document) ListItemChildIDs(id NodeID) ([]NodeID, bool) {
+	if d == nil {
+		return nil, false
+	}
+	node, ok := d.nodeByID(id)
+	if !ok || node.Kind != KindListItem || !node.Editable || node.ListChildStart < 0 || node.ListChildCount < 0 {
+		return nil, false
+	}
+	end := node.ListChildStart + node.ListChildCount
+	if end < node.ListChildStart || end > len(d.listChildIDs) {
+		return nil, false
+	}
+	return append([]NodeID(nil), d.listChildIDs[node.ListChildStart:end]...), true
 }
 
 func indexNodes(nodes []Node) (map[NodeID]int, error) {

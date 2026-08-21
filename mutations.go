@@ -96,6 +96,14 @@ func (d *Document) PrepareReplaceListItem(id NodeID, replacement []byte) (Change
 	return publicChangeSet(d.document.PrepareReplaceListItem(internalNodeID(id), replacement))
 }
 
+// PrepareReplaceListItemSubtree prepares replacement of one complete supported list-item subtree while preserving its external sibling shape and semantic parent.
+func (d *Document) PrepareReplaceListItemSubtree(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindListItem, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceListItemSubtree(internalNodeID(id), replacement))
+}
+
 // PrepareRemoveListItem prepares removal of one complete supported list-item subtree.
 func (d *Document) PrepareRemoveListItem(id NodeID) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindListItem, false); err != nil {

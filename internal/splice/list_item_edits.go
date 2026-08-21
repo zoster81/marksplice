@@ -13,6 +13,46 @@ func (d *Document) completeListItemTarget(id NodeID) (Node, error) {
 	return target, nil
 }
 
+// PrepareReplaceListItemSubtree prepares replacement of one complete supported list-item subtree while preserving its external sibling shape and semantic parent.
+func (d *Document) PrepareReplaceListItemSubtree(id NodeID, replacement []byte) (ChangeSet, error) {
+	target, err := d.completeListItemTarget(id)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if len(replacement) == 0 {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	removedSubtree, err := d.ownedListItemSubtree(target)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+
+	replaceRange := removedSubtree.Range
+	change, candidate, err := d.prepareCandidateChange(replaceRange, replacement, "list item subtree replacement")
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	candidateDocument, candidateItems, err := parseListItemMutationCandidate(candidate)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	replacementSubtree, err := candidateDocument.exactListItemSubtree(replacement, replaceRange.Start)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if len(candidateItems) != d.promotedListItemCount()-len(removedSubtree.IDs)+len(replacementSubtree.IDs) {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	patches := []patchTransform{{Range: replaceRange, ReplacementLength: len(replacement)}}
+	if err := d.validateOriginalListItemsAfterPatches(candidate, candidateItems, patches, removedSubtree.IDs, nil); err != nil {
+		return ChangeSet{}, err
+	}
+	if err := validateReplacedListItemSubtreeRoot(d.source, target, candidate, replacementSubtree, patches); err != nil {
+		return ChangeSet{}, err
+	}
+	return change, nil
+}
+
 // PrepareRemoveListItem prepares removal of one complete supported list-item subtree.
 // For a leaf item, the subtree is exactly its complete physical line.
 func (d *Document) PrepareRemoveListItem(id NodeID) (ChangeSet, error) {

@@ -275,27 +275,54 @@ func (d *Document) validateListItemSubtreePlacement(candidate []byte, candidateI
 	return validateCandidateListItemSibling(candidateItems, candidateOffset, anchor, patches)
 }
 
-func (d *Document) insertedListItemChildSubtree(fragment []byte, insertAt, parentAnchor int) (listItemSubtreeOwnership, error) {
-	if len(fragment) == 0 || insertAt < 0 || insertAt > len(d.source) || len(fragment) > len(d.source)-insertAt {
+func (d *Document) exactListItemSubtree(fragment []byte, start int) (listItemSubtreeOwnership, error) {
+	if len(fragment) == 0 || start < 0 || start > len(d.source) || len(fragment) > len(d.source)-start {
 		return listItemSubtreeOwnership{}, ErrInvalidReplacement
 	}
-	root, ok := d.listItemNodeAtLineStart(insertAt)
-	if !ok || !root.ListHasParent || root.ListParentAnchor != parentAnchor || !root.ListSubtreeComplete {
-		return listItemSubtreeOwnership{}, ErrInvalidReplacement
-	}
-	parent, ok := d.listItemNodeAtLineStart(parentAnchor)
-	if !ok || root.ListParentID != parent.ID {
+	root, ok := d.listItemNodeAtLineStart(start)
+	if !ok || !root.ListSubtreeComplete {
 		return listItemSubtreeOwnership{}, ErrInvalidReplacement
 	}
 	subtree, err := d.ownedListItemSubtree(root)
 	if err != nil {
 		return listItemSubtreeOwnership{}, err
 	}
-	expectedRange := Range{Start: insertAt, End: insertAt + len(fragment)}
+	expectedRange := Range{Start: start, End: start + len(fragment)}
 	if subtree.Range != expectedRange || !bytes.Equal(fragment, d.source[expectedRange.Start:expectedRange.End]) {
 		return listItemSubtreeOwnership{}, ErrInvalidReplacement
 	}
 	return subtree, nil
+}
+
+func (d *Document) insertedListItemChildSubtree(fragment []byte, insertAt, parentAnchor int) (listItemSubtreeOwnership, error) {
+	subtree, err := d.exactListItemSubtree(fragment, insertAt)
+	if err != nil {
+		return listItemSubtreeOwnership{}, err
+	}
+	root := subtree.Root
+	if !root.ListHasParent || root.ListParentAnchor != parentAnchor {
+		return listItemSubtreeOwnership{}, ErrInvalidReplacement
+	}
+	parent, ok := d.listItemNodeAtLineStart(parentAnchor)
+	if !ok || root.ListParentID != parent.ID {
+		return listItemSubtreeOwnership{}, ErrInvalidReplacement
+	}
+	return subtree, nil
+}
+
+func validateReplacedListItemSubtreeRoot(originalSource []byte, target Node, candidateSource []byte, replacement listItemSubtreeOwnership, patches []patchTransform) error {
+	root := replacement.Root
+	if root.ListHasParent != target.ListHasParent || !sameListItemSiblingShape(candidateSource, root.ListItemSource, originalSource, target.ListItemSource) {
+		return ErrInvalidReplacement
+	}
+	if !target.ListHasParent {
+		return nil
+	}
+	expectedParentAnchor, ok := listParentAnchorAfterPatches(target, patches)
+	if !ok || root.ListParentAnchor != expectedParentAnchor {
+		return ErrInvalidReplacement
+	}
+	return nil
 }
 
 func (d *Document) listItemNodeAtLineStart(lineStart int) (Node, bool) {

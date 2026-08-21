@@ -25,20 +25,26 @@ func resolveListItemParentIDs(nodes []Node) error {
 	return nil
 }
 
-func resolveListItemSubtrees(nodes []Node) error {
-	ordinalByID := make(map[NodeID]int)
+func resolveListItemSubtrees(nodes []Node) ([]NodeID, error) {
 	listIndexes := make([]int, 0)
+	ordinalByID := make(map[NodeID]int)
+	lastLineStart := -1
 	for i := range nodes {
 		node := &nodes[i]
 		if node.Kind != KindListItem || !node.Editable {
 			continue
 		}
 		if node.ListDirectChildCount < 0 || node.ListHasChildren != (node.ListDirectChildCount != 0) {
-			return fmt.Errorf("inconsistent supported list-item child metadata for %q", node.ID)
+			return nil, fmt.Errorf("inconsistent supported list-item child metadata for %q", node.ID)
 		}
 		if _, exists := ordinalByID[node.ID]; exists {
-			return fmt.Errorf("%w: %q", errDuplicateNodeID, node.ID)
+			return nil, fmt.Errorf("%w: %q", errDuplicateNodeID, node.ID)
 		}
+		lineStart := node.ListItemSource.LineRange.Start
+		if lineStart <= lastLineStart {
+			return nil, fmt.Errorf("supported list-item nodes are not in strict source order at %q", node.ID)
+		}
+		lastLineStart = lineStart
 		ordinalByID[node.ID] = len(listIndexes)
 		listIndexes = append(listIndexes, i)
 		node.ListSubtreeEnd = node.ListItemSource.LineRange.End
@@ -57,11 +63,38 @@ func resolveListItemSubtrees(nodes []Node) error {
 		}
 		parentOrdinal, ok := ordinalByID[parentID]
 		if !ok {
-			return fmt.Errorf("supported list-item parent %q for %q is missing", parentID, nodes[nodeIndex].ID)
+			return nil, fmt.Errorf("supported list-item parent %q for %q is missing", parentID, nodes[nodeIndex].ID)
 		}
 		supportedChildren[parentOrdinal]++
 	}
 	copy(remainingChildren, supportedChildren)
+
+	childOffsets := make([]int, len(listIndexes)+1)
+	for ordinal, childCount := range supportedChildren {
+		childOffsets[ordinal+1] = childOffsets[ordinal] + childCount
+	}
+	listChildIDs := make([]NodeID, childOffsets[len(listIndexes)])
+	childCursors := append([]int(nil), childOffsets[:len(listIndexes)]...)
+	for _, nodeIndex := range listIndexes {
+		parentID := nodes[nodeIndex].ListParentID
+		if parentID == "" {
+			continue
+		}
+		parentOrdinal := ordinalByID[parentID]
+		cursor := childCursors[parentOrdinal]
+		if cursor < childOffsets[parentOrdinal] || cursor >= childOffsets[parentOrdinal+1] {
+			return nil, fmt.Errorf("supported list-item child adjacency overflow for parent %q", parentID)
+		}
+		listChildIDs[cursor] = nodes[nodeIndex].ID
+		childCursors[parentOrdinal]++
+	}
+	for ordinal, nodeIndex := range listIndexes {
+		if childCursors[ordinal] != childOffsets[ordinal+1] {
+			return nil, fmt.Errorf("incomplete supported list-item child adjacency for %q", nodes[nodeIndex].ID)
+		}
+		nodes[nodeIndex].ListChildStart = childOffsets[ordinal]
+		nodes[nodeIndex].ListChildCount = supportedChildren[ordinal]
+	}
 
 	queue := make([]int, 0, len(listIndexes))
 	for ordinal := range listIndexes {
@@ -96,9 +129,9 @@ func resolveListItemSubtrees(nodes []Node) error {
 		}
 	}
 	if processed != len(listIndexes) {
-		return fmt.Errorf("supported list-item parent relation contains a cycle")
+		return nil, fmt.Errorf("supported list-item parent relation contains a cycle")
 	}
-	return nil
+	return listChildIDs, nil
 }
 
 func listItemSubtreeRange(item Node) Range {
