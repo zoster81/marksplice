@@ -81,6 +81,8 @@ type ListItem struct {
 	sourceRange Range
 	ordered     bool
 	marker      byte
+	parentID    NodeID
+	hasChildren bool
 }
 
 // ID returns the list item's snapshot-scoped node identity.
@@ -103,6 +105,20 @@ func (i ListItem) Ordered() bool {
 // Unordered items use '-', '*', or '+'; ordered items use '.' or ')'.
 func (i ListItem) Marker() byte {
 	return i.marker
+}
+
+// ParentID returns the immediate supported list-item parent's snapshot-scoped identity.
+// The boolean is false for root items and when the semantic parent exists but is not publicly promoted.
+func (i ListItem) ParentID() (NodeID, bool) {
+	if i.parentID.value == "" {
+		return NodeID{}, false
+	}
+	return i.parentID, true
+}
+
+// HasChildren reports whether the supported single-line item owns one or more direct child lists.
+func (i ListItem) HasChildren() bool {
+	return i.hasChildren
 }
 
 // Task is immutable typed detail for one promoted GFM task marker.
@@ -366,6 +382,8 @@ func (d *Document) ListItem(id NodeID) (ListItem, bool) {
 		sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End},
 		ordered:     node.ListOrdered,
 		marker:      node.ListMarker,
+		parentID:    publicNodeID(node.ListParentID),
+		hasChildren: node.ListHasChildren,
 	}, true
 }
 

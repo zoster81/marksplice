@@ -10,7 +10,7 @@ M1 is a feasibility gate. It does not freeze the full public API or implement th
 
 ## Deliverables
 
-- repository bootstrap with Apache-2.0 licensing and attribution;
+- repository bootstrap with Apache-2.0 licensing and attribution, now recorded retrospectively as M0 because the bootstrap and first M1 slice landed together in the root commit;
 - Goldmark isolated behind an internal parser adapter and configured with the single GFM profile;
 - minimal source snapshot, range, fingerprint, node, and prepared-change model;
 - representative structural edit tests that prove unchanged bytes remain identical;
@@ -128,6 +128,10 @@ Each row records the M1 evidence for GFM semantic recognition, exact source mapp
 | Inline emphasis/strong | GFM-compatible semantic model before structural editing | simple plain-text proof passes for `*`/`_` emphasis and `**`/`__` strong; compound/nested delimiter runs are outside M1 |
 
 The table is the final M1 evidence record. Future capability expansion belongs to later milestones; do not reinterpret a passing M1 row as feature completeness beyond the explicitly proven shapes.
+
+## Retrospective hardening
+
+The M0–M29 retrospective audit rechecked M1's foundational snapshot and patch primitives against the larger mutation surface built later. Snapshot copying, replacement-byte copying, stale-source fingerprinting, sorted disjoint patch validation, parser isolation, isolated-CR shadow parsing, and candidate reparsing remain valid. One fail-closed edge was strengthened: `ChangeSet.Apply` now computes the final result length with overflow-checked integer arithmetic and reports `ErrInvalidRange` rather than relying on allocation behavior if an extreme patch set would exceed representable `int` length. Focused tests cover growth, shrinkage, invalid operands, and `MaxInt` overflow without changing the public API or ordinary patch complexity.
 
 ## Exit decision
 

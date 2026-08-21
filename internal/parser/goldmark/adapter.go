@@ -86,7 +86,7 @@ func (a *Adapter) Parse(source []byte) ([]parser.Node, error) {
 			}
 			column := nextTableColumn
 			nextTableColumn++
-			observation, ok, err = observeTableCell(source, cell, column)
+			observation, ok = observeTableCell(source, cell, column)
 		} else {
 			observation, ok, err = observeNode(source, node)
 		}
@@ -243,30 +243,45 @@ func simpleStrikethroughContentRange(source []byte, strike *extensionast.Striket
 	return range_, true
 }
 
-func singleLineListItemContentRange(source []byte, item *ast.ListItem) (parser.Range, bool) {
-	if item.ChildCount() != 1 {
-		return parser.Range{}, false
+func simpleListItemContentRange(source []byte, item *ast.ListItem) (parser.Range, int, bool) {
+	first := item.FirstChild()
+	if first == nil {
+		return parser.Range{}, 0, false
 	}
 
 	var lines *text.Segments
-	switch child := item.FirstChild().(type) {
+	switch child := first.(type) {
 	case *ast.TextBlock:
 		lines = child.Lines()
 	case *ast.Paragraph:
 		lines = child.Lines()
 	default:
-		return parser.Range{}, false
+		return parser.Range{}, 0, false
 	}
 	if lines.Len() != 1 {
-		return parser.Range{}, false
+		return parser.Range{}, 0, false
+	}
+
+	directChildCount := 0
+	for child := first.NextSibling(); child != nil; child = child.NextSibling() {
+		list, ok := child.(*ast.List)
+		if !ok {
+			return parser.Range{}, 0, false
+		}
+		for listChild := list.FirstChild(); listChild != nil; listChild = listChild.NextSibling() {
+			if _, ok := listChild.(*ast.ListItem); !ok {
+				return parser.Range{}, 0, false
+			}
+			directChildCount++
+		}
 	}
 
 	line := lines.At(0)
 	range_ := parser.Range{Start: line.Start, End: paragraphContentEnd(source, line.Stop)}
 	if !range_.Valid(len(source)) || range_.Start == range_.End {
-		return parser.Range{}, false
+		return parser.Range{}, 0, false
 	}
-	return range_, true
+	return range_, directChildCount, true
 }
 
 func normalizeIsolatedCR(source []byte) []byte {

@@ -14,9 +14,7 @@ M18 adds:
 
 - `Document.PrepareRemoveListItem(NodeID) (ChangeSet, error)`.
 
-The ID must identify an existing promoted M4 `ListItem`.
-
-The operation removes exactly one complete physical source line owned by that leaf item:
+At the M18 exit, the ID had to identify an existing promoted M4 leaf `ListItem`, and the operation removed exactly one complete physical source line owned by that leaf item:
 
 - container/list indentation before the marker;
 - ordered number or unordered marker;
@@ -28,6 +26,8 @@ The operation removes exactly one complete physical source line owned by that le
 At EOF without a line terminator, removal ends exactly at EOF.
 
 Blank lines before or after the item are not owned by the item and remain byte-identical.
+
+M25 later broadens the same public operation to a parent only when M24's private subtree-completeness proof establishes the entire supported list-item subtree boundary. Leaf behavior remains byte-identical to the M18 contract.
 
 ## Public detail compatibility
 

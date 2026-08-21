@@ -76,7 +76,7 @@ For every expected heading M16 requires:
 
 This position-independent comparison is intentional: many original heading offsets legitimately change during a move, while their lexical/semantic heading boundaries must remain identical.
 
-The moved subtree is additionally parsed as the same standalone section fragment proof used by M14/M15. In the candidate, every moved fragment section and heading must reproduce the standalone fragment ranges at the calculated destination offset. The moved root must occupy exactly the moved source bytes.
+The moved subtree is snapshot-owned source whose complete `Section.Range()` and source-ordered descendant window were already proven by M9. A retrospective M0–M29 audit therefore removes the redundant standalone reparse that M16 originally reused from M14/M15. Candidate validation now compares the moved bytes directly with the original subtree and requires every moved section/body/heading range to reproduce its original subtree-relative offset at the destination. Internal descendant parent relationships are checked explicitly against the existing section index; only the moved root may acquire the anchor's parent. Caller-provided M14/M15 fragments still require independent standalone parsing because they do not have snapshot ownership.
 
 Finally, the candidate moved root and anchor must have identical parent presence and, when nested, the same candidate parent heading ID. This explicitly proves the requested sibling relation.
 
@@ -104,10 +104,11 @@ M16 adds reusable internal multi-patch preparation helpers in `internal/splice/m
 Let `n` be document bytes and `h` the number of supported sections. M16 performs:
 
 - O(h) discovery/copy of the logical expected section order;
-- O(k) standalone parsing of the moved `k`-byte subtree;
 - one O(n) candidate construction and parse;
 - O(h) source-ordered heading validation;
-- O(r) inserted-fragment validation for `r` moved subtree sections.
+- O(r) snapshot-owned moved-subtree validation for `r` moved sections.
+
+The original M16 implementation also performed an O(k) standalone parse of the moved `k`-byte subtree. The retrospective audit removes that redundant parse because M9 already owns and indexes the exact subtree source; no public contract or candidate-safety check is weakened.
 
 There is no repeated candidate parse per patch and no O(h²) heading search. The operation adds no persistent index, renderer, filesystem/network behavior, or public generic batch abstraction.
 
@@ -147,7 +148,7 @@ Mitigation: M16 detects an unchanged logical section order first and returns a f
 
 Moving bytes may join paragraph lines to Setext underlines even though all non-moved bytes remain byte-identical.
 
-Mitigation: the combined candidate must reproduce every expected heading's lexical boundary and moved-fragment source ranges exactly. Unsafe joins fail closed.
+Mitigation: the combined candidate must reproduce every expected heading's lexical boundary and the snapshot-owned moved subtree's relative section/body/heading ranges exactly. Unsafe joins fail closed.
 
 ## Evidence and exit decision
 
@@ -168,4 +169,4 @@ Focused public/internal tests now pass for:
 - logical move-order/index calculation in both directions;
 - candidate offset calculation before/after removal.
 
-M16 is green. The complete repository verification stack passes with M10 through M16 together: native `gofmt` diff checks, focused M12–M16 section regressions, `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build ./...`, generated package documentation, `staticcheck ./...`, `golangci-lint run` with zero issues, `govulncheck ./...` with no vulnerabilities, `gitleaks` with no leaks, the approved published-GFM conformance gate, and `git diff --check`.
+M16 is green. The original milestone verification passed with M10 through M16 together. The later M0–M29 retrospective audit reruns section regressions after removing the redundant moved-subtree standalone parse, then passes five consecutive full repository test runs, race detection, coverage execution, vet, build, generated package documentation, the approved published-GFM conformance gate, Staticcheck, standard golangci-lint with zero issues, production-only gocyclo/unparam with zero issues, govulncheck with no vulnerabilities, and Gitleaks with no leaks.

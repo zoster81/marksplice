@@ -6,7 +6,7 @@ Status: green — leaf list-item sibling insertion passed.
 
 Add source-preserving insertion of one promoted-shape leaf list item immediately before or after an existing promoted leaf item, while proving that the inserted line has the same structural list shape as its anchor.
 
-M19 builds on the private physical-line ownership introduced by M18. It remains intentionally limited to M4 leaf single-line list items and does not introduce multiline/list-subtree insertion.
+M19 builds on the private physical-line ownership introduced by M18. At its exit it was intentionally limited to M4 leaf single-line anchors and did not introduce multiline/list-subtree insertion. M26 later broadens the anchor to a complete supported parent subtree while keeping the inserted fragment itself a single M19 leaf line.
 
 ## Public contract
 
@@ -51,6 +51,8 @@ Inline/task syntax inside the single item content is allowed when the item remai
 
 `after` inserts at `anchor.LineRange.End`.
 
+M26 later preserves those boundaries for a leaf but uses the complete private `ListSubtreeEnd` for `after` when the anchor is a proven parent subtree; `before` remains at the anchor physical-line start.
+
 Both are zero-width patches using original-source coordinates.
 
 M19 does not synthesize a newline. A fragment without a terminator may parse standalone but will be rejected if host candidate parsing merges it with the anchor. Likewise, insertion after a final unterminated anchor fails closed if the new item cannot remain a separate list item.
@@ -68,7 +70,7 @@ M19 requires:
 3. the inserted item reproduces the standalone fragment mapping shifted to the insertion offset;
 4. the inserted candidate bytes are exactly the caller fragment.
 
-The anchor itself is included in survivor validation, so candidate semantics that accidentally turn it into a parent/non-leaf item fail closed.
+At the M19 exit, the leaf anchor itself was included in survivor validation, so candidate semantics that accidentally turned it into a parent/non-leaf item failed closed. M26 supersedes only that anchor restriction: a complete supported parent may be an anchor, and the inserted leaf must additionally prove the same immediate semantic parent relation as the candidate anchor.
 
 ## Error contract
 

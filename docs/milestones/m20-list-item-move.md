@@ -15,7 +15,7 @@ M20 adds:
 - `Document.PrepareMoveListItemBefore(itemID, anchorID) (ChangeSet, error)`;
 - `Document.PrepareMoveListItemAfter(itemID, anchorID) (ChangeSet, error)`.
 
-Both IDs must identify promoted M4 leaf single-line list items.
+At the M20 exit, both IDs had to identify promoted M4 leaf single-line list items. M27 later broadens the destination anchor to a complete supported parent subtree, and M28 broadens the moved source as well when its complete supported subtree is proven.
 
 Self-move is invalid.
 
@@ -34,7 +34,7 @@ Those bytes are reinserted unchanged at the destination anchor boundary.
 
 `before` targets `anchor.LineRange.Start`.
 
-`after` targets `anchor.LineRange.End`.
+`after` targets `anchor.LineRange.End` for a leaf. M27 later uses the equivalent private `ListSubtreeEnd` boundary, which remains the same for a leaf and extends past all proven descendants for a complete parent anchor.
 
 M20 prepares one source-bound `ChangeSet` with two disjoint patches in original snapshot coordinates:
 
@@ -99,7 +99,7 @@ A requested move that is already exactly satisfied is represented as a zero-patc
 - moving an item `before` an anchor when its `LineRange.End == anchor.LineRange.Start`;
 - moving an item `after` an anchor when `anchor.LineRange.End == item.LineRange.Start`.
 
-Destination shape is validated before recognizing the no-op.
+Destination shape is validated before recognizing the no-op. M27 additionally requires original semantic siblinghood and uses the complete anchor subtree end for `after` adjacency; M28 applies the same boundary to complete moved source subtrees.
 
 The returned no-op remains fingerprint-bound and therefore rejects stale source.
 

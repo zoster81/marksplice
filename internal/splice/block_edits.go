@@ -19,7 +19,7 @@ func (d *Document) PrepareReplace(id NodeID, replacement []byte) (ChangeSet, err
 
 // PrepareReplaceListItem prepares a source-preserving replacement of one single-line list item's content.
 func (d *Document) PrepareReplaceListItem(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.targetNode(id, KindListItem)
+	target, err := d.editableTargetNode(id, KindListItem, "list item")
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -31,7 +31,17 @@ func (d *Document) PrepareReplaceListItem(id NodeID, replacement []byte) (Change
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if err := validateListItemReplacement(candidate, target, len(replacement)); err != nil {
+	candidateItems, err := candidateListItemMappings(candidate)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if len(candidateItems) != d.promotedListItemCount() {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	if err := d.validateOriginalListItemsAfterPatch(candidate, candidateItems, target.ContentRange, len(replacement), listItemIDSet(target.ID), nil); err != nil {
+		return ChangeSet{}, err
+	}
+	if err := validateListItemReplacement(candidateItems, target, len(replacement)); err != nil {
 		return ChangeSet{}, err
 	}
 	return change, nil
@@ -167,26 +177,26 @@ func validateTableCellReplacement(candidate []byte, target Node, original source
 	return ErrInvalidReplacement
 }
 
-func validateListItemReplacement(candidate []byte, target Node, replacementLength int) error {
-	observations, err := parseCandidate(candidate)
-	if err != nil {
-		return err
+func validateListItemReplacement(candidateItems map[int]listItemCandidateMapping, target Node, replacementLength int) error {
+	candidateMapping, ok := candidateItems[target.ListItemSource.LineRange.Start]
+	if !ok {
+		return ErrInvalidReplacement
 	}
-	for _, observation := range observations {
-		if observation.Kind != parser.KindListItem || observation.Range.Start != target.ContentRange.Start {
-			continue
-		}
-		mapping, err := source.MapSingleLineListItem(candidate, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Ordered, observation.Marker)
-		if err != nil {
-			continue
-		}
-		if mapping.Range.Start == target.Range.Start &&
-			mapping.ContentRange == rangeWithLength(target.ContentRange.Start, replacementLength) &&
-			mapping.Ordered == target.ListOrdered && mapping.Marker == target.ListMarker {
-			return nil
-		}
+	mapping := candidateMapping.Mapping
+	delta := replacementLength - (target.ContentRange.End - target.ContentRange.Start)
+	expectedLine := Range{Start: target.ListItemSource.LineRange.Start, End: target.ListItemSource.LineRange.End + delta}
+	expectedRange := Range{Start: target.Range.Start, End: target.Range.End + delta}
+	expectedContent := rangeWithLength(target.ContentRange.Start, replacementLength)
+	if mapping.LineRange != expectedLine || mapping.Range != expectedRange || mapping.ContentRange != expectedContent ||
+		mapping.Ordered != target.ListOrdered || mapping.Marker != target.ListMarker ||
+		candidateMapping.HasParent != target.ListHasParent || candidateMapping.HasChildren != target.ListHasChildren ||
+		candidateMapping.DirectChildCount != target.ListDirectChildCount {
+		return ErrInvalidReplacement
 	}
-	return ErrInvalidReplacement
+	if target.ListHasParent && candidateMapping.ParentAnchor != target.ListParentAnchor {
+		return ErrInvalidReplacement
+	}
+	return nil
 }
 
 func validateTaskState(candidate []byte, target Node, checked bool) error {

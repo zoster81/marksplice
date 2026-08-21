@@ -242,10 +242,6 @@ func (d *Document) prepareMoveSection(id, anchorID NodeID, after bool) (ChangeSe
 	}
 
 	fragment := d.source[moved.Range.Start:moved.Range.End]
-	fragmentDocument, err := parseSectionFragment(fragment, moved.Level)
-	if err != nil {
-		return ChangeSet{}, err
-	}
 	patches := []source.Patch{
 		{Range: moved.Range},
 		{Range: Range{Start: insertAt, End: insertAt}, Replacement: fragment},
@@ -269,7 +265,7 @@ func (d *Document) prepareMoveSection(id, anchorID NodeID, after bool) (ChangeSe
 	if !ok {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	if err := validateInsertedSectionFragment(candidate, candidateDocument, fragment, fragmentDocument, movedCandidateIndex, movedOffset); err != nil {
+	if err := d.validateMovedSectionSubtree(candidate, candidateDocument, movedIndex, movedEnd, movedCandidateIndex, movedOffset); err != nil {
 		return ChangeSet{}, err
 	}
 	candidateMoved, ok := candidateDocument.SectionAt(movedCandidateIndex)

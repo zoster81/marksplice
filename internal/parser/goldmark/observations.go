@@ -125,11 +125,43 @@ func observeListItem(source []byte, item *ast.ListItem) (parser.Node, bool, erro
 	if !ok {
 		return parser.Node{}, false, nil
 	}
-	range_, ok := singleLineListItemContentRange(source, item)
+	range_, directChildCount, ok := simpleListItemContentRange(source, item)
 	if !ok {
 		return parser.Node{}, false, nil
 	}
-	return parser.Node{Kind: parser.KindListItem, Range: range_, Ordered: list.IsOrdered(), Marker: list.Marker}, true, nil
+	parentAnchor, hasParent := immediateListItemParentAnchor(source, list)
+	return parser.Node{
+		Kind:                 parser.KindListItem,
+		Range:                range_,
+		Ordered:              list.IsOrdered(),
+		Marker:               list.Marker,
+		HasListParent:        hasParent,
+		ListParentAnchor:     parentAnchor,
+		HasListChildren:      directChildCount != 0,
+		ListDirectChildCount: directChildCount,
+	}, true, nil
+}
+
+func immediateListItemParentAnchor(source []byte, list *ast.List) (int, bool) {
+	parentItem, ok := list.Parent().(*ast.ListItem)
+	if !ok {
+		return 0, false
+	}
+	for child := parentItem.FirstChild(); child != nil; child = child.NextSibling() {
+		lines := child.Lines()
+		if lines == nil || lines.Len() == 0 {
+			continue
+		}
+		start := lines.At(0).Start
+		if start < 0 || start > len(source) {
+			return 0, false
+		}
+		for start > 0 && source[start-1] != '\n' && source[start-1] != '\r' {
+			start--
+		}
+		return start, true
+	}
+	return 0, false
 }
 
 func observeAutoLink(source []byte, link *ast.AutoLink) (parser.Node, bool, error) {
@@ -214,19 +246,19 @@ func observeStrikethrough(source []byte, strike *extensionast.Strikethrough) (pa
 	return parser.Node{Kind: parser.KindStrikethrough, Range: range_}, true, nil
 }
 
-func observeTableCell(source []byte, cell *extensionast.TableCell, column int) (parser.Node, bool, error) {
+func observeTableCell(source []byte, cell *extensionast.TableCell, column int) (parser.Node, bool) {
 	parent := cell.Parent()
 	if parent == nil || parent.Kind() != extensionast.KindTableHeader && parent.Kind() != extensionast.KindTableRow || parent.Pos() < 0 {
-		return parser.Node{}, false, nil
+		return parser.Node{}, false
 	}
 	lines := cell.Lines()
 	if lines.Len() != 1 {
-		return parser.Node{}, false, nil
+		return parser.Node{}, false
 	}
 	segment := lines.At(0)
 	range_ := parser.Range{Start: segment.Start, End: segment.Stop}
 	if !range_.Valid(len(source)) || range_.Start == range_.End {
-		return parser.Node{}, false, nil
+		return parser.Node{}, false
 	}
 	return parser.Node{
 		Kind:           parser.KindTableCell,
@@ -234,7 +266,7 @@ func observeTableCell(source []byte, cell *extensionast.TableCell, column int) (
 		TableHeader:    parent.Kind() == extensionast.KindTableHeader,
 		TableColumn:    column,
 		TableRowAnchor: parent.Pos(),
-	}, true, nil
+	}, true
 }
 
 func observeTask(source []byte, checkbox *extensionast.TaskCheckBox) (parser.Node, bool, error) {

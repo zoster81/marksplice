@@ -82,6 +82,13 @@ type Node struct {
 	Checked                   bool
 	ListOrdered               bool
 	ListMarker                byte
+	ListHasParent             bool
+	ListParentAnchor          int
+	ListParentID              NodeID
+	ListHasChildren           bool
+	ListDirectChildCount      int
+	ListSubtreeComplete       bool
+	ListSubtreeEnd            int
 	ListItemSource            source.ListItemMapping
 	TableHeader               bool
 	TableColumn               int
@@ -156,6 +163,12 @@ func Parse(input []byte) (*Document, error) {
 		}
 		nodes = append(nodes, node)
 	}
+	if err := resolveListItemParentIDs(nodes); err != nil {
+		return nil, fmt.Errorf("resolve list item parents: %w", err)
+	}
+	if err := resolveListItemSubtrees(nodes); err != nil {
+		return nil, fmt.Errorf("resolve list item subtrees: %w", err)
+	}
 
 	nodeIndex, err := indexNodes(nodes)
 	if err != nil {
@@ -181,186 +194,6 @@ func Parse(input []byte) (*Document, error) {
 		sectionIndex: sectionIndex,
 		frontMatter:  storedFrontMatter,
 	}, nil
-}
-
-type tableRowSourceResult struct {
-	mapping  source.TableRowMapping
-	editable bool
-}
-
-func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observation parser.Node, tableRows map[int]tableRowSourceResult) (Node, error) {
-	if observation.Kind == parser.KindRawHTML {
-		return nodeFromRawHTMLObservation(snapshot, fingerprint, observation)
-	}
-	kind, err := mapKind(observation.Kind)
-	if err != nil {
-		return Node{}, err
-	}
-
-	contentRange := Range{Start: observation.Range.Start, End: observation.Range.End}
-	if !contentRange.Valid(len(snapshot)) {
-		return Node{}, fmt.Errorf("semantic node range [%d,%d) is outside source length %d", contentRange.Start, contentRange.End, len(snapshot))
-	}
-
-	node := Node{
-		Kind:          kind,
-		Range:         contentRange,
-		ContentRange:  contentRange,
-		Level:         observation.Level,
-		Checked:       observation.Checked,
-		ListOrdered:   observation.Ordered,
-		ListMarker:    observation.Marker,
-		TableHeader:   observation.TableHeader,
-		TableColumn:   observation.TableColumn,
-		Anchor:        observation.Anchor,
-		Destination:   observation.Destination,
-		Label:         observation.Label,
-		Title:         observation.Title,
-		HasTitle:      observation.HasTitle,
-		Value:         observation.Value,
-		AutoLinkEmail: observation.AutoLinkEmail,
-		TopLevel:      observation.TopLevel,
-	}
-	if kind == KindParagraph && observation.TopLevel {
-		node.Editable = true
-	}
-	switch kind {
-	case KindHeading:
-		mapping, err := source.MapTopLevelHeading(snapshot, contentRange, observation.Level)
-		if err != nil {
-			return Node{}, fmt.Errorf("map heading source: %w", err)
-		}
-		node.Range = mapping.Range
-		node.ContentRange = mapping.ContentRange
-		node.HeadingStyle = HeadingStyle(mapping.Style)
-		node.Editable = true
-	case KindTask:
-		mapping, err := source.MapTaskMarker(snapshot, observation.Range.Start)
-		if err != nil {
-			return Node{}, fmt.Errorf("map task marker: %w", err)
-		}
-		if mapping.Checked != observation.Checked {
-			return Node{}, fmt.Errorf("map task marker: semantic checked state %v disagrees with source state %v", observation.Checked, mapping.Checked)
-		}
-		node.Range = mapping.Range
-		node.ContentRange = mapping.ContentRange
-		node.Checked = mapping.Checked
-		node.Editable = true
-	case KindListItem:
-		mapping, err := source.MapSingleLineListItem(snapshot, contentRange, observation.Ordered, observation.Marker)
-		if err != nil {
-			return Node{}, fmt.Errorf("map list item source: %w", err)
-		}
-		node.Range = mapping.Range
-		node.ContentRange = mapping.ContentRange
-		node.ListOrdered = mapping.Ordered
-		node.ListMarker = mapping.Marker
-		node.ListItemSource = mapping
-		node.Editable = true
-	case KindTableCell:
-		mapping, editable, err := mapTableCellSource(snapshot, observation, contentRange, tableRows)
-		if err != nil {
-			return Node{}, fmt.Errorf("map table cell source: %w", err)
-		}
-		if editable {
-			node.TableCellSource = mapping
-			node.Editable = true
-		}
-	case KindFencedCode:
-		mapping, err := source.MapSingleLineFencedCode(snapshot, contentRange)
-		if err == nil {
-			node.FencedCodeSource = mapping
-			node.Editable = true
-		} else if !errors.Is(err, source.ErrUnsupportedFencedCodeShape) {
-			return Node{}, fmt.Errorf("map fenced code source: %w", err)
-		}
-	case KindStrikethrough:
-		mapping, err := source.MapSimpleStrikethrough(snapshot, contentRange)
-		if err == nil {
-			node.StrikethroughSource = mapping
-			node.Editable = true
-		} else if !errors.Is(err, source.ErrUnsupportedStrikethroughShape) {
-			return Node{}, fmt.Errorf("map strikethrough source: %w", err)
-		}
-	case KindInlineLink:
-		mapping, err := source.MapSimpleInlineLink(snapshot, observation.Anchor, contentRange, observation.Destination, observation.Title, observation.HasTitle)
-		if err == nil {
-			node.ContentRange = mapping.DestinationRange
-			node.InlineLinkSource = mapping
-			node.Editable = true
-		} else if !errors.Is(err, source.ErrUnsupportedInlineLinkShape) {
-			return Node{}, fmt.Errorf("map inline link source: %w", err)
-		}
-	case KindImage:
-		mapping, err := source.MapSimpleImage(snapshot, observation.Anchor, contentRange)
-		if err == nil {
-			node.ContentRange = mapping.DestinationRange
-			node.ImageSource = mapping
-			node.Editable = true
-		} else if !errors.Is(err, source.ErrUnsupportedImageShape) {
-			return Node{}, fmt.Errorf("map image source: %w", err)
-		}
-	case KindReferenceDefinition:
-		mapping, err := source.MapSingleLineReferenceDefinition(snapshot, contentRange, observation.Label, observation.Destination, observation.Title, observation.HasTitle)
-		if err == nil {
-			node.ContentRange = mapping.DestinationRange
-			node.ReferenceDefinitionSource = mapping
-			node.Editable = true
-		} else if !errors.Is(err, source.ErrUnsupportedReferenceDefinitionShape) {
-			return Node{}, fmt.Errorf("map reference definition source: %w", err)
-		}
-	case KindAutoLink:
-		mapping, err := source.MapAutoLink(snapshot, observation.Anchor, contentRange, observation.Value, observation.AutoLinkEmail)
-		if err == nil {
-			node.ContentRange = mapping.ContentRange
-			node.AutoLinkSource = mapping
-			node.Editable = true
-		} else if !errors.Is(err, source.ErrUnsupportedAutoLinkShape) {
-			return Node{}, fmt.Errorf("map autolink source: %w", err)
-		}
-	case KindCodeSpan:
-		mapping, err := source.MapSimpleCodeSpan(snapshot, observation.Anchor, contentRange)
-		if err == nil {
-			node.CodeSpanSource = mapping
-			node.Editable = true
-		} else if !errors.Is(err, source.ErrUnsupportedCodeSpanShape) {
-			return Node{}, fmt.Errorf("map code span source: %w", err)
-		}
-	case KindEmphasis, KindStrong:
-		mapping, err := source.MapSimpleEmphasis(snapshot, observation.Anchor, contentRange, observation.Level)
-		if err == nil {
-			node.EmphasisSource = mapping
-			node.Editable = true
-		} else if !errors.Is(err, source.ErrUnsupportedEmphasisShape) {
-			return Node{}, fmt.Errorf("map emphasis source: %w", err)
-		}
-	}
-	node.ID = makeNodeID(fingerprint, kind, node.Range)
-	return node, nil
-}
-
-func mapTableCellSource(snapshot []byte, observation parser.Node, contentRange Range, cache map[int]tableRowSourceResult) (source.TableCellMapping, bool, error) {
-	result, ok := cache[observation.TableRowAnchor]
-	if !ok {
-		row, err := source.MapTableRow(snapshot, observation.TableRowAnchor)
-		if err != nil {
-			if errors.Is(err, source.ErrUnsupportedTableCellShape) {
-				cache[observation.TableRowAnchor] = tableRowSourceResult{}
-				return source.TableCellMapping{}, false, nil
-			}
-			return source.TableCellMapping{}, false, err
-		}
-		result = tableRowSourceResult{mapping: row, editable: true}
-		cache[observation.TableRowAnchor] = result
-	}
-	if !result.editable || observation.TableColumn < 0 || observation.TableColumn >= len(result.mapping.Cells) {
-		return source.TableCellMapping{}, false, nil
-	}
-	mapping := result.mapping.Cells[observation.TableColumn]
-	if mapping.ContentRange != contentRange {
-		return source.TableCellMapping{}, false, nil
-	}
-	return mapping, true, nil
 }
 
 // Nodes returns a copy of the snapshot-local structural nodes.

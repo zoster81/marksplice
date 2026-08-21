@@ -85,10 +85,12 @@ func (c ChangeSet) Apply(source []byte) ([]byte, error) {
 
 	capacity := len(source)
 	for _, patch := range c.patches {
-		capacity += len(patch.Replacement) - (patch.Range.End - patch.Range.Start)
-	}
-	if capacity < 0 {
-		return nil, fmt.Errorf("%w: negative result capacity", ErrInvalidRange)
+		removed := patch.Range.End - patch.Range.Start
+		var ok bool
+		capacity, ok = adjustedResultLength(capacity, removed, len(patch.Replacement))
+		if !ok {
+			return nil, fmt.Errorf("%w: result length overflow", ErrInvalidRange)
+		}
 	}
 
 	result := make([]byte, 0, capacity)
@@ -100,4 +102,16 @@ func (c ChangeSet) Apply(source []byte) ([]byte, error) {
 	}
 	result = append(result, source[cursor:]...)
 	return result, nil
+}
+
+func adjustedResultLength(current, removed, replacement int) (int, bool) {
+	if current < 0 || removed < 0 || replacement < 0 || removed > current {
+		return 0, false
+	}
+	base := current - removed
+	maxInt := int(^uint(0) >> 1)
+	if replacement > maxInt-base {
+		return 0, false
+	}
+	return base + replacement, true
 }

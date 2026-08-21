@@ -96,7 +96,7 @@ func (d *Document) PrepareReplaceListItem(id NodeID, replacement []byte) (Change
 	return publicChangeSet(d.document.PrepareReplaceListItem(internalNodeID(id), replacement))
 }
 
-// PrepareRemoveListItem prepares removal of one complete promoted leaf list-item line.
+// PrepareRemoveListItem prepares removal of one complete supported list-item subtree.
 func (d *Document) PrepareRemoveListItem(id NodeID) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindListItem, false); err != nil {
 		return ChangeSet{}, err
@@ -104,7 +104,7 @@ func (d *Document) PrepareRemoveListItem(id NodeID) (ChangeSet, error) {
 	return publicChangeSet(d.document.PrepareRemoveListItem(internalNodeID(id)))
 }
 
-// PrepareInsertListItemBefore prepares insertion of one same-shape promoted leaf sibling immediately before the anchor item.
+// PrepareInsertListItemBefore prepares insertion of one complete same-shape supported list-item subtree immediately before a complete supported anchor subtree.
 func (d *Document) PrepareInsertListItemBefore(anchorID NodeID, fragment []byte) (ChangeSet, error) {
 	if _, err := d.promotedNode(anchorID, splice.KindListItem, false); err != nil {
 		return ChangeSet{}, err
@@ -112,7 +112,7 @@ func (d *Document) PrepareInsertListItemBefore(anchorID NodeID, fragment []byte)
 	return publicChangeSet(d.document.PrepareInsertListItemBefore(internalNodeID(anchorID), fragment))
 }
 
-// PrepareInsertListItemAfter prepares insertion of one same-shape promoted leaf sibling immediately after the anchor item.
+// PrepareInsertListItemAfter prepares insertion of one complete same-shape supported list-item subtree immediately after a complete supported anchor subtree.
 func (d *Document) PrepareInsertListItemAfter(anchorID NodeID, fragment []byte) (ChangeSet, error) {
 	if _, err := d.promotedNode(anchorID, splice.KindListItem, false); err != nil {
 		return ChangeSet{}, err
@@ -120,7 +120,15 @@ func (d *Document) PrepareInsertListItemAfter(anchorID NodeID, fragment []byte) 
 	return publicChangeSet(d.document.PrepareInsertListItemAfter(internalNodeID(anchorID), fragment))
 }
 
-// PrepareMoveListItemBefore prepares moving one complete promoted leaf list-item line immediately before a same-shape anchor item.
+// PrepareAppendListItemChild prepares appending one complete direct-child subtree to a fully supported list-item subtree.
+func (d *Document) PrepareAppendListItemChild(parentID NodeID, fragment []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(parentID, splice.KindListItem, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareAppendListItemChild(internalNodeID(parentID), fragment))
+}
+
+// PrepareMoveListItemBefore prepares moving one complete supported list-item subtree immediately before a complete same-shape anchor subtree.
 func (d *Document) PrepareMoveListItemBefore(id, anchorID NodeID) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindListItem, false); err != nil {
 		return ChangeSet{}, err
@@ -131,7 +139,7 @@ func (d *Document) PrepareMoveListItemBefore(id, anchorID NodeID) (ChangeSet, er
 	return publicChangeSet(d.document.PrepareMoveListItemBefore(internalNodeID(id), internalNodeID(anchorID)))
 }
 
-// PrepareMoveListItemAfter prepares moving one complete promoted leaf list-item line immediately after a same-shape anchor item.
+// PrepareMoveListItemAfter prepares moving one complete supported list-item subtree immediately after a complete same-shape anchor subtree.
 func (d *Document) PrepareMoveListItemAfter(id, anchorID NodeID) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindListItem, false); err != nil {
 		return ChangeSet{}, err

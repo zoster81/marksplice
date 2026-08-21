@@ -45,6 +45,39 @@ func TestNewChangeSetRejectsSameOffsetInsertions(t *testing.T) {
 	}
 }
 
+func TestAdjustedResultLengthRejectsInvalidAndOverflowingGrowth(t *testing.T) {
+	t.Parallel()
+
+	maxInt := int(^uint(0) >> 1)
+	tests := []struct {
+		name        string
+		current     int
+		removed     int
+		replacement int
+		want        int
+		ok          bool
+	}{
+		{name: "same length", current: 10, removed: 3, replacement: 3, want: 10, ok: true},
+		{name: "shrink", current: 10, removed: 4, replacement: 1, want: 7, ok: true},
+		{name: "grow", current: 10, removed: 2, replacement: 5, want: 13, ok: true},
+		{name: "removed exceeds current", current: 2, removed: 3, replacement: 0, ok: false},
+		{name: "negative current", current: -1, removed: 0, replacement: 0, ok: false},
+		{name: "negative removed", current: 1, removed: -1, replacement: 0, ok: false},
+		{name: "negative replacement", current: 1, removed: 0, replacement: -1, ok: false},
+		{name: "growth overflows int", current: maxInt, removed: 0, replacement: 1, ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := adjustedResultLength(tt.current, tt.removed, tt.replacement)
+			if ok != tt.ok || got != tt.want {
+				t.Fatalf("adjustedResultLength(%d,%d,%d) = (%d,%v), want (%d,%v)", tt.current, tt.removed, tt.replacement, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
 func TestChangeSetCopiesReplacementBytes(t *testing.T) {
 	t.Parallel()
 

@@ -138,6 +138,96 @@ func validateInsertedSectionFragment(candidate []byte, candidateDocument *Docume
 	return nil
 }
 
+func (d *Document) validateMovedSectionSubtree(candidate []byte, candidateDocument *Document, movedStart, movedEnd, candidateStart, candidateOffset int) error {
+	if movedStart < 0 || movedStart >= movedEnd || movedEnd > len(d.sections) || candidateStart < 0 {
+		return ErrInvalidReplacement
+	}
+	movedSections := d.sections[movedStart:movedEnd]
+	root := movedSections[0]
+	subtreeLength := root.Range.End - root.Range.Start
+	if !movedSectionBytesMatch(d.source, candidate, root.Range, candidateOffset) ||
+		candidateStart > candidateDocument.SectionCount() || len(movedSections) > candidateDocument.SectionCount()-candidateStart {
+		return ErrInvalidReplacement
+	}
+
+	for i, originalSection := range movedSections {
+		candidateSection, ok := candidateDocument.SectionAt(candidateStart + i)
+		if !ok || !sameMovedSectionRanges(originalSection, candidateSection, root.Range.Start, candidateOffset, subtreeLength) {
+			return ErrInvalidReplacement
+		}
+		if err := d.validateMovedSectionHeading(candidate, candidateDocument, originalSection, candidateSection, root.Range.Start, candidateOffset, subtreeLength); err != nil {
+			return err
+		}
+		if i != 0 && !d.sameMovedSectionParent(candidateDocument, originalSection, candidateSection, movedStart, candidateStart, i) {
+			return ErrInvalidReplacement
+		}
+	}
+	return nil
+}
+
+func movedSectionBytesMatch(original, candidate []byte, sourceRange Range, candidateOffset int) bool {
+	length := sourceRange.End - sourceRange.Start
+	if !sourceRange.Valid(len(original)) || length <= 0 || candidateOffset < 0 || candidateOffset > len(candidate) || length > len(candidate)-candidateOffset {
+		return false
+	}
+	return bytes.Equal(original[sourceRange.Start:sourceRange.End], candidate[candidateOffset:candidateOffset+length])
+}
+
+func sameMovedSectionRanges(original, candidate Section, sourceStart, destinationStart, subtreeLength int) bool {
+	expectedRange, ok := rebaseSectionRange(original.Range, sourceStart, destinationStart, subtreeLength)
+	if !ok {
+		return false
+	}
+	expectedBodyRange, ok := rebaseSectionRange(original.BodyRange, sourceStart, destinationStart, subtreeLength)
+	return ok && candidate.Level == original.Level && candidate.Range == expectedRange && candidate.BodyRange == expectedBodyRange
+}
+
+func (d *Document) validateMovedSectionHeading(candidate []byte, candidateDocument *Document, originalSection, candidateSection Section, sourceStart, destinationStart, subtreeLength int) error {
+	originalHeading, ok := d.nodeByID(originalSection.HeadingID)
+	if !ok {
+		return ErrInvalidReplacement
+	}
+	candidateHeading, ok := candidateDocument.nodeByID(candidateSection.HeadingID)
+	if !ok {
+		return ErrInvalidReplacement
+	}
+	expectedRange, ok := rebaseSectionRange(originalHeading.Range, sourceStart, destinationStart, subtreeLength)
+	if !ok {
+		return ErrInvalidReplacement
+	}
+	expectedContent, ok := rebaseSectionRange(originalHeading.ContentRange, sourceStart, destinationStart, subtreeLength)
+	if !ok || candidateHeading.Level != originalHeading.Level || candidateHeading.HeadingStyle != originalHeading.HeadingStyle ||
+		candidateHeading.Range != expectedRange || candidateHeading.ContentRange != expectedContent {
+		return ErrInvalidReplacement
+	}
+	if !bytes.Equal(d.source[originalHeading.Range.Start:originalHeading.Range.End], candidate[candidateHeading.Range.Start:candidateHeading.Range.End]) {
+		return ErrInvalidReplacement
+	}
+	return nil
+}
+
+func (d *Document) sameMovedSectionParent(candidateDocument *Document, originalSection, candidateSection Section, movedStart, candidateStart, relativeIndex int) bool {
+	parentIndex, ok := d.sectionIndex[originalSection.ParentHeadingID]
+	parentOffset := parentIndex - movedStart
+	if !originalSection.HasParent || !ok || parentOffset < 0 || parentOffset >= relativeIndex {
+		return false
+	}
+	candidateParent, ok := candidateDocument.SectionAt(candidateStart + parentOffset)
+	return ok && candidateSection.HasParent && candidateSection.ParentHeadingID == candidateParent.HeadingID
+}
+
+func rebaseSectionRange(range_ Range, sourceStart, destinationStart, subtreeLength int) (Range, bool) {
+	if range_.Start < sourceStart || range_.End < range_.Start {
+		return Range{}, false
+	}
+	startOffset := range_.Start - sourceStart
+	endOffset := range_.End - sourceStart
+	if endOffset > subtreeLength || destinationStart < 0 || destinationStart > int(^uint(0)>>1)-endOffset {
+		return Range{}, false
+	}
+	return Range{Start: destinationStart + startOffset, End: destinationStart + endOffset}, true
+}
+
 func sectionOrderAfterMove(sections []Section, movedStart, movedEnd int, anchorID NodeID, after bool) ([]Section, int, int, bool) {
 	if movedStart < 0 || movedStart >= movedEnd || movedEnd > len(sections) {
 		return nil, 0, 0, false
