@@ -99,8 +99,12 @@ type Node struct {
 	TableRowID                NodeID
 	TableAnchor               int
 	TableColumnCount          int
+	TablePreviousRowID        NodeID
+	TableNextRowID            NodeID
 	TableRowCellStart         int
 	TableRowCellCount         int
+	TableHeaderCellStart      int
+	TableHeaderCellCount      int
 	Editable                  bool
 	TableCellSource           source.TableCellMapping
 	TableRowSource            source.TableRowMapping
@@ -138,15 +142,16 @@ type frontMatterEnvelope struct {
 
 // Document is an immutable parsed source snapshot used by the feasibility slice.
 type Document struct {
-	source        []byte
-	nodes         []Node
-	nodeIndex     map[NodeID]int
-	listChildIDs  []NodeID
-	tableCellIDs  []NodeID
-	tableRowCount int
-	sections      []Section
-	sectionIndex  map[NodeID]int
-	frontMatter   frontMatterEnvelope
+	source             []byte
+	nodes              []Node
+	nodeIndex          map[NodeID]int
+	listChildIDs       []NodeID
+	tableCellIDs       []NodeID
+	tableHeaderCellIDs []NodeID
+	tableRowCount      int
+	sections           []Section
+	sectionIndex       map[NodeID]int
+	frontMatter        frontMatterEnvelope
 }
 
 // Parse creates a snapshot-local Marksplice model using the internal Goldmark adapter.
@@ -205,15 +210,16 @@ func Parse(input []byte) (*Document, error) {
 		}
 	}
 	return &Document{
-		source:        snapshot,
-		nodes:         nodes,
-		nodeIndex:     nodeIndex,
-		listChildIDs:  listChildIDs,
-		tableCellIDs:  tableModel.cellIDs,
-		tableRowCount: tableModel.rowCount,
-		sections:      sections,
-		sectionIndex:  sectionIndex,
-		frontMatter:   storedFrontMatter,
+		source:             snapshot,
+		nodes:              nodes,
+		nodeIndex:          nodeIndex,
+		listChildIDs:       listChildIDs,
+		tableCellIDs:       tableModel.cellIDs,
+		tableHeaderCellIDs: tableModel.headerCellIDs,
+		tableRowCount:      tableModel.rowCount,
+		sections:           sections,
+		sectionIndex:       sectionIndex,
+		frontMatter:        storedFrontMatter,
 	}, nil
 }
 

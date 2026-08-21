@@ -273,6 +273,10 @@ func observeTableCell(source []byte, cell *extensionast.TableCell, column int) (
 	if parent == nil || parent.Kind() != extensionast.KindTableHeader && parent.Kind() != extensionast.KindTableRow || parent.Pos() < 0 {
 		return parser.Node{}, false
 	}
+	table, ok := parent.Parent().(*extensionast.Table)
+	if !ok || table.Pos() < 0 {
+		return parser.Node{}, false
+	}
 	lines := cell.Lines()
 	if lines.Len() != 1 {
 		return parser.Node{}, false
@@ -288,6 +292,7 @@ func observeTableCell(source []byte, cell *extensionast.TableCell, column int) (
 		TableHeader:    parent.Kind() == extensionast.KindTableHeader,
 		TableColumn:    column,
 		TableRowAnchor: parent.Pos(),
+		TableAnchor:    table.Pos(),
 	}, true
 }
 

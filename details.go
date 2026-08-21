@@ -207,6 +207,8 @@ type TableRow struct {
 	id          NodeID
 	sourceRange Range
 	columnCount int
+	previousID  NodeID
+	nextID      NodeID
 }
 
 // ID returns the table row's snapshot-scoped node identity.
@@ -218,6 +220,22 @@ func (r TableRow) Range() Range { return r.sourceRange }
 
 // ColumnCount returns the semantic/source-proven number of columns in the body row.
 func (r TableRow) ColumnCount() int { return r.columnCount }
+
+// PreviousID returns the nearest promoted body row before this row in the same table.
+func (r TableRow) PreviousID() (NodeID, bool) {
+	if r.previousID.value == "" {
+		return NodeID{}, false
+	}
+	return r.previousID, true
+}
+
+// NextID returns the nearest promoted body row after this row in the same table.
+func (r TableRow) NextID() (NodeID, bool) {
+	if r.nextID.value == "" {
+		return NodeID{}, false
+	}
+	return r.nextID, true
+}
 
 // FencedCode is immutable typed detail for one promoted single-line fenced code block.
 type FencedCode struct {
@@ -492,16 +510,39 @@ func (d *Document) TableRowCellIDs(rowID NodeID) ([]NodeID, bool) {
 	return ids, true
 }
 
+// TableRowHeaderCellIDs returns the promoted non-empty header cells for the table that owns one promoted body row.
+// Empty header cells are omitted because M5 does not assign them public cell identities.
+func (d *Document) TableRowHeaderCellIDs(rowID NodeID) ([]NodeID, bool) {
+	if d == nil || d.document == nil {
+		return nil, false
+	}
+	internalIDs, ok := d.document.TableRowHeaderCellIDs(internalNodeID(rowID))
+	if !ok {
+		return nil, false
+	}
+	ids := make([]NodeID, len(internalIDs))
+	for index, id := range internalIDs {
+		ids[index] = publicNodeID(id)
+	}
+	return ids, true
+}
+
 // TableRow returns typed detail for one promoted GFM table body row.
 func (d *Document) TableRow(id NodeID) (TableRow, bool) {
 	node, err := d.promotedNode(id, splice.KindTableRow, false)
 	if err != nil {
 		return TableRow{}, false
 	}
+	previousID, nextID, ok := d.document.TableRowNeighborIDs(node.ID)
+	if !ok {
+		return TableRow{}, false
+	}
 	return TableRow{
 		id:          publicNodeID(node.ID),
 		sourceRange: Range{Start: node.TableRowSource.LineRange.Start, End: node.TableRowSource.LineRange.End},
 		columnCount: node.TableColumnCount,
+		previousID:  publicNodeID(previousID),
+		nextID:      publicNodeID(nextID),
 	}, true
 }
 

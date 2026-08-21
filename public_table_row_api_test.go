@@ -352,6 +352,120 @@ func TestPublicTableCellRowIdentityAndRowCellIDs(t *testing.T) {
 	}
 }
 
+func TestPublicTableRowNeighborIDsStayWithinSameTable(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| A | B |\n| - | - |\n| one | two |\n| three | four |\n| five | six |\n\n| X | Y |\n| - | - |\n| other | table |\n")
+	doc, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	rows := publicTableRows(t, doc)
+	if len(rows) != 4 {
+		t.Fatalf("table row count = %d, want 4", len(rows))
+	}
+	seen := map[marksplice.TableRow]struct{}{rows[0]: {}}
+	if _, ok := seen[rows[0]]; !ok {
+		t.Fatal("TableRow must remain comparable")
+	}
+
+	if previous, ok := rows[0].PreviousID(); ok || previous.String() != "" {
+		t.Fatalf("first row PreviousID() = %v, %v; want zero, false", previous, ok)
+	}
+	if next, ok := rows[0].NextID(); !ok || next != rows[1].ID() {
+		t.Fatalf("first row NextID() = %v, %v; want %v, true", next, ok, rows[1].ID())
+	}
+	if previous, ok := rows[1].PreviousID(); !ok || previous != rows[0].ID() {
+		t.Fatalf("middle row PreviousID() = %v, %v; want %v, true", previous, ok, rows[0].ID())
+	}
+	if next, ok := rows[1].NextID(); !ok || next != rows[2].ID() {
+		t.Fatalf("middle row NextID() = %v, %v; want %v, true", next, ok, rows[2].ID())
+	}
+	if next, ok := rows[2].NextID(); ok || next.String() != "" {
+		t.Fatalf("last first-table row NextID() = %v, %v; want zero, false", next, ok)
+	}
+	if previous, ok := rows[3].PreviousID(); ok || previous.String() != "" {
+		t.Fatalf("only second-table row PreviousID() = %v, %v; want zero, false", previous, ok)
+	}
+	if next, ok := rows[3].NextID(); ok || next.String() != "" {
+		t.Fatalf("only second-table row NextID() = %v, %v; want zero, false", next, ok)
+	}
+
+	var zero marksplice.TableRow
+	if previous, ok := zero.PreviousID(); ok || previous.String() != "" {
+		t.Fatalf("zero TableRow PreviousID() = %v, %v; want zero, false", previous, ok)
+	}
+	if next, ok := zero.NextID(); ok || next.String() != "" {
+		t.Fatalf("zero TableRow NextID() = %v, %v; want zero, false", next, ok)
+	}
+}
+
+func TestPublicTableRowHeaderCellIDsStayTableScopedAndSourceOrdered(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| A | | C |\n| - | - | - |\n| one | two | three |\n\n| X | Y |\n| - | - |\n| other | table |\n")
+	doc, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	rows := publicTableRows(t, doc)
+	if len(rows) != 2 {
+		t.Fatalf("table row count = %d, want 2", len(rows))
+	}
+
+	ids, ok := doc.TableRowHeaderCellIDs(rows[0].ID())
+	if !ok || len(ids) != 2 {
+		t.Fatalf("TableRowHeaderCellIDs(first table) = %v, %v; want 2 promoted header cells, true", ids, ok)
+	}
+	wantColumns := []int{0, 2}
+	for index, id := range ids {
+		cell, ok := doc.TableCell(id)
+		if !ok || !cell.Header() || cell.Column() != wantColumns[index] {
+			t.Fatalf("header cell %d = %+v, %v; want header column %d", index, cell, ok, wantColumns[index])
+		}
+		if rowID, ok := cell.RowID(); ok || rowID.String() != "" {
+			t.Fatalf("header cell RowID() = %v, %v; want zero, false", rowID, ok)
+		}
+	}
+	ids[0] = marksplice.NodeID{}
+	again, ok := doc.TableRowHeaderCellIDs(rows[0].ID())
+	if !ok || len(again) != 2 || again[0].String() == "" {
+		t.Fatalf("mutating returned header IDs changed document: %v, %v", again, ok)
+	}
+
+	secondIDs, ok := doc.TableRowHeaderCellIDs(rows[1].ID())
+	if !ok || len(secondIDs) != 2 {
+		t.Fatalf("TableRowHeaderCellIDs(second table) = %v, %v; want 2, true", secondIDs, ok)
+	}
+	for _, id := range secondIDs {
+		for _, firstID := range again {
+			if id == firstID {
+				t.Fatalf("header cell %v leaked across tables", id)
+			}
+		}
+	}
+
+	if ids, ok := doc.TableRowHeaderCellIDs(marksplice.NodeID{}); ok || ids != nil {
+		t.Fatalf("TableRowHeaderCellIDs(zero) = %v, %v; want nil, false", ids, ok)
+	}
+	var nilDoc *marksplice.Document
+	if ids, ok := nilDoc.TableRowHeaderCellIDs(rows[0].ID()); ok || ids != nil {
+		t.Fatalf("nil Document.TableRowHeaderCellIDs() = %v, %v; want nil, false", ids, ok)
+	}
+
+	emptyHeaderDoc, err := marksplice.Parse([]byte("| | |\n| - | - |\n| one | two |\n"))
+	if err != nil {
+		t.Fatalf("Parse(all-empty header) error = %v", err)
+	}
+	emptyHeaderRows := publicTableRows(t, emptyHeaderDoc)
+	if len(emptyHeaderRows) != 1 {
+		t.Fatalf("all-empty-header row count = %d, want 1", len(emptyHeaderRows))
+	}
+	if ids, ok := emptyHeaderDoc.TableRowHeaderCellIDs(emptyHeaderRows[0].ID()); !ok || len(ids) != 0 {
+		t.Fatalf("all-empty-header TableRowHeaderCellIDs() = %v, %v; want empty, true", ids, ok)
+	}
+}
+
 func publicBodyCellsForRow(t *testing.T, doc *marksplice.Document, rowID marksplice.NodeID) ([]marksplice.TableCell, int) {
 	t.Helper()
 

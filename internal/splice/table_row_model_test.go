@@ -177,6 +177,104 @@ func TestTableRowCellIDsFailsClosedOnCorruptAdjacency(t *testing.T) {
 	}
 }
 
+func TestTableRowModelBuildsSameTableNeighborsAndHeaderAdjacency(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| A | | C |\n| - | - | - |\n| one | two | three |\n| four | five | six |\n\n| X | Y |\n| - | - |\n| other | table |\n")
+	doc, err := Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	rows := internalTableRows(doc)
+	if len(rows) != 3 {
+		t.Fatalf("row count = %d, want 3", len(rows))
+	}
+	previous, next, ok := doc.TableRowNeighborIDs(rows[0].ID)
+	if !ok || previous != "" || next != rows[1].ID {
+		t.Fatalf("first-row neighbors = %q/%q, %v; want empty/%q, true", previous, next, ok, rows[1].ID)
+	}
+	previous, next, ok = doc.TableRowNeighborIDs(rows[1].ID)
+	if !ok || previous != rows[0].ID || next != "" {
+		t.Fatalf("second-row neighbors = %q/%q, %v; want %q/empty, true", previous, next, ok, rows[0].ID)
+	}
+	previous, next, ok = doc.TableRowNeighborIDs(rows[2].ID)
+	if !ok || previous != "" || next != "" {
+		t.Fatalf("other-table neighbors = %q/%q, %v; want empty/empty, true", previous, next, ok)
+	}
+
+	headerIDs, ok := doc.TableRowHeaderCellIDs(rows[0].ID)
+	if !ok || len(headerIDs) != 2 {
+		t.Fatalf("first-table header IDs = %v, %v; want 2, true", headerIDs, ok)
+	}
+	for index, column := range []int{0, 2} {
+		cell, ok := doc.nodeByID(headerIDs[index])
+		if !ok || !cell.TableHeader || cell.TableAnchor != rows[0].TableAnchor || cell.TableColumn != column {
+			t.Fatalf("header cell %d = %+v, %v; want table anchor %d column %d", index, cell, ok, rows[0].TableAnchor, column)
+		}
+	}
+	sameHeaderIDs, ok := doc.TableRowHeaderCellIDs(rows[1].ID)
+	if !ok || len(sameHeaderIDs) != len(headerIDs) || sameHeaderIDs[0] != headerIDs[0] || sameHeaderIDs[1] != headerIDs[1] {
+		t.Fatalf("same-table header IDs = %v, %v; want %v, true", sameHeaderIDs, ok, headerIDs)
+	}
+	otherHeaderIDs, ok := doc.TableRowHeaderCellIDs(rows[2].ID)
+	if !ok || len(otherHeaderIDs) != 2 || otherHeaderIDs[0] == headerIDs[0] {
+		t.Fatalf("other-table header IDs = %v, %v; want distinct 2-cell adjacency", otherHeaderIDs, ok)
+	}
+}
+
+func TestResolveTableRowCellsRejectsMismatchedTableMembership(t *testing.T) {
+	t.Parallel()
+
+	doc, err := Parse([]byte("| A | B |\n| - | - |\n| one | two |\n"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	nodes := append([]Node(nil), doc.nodes...)
+	cellIndex := firstBodyTableCellIndex(nodes)
+	if cellIndex < 0 {
+		t.Fatal("body table cell not found")
+	}
+	nodes[cellIndex].TableAnchor++
+	if _, err := resolveTableRowCells(nodes); err == nil {
+		t.Fatal("resolveTableRowCells(mismatched table anchor) error = nil, want fail-closed error")
+	}
+}
+
+func TestTableRowNavigationFailsClosedOnCorruptModel(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| A | B |\n| - | - |\n| one | two |\n| three | four |\n\n| X | Y |\n| - | - |\n| other | table |\n")
+	doc, err := Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	rows := internalTableRows(doc)
+	if len(rows) != 3 {
+		t.Fatalf("row count = %d, want 3", len(rows))
+	}
+
+	firstIndex := doc.nodeIndex[rows[0].ID]
+	doc.nodes[firstIndex].TableNextRowID = rows[2].ID
+	if previous, next, ok := doc.TableRowNeighborIDs(rows[0].ID); ok || previous != "" || next != "" {
+		t.Fatalf("corrupt neighbors = %q/%q, %v; want empty/empty, false", previous, next, ok)
+	}
+
+	doc, err = Parse(source)
+	if err != nil {
+		t.Fatalf("Parse(second) error = %v", err)
+	}
+	rows = internalTableRows(doc)
+	first := rows[0]
+	if first.TableHeaderCellCount < 2 {
+		t.Fatalf("header cell count = %d, want at least 2", first.TableHeaderCellCount)
+	}
+	start := first.TableHeaderCellStart
+	doc.tableHeaderCellIDs[start], doc.tableHeaderCellIDs[start+1] = doc.tableHeaderCellIDs[start+1], doc.tableHeaderCellIDs[start]
+	if ids, ok := doc.TableRowHeaderCellIDs(first.ID); ok || ids != nil {
+		t.Fatalf("corrupt header adjacency = %v, %v; want nil, false", ids, ok)
+	}
+}
+
 func firstTableRowIndex(nodes []Node) int {
 	for index, node := range nodes {
 		if node.Kind == KindTableRow && node.Editable {

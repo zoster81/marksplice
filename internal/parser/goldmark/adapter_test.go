@@ -76,8 +76,13 @@ func TestAdapterExposesSharedTableRowAnchors(t *testing.T) {
 
 	headerAnchor := bytes.Index(source, []byte("| A | B |"))
 	bodyAnchor := bytes.Index(source, []byte("| x | y |"))
+	tableAnchor := -1
 	var header, body []markparser.Node
 	for _, node := range nodes {
+		if node.Kind == markparser.KindTableRow {
+			tableAnchor = node.TableAnchor
+			continue
+		}
 		if node.Kind != markparser.KindTableCell {
 			continue
 		}
@@ -87,17 +92,20 @@ func TestAdapterExposesSharedTableRowAnchors(t *testing.T) {
 			body = append(body, node)
 		}
 	}
+	if tableAnchor < 0 {
+		t.Fatal("table row observation missing table anchor")
+	}
 	if len(header) != 2 || len(body) != 2 {
 		t.Fatalf("table cell counts = header %d body %d, want 2/2", len(header), len(body))
 	}
 	for column, node := range header {
-		if node.TableRowAnchor != headerAnchor || node.TableColumn != column {
-			t.Fatalf("header row/column = %d/%d, want %d/%d", node.TableRowAnchor, node.TableColumn, headerAnchor, column)
+		if node.TableRowAnchor != headerAnchor || node.TableAnchor != tableAnchor || node.TableColumn != column {
+			t.Fatalf("header row/table/column = %d/%d/%d, want %d/%d/%d", node.TableRowAnchor, node.TableAnchor, node.TableColumn, headerAnchor, tableAnchor, column)
 		}
 	}
 	for column, node := range body {
-		if node.TableRowAnchor != bodyAnchor || node.TableColumn != column {
-			t.Fatalf("body row/column = %d/%d, want %d/%d", node.TableRowAnchor, node.TableColumn, bodyAnchor, column)
+		if node.TableRowAnchor != bodyAnchor || node.TableAnchor != tableAnchor || node.TableColumn != column {
+			t.Fatalf("body row/table/column = %d/%d/%d, want %d/%d/%d", node.TableRowAnchor, node.TableAnchor, node.TableColumn, bodyAnchor, tableAnchor, column)
 		}
 	}
 }
