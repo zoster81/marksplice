@@ -1,7 +1,5 @@
 package splice
 
-import "github.com/zoster81/marksplice/internal/source"
-
 func (d *Document) completeListItemTarget(id NodeID) (Node, error) {
 	target, err := d.editableTargetNode(id, KindListItem, "list item")
 	if err != nil {
@@ -175,73 +173,90 @@ func (d *Document) PrepareMoveListItemAfter(id, anchorID NodeID) (ChangeSet, err
 	return d.prepareMoveListItem(id, anchorID, true)
 }
 
+type listItemMovePlan struct {
+	moved        Node
+	anchor       Node
+	movedSubtree listItemSubtreeOwnership
+	movedOffset  int
+	insertAt     int
+	operation    string
+	fragment     []byte
+}
+
 func (d *Document) prepareMoveListItem(id, anchorID NodeID, after bool) (ChangeSet, error) {
-	if id == anchorID {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	moved, err := d.completeListItemTarget(id)
+	plan, noOp, err := d.planListItemMove(id, anchorID, after)
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	anchor, err := d.completeListItemTarget(anchorID)
+	if noOp {
+		return d.newChanges(nil, plan.operation)
+	}
+	change, candidate, insertRange, err := d.prepareMoveCandidate(plan.movedSubtree.Range, plan.insertAt, plan.fragment, plan.operation)
 	if err != nil {
 		return ChangeSet{}, err
 	}
-
-	movedSubtree, err := d.ownedListItemSubtree(moved)
-	if err != nil {
-		return ChangeSet{}, err
-	}
-	movedRange := movedSubtree.Range
-	anchorRange := listItemSubtreeRange(anchor)
-	if rangesOverlap(movedRange, anchorRange) {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	if !sameListItemSiblingShape(d.source, moved.ListItemSource, d.source, anchor.ListItemSource) {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-
-	fragment := d.source[movedRange.Start:movedRange.End]
-	movedIDs := movedSubtree.IDs
-
-	insertAt := anchor.ListItemSource.LineRange.Start
-	operation := "list item move before"
-	alreadyPlaced := movedRange.End == anchor.ListItemSource.LineRange.Start
-	if after {
-		insertAt = anchor.ListSubtreeEnd
-		operation = "list item move after"
-		alreadyPlaced = anchor.ListSubtreeEnd == movedRange.Start
-	}
-	if alreadyPlaced && listItemsShareSemanticParent(moved, anchor) {
-		return d.newChanges(nil, operation)
-	}
-
-	movedOffset, ok := movedRangeCandidateOffset(movedRange, insertAt)
-	if !ok {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	insertRange := Range{Start: insertAt, End: insertAt}
-	patches := []source.Patch{
-		{Range: movedRange},
-		{Range: insertRange, Replacement: fragment},
-	}
-	transforms := []patchTransform{
-		{Range: movedRange},
-		{Range: insertRange, ReplacementLength: len(fragment)},
-	}
-	change, candidate, err := d.prepareCandidateChanges(patches, operation)
-	if err != nil {
-		return ChangeSet{}, err
-	}
-	candidateItems, err := candidateListItemMappings(candidate)
-	if err != nil {
-		return ChangeSet{}, err
-	}
-	if err := d.validateOriginalListItemsAfterPatches(candidate, candidateItems, transforms, movedIDs, listItemDirectChildCountDeltas(moved.ListParentID, anchor.ListParentID)); err != nil {
-		return ChangeSet{}, err
-	}
-	if err := d.validateListItemSubtreePlacement(candidate, candidateItems, movedSubtree, movedOffset, anchor, transforms); err != nil {
+	if err := d.validateListItemMoveCandidate(candidate, plan, insertRange); err != nil {
 		return ChangeSet{}, err
 	}
 	return change, nil
+}
+
+func (d *Document) planListItemMove(id, anchorID NodeID, after bool) (listItemMovePlan, bool, error) {
+	if id == anchorID {
+		return listItemMovePlan{}, false, ErrInvalidReplacement
+	}
+	moved, err := d.completeListItemTarget(id)
+	if err != nil {
+		return listItemMovePlan{}, false, err
+	}
+	anchor, err := d.completeListItemTarget(anchorID)
+	if err != nil {
+		return listItemMovePlan{}, false, err
+	}
+	movedSubtree, err := d.ownedListItemSubtree(moved)
+	if err != nil {
+		return listItemMovePlan{}, false, err
+	}
+	if rangesOverlap(movedSubtree.Range, listItemSubtreeRange(anchor)) ||
+		!sameListItemSiblingShape(d.source, moved.ListItemSource, d.source, anchor.ListItemSource) {
+		return listItemMovePlan{}, false, ErrInvalidReplacement
+	}
+	plan := listItemMovePlan{
+		moved:        moved,
+		anchor:       anchor,
+		movedSubtree: movedSubtree,
+		insertAt:     anchor.ListItemSource.LineRange.Start,
+		operation:    "list item move before",
+	}
+	alreadyPlaced := movedSubtree.Range.End == anchor.ListItemSource.LineRange.Start
+	if after {
+		plan.insertAt = anchor.ListSubtreeEnd
+		plan.operation = "list item move after"
+		alreadyPlaced = anchor.ListSubtreeEnd == movedSubtree.Range.Start
+	}
+	if alreadyPlaced && listItemsShareSemanticParent(moved, anchor) {
+		return plan, true, nil
+	}
+	movedOffset, ok := movedRangeCandidateOffset(movedSubtree.Range, plan.insertAt)
+	if !ok {
+		return listItemMovePlan{}, false, ErrInvalidReplacement
+	}
+	plan.movedOffset = movedOffset
+	plan.fragment = d.source[movedSubtree.Range.Start:movedSubtree.Range.End]
+	return plan, false, nil
+}
+
+func (d *Document) validateListItemMoveCandidate(candidate []byte, plan listItemMovePlan, insertRange Range) error {
+	candidateItems, err := candidateListItemMappings(candidate)
+	if err != nil {
+		return err
+	}
+	transforms := []patchTransform{
+		{Range: plan.movedSubtree.Range},
+		{Range: insertRange, ReplacementLength: len(plan.fragment)},
+	}
+	if err := d.validateOriginalListItemsAfterPatches(candidate, candidateItems, transforms, plan.movedSubtree.IDs, listItemDirectChildCountDeltas(plan.moved.ListParentID, plan.anchor.ListParentID)); err != nil {
+		return err
+	}
+	return d.validateListItemSubtreePlacement(candidate, candidateItems, plan.movedSubtree, plan.movedOffset, plan.anchor, transforms)
 }

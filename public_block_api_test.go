@@ -536,6 +536,57 @@ func TestPublicFencedCodeDetailAndReplacementPreserveSource(t *testing.T) {
 	}
 }
 
+func TestPublicMultilineFencedCodeDetailAndReplacementPreserveSource(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("before\r\n\r\n````go\r\nold one\r\nold two\r\n  `````\t\r\n\r\nafter\r\n")
+	doc, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	var summary marksplice.Node
+	var detail marksplice.FencedCode
+	for _, node := range doc.Nodes() {
+		if node.Kind() != marksplice.KindFencedCode {
+			continue
+		}
+		candidate, ok := doc.FencedCode(node.ID())
+		if !ok {
+			t.Fatalf("FencedCode(%q) ok = false", node.ID())
+		}
+		if got := string(source[candidate.Range().Start:candidate.Range().End]); got == "old one\r\nold two" {
+			summary, detail = node, candidate
+			break
+		}
+	}
+	if summary.ID().String() == "" {
+		t.Fatal("multiline fenced code not promoted")
+	}
+
+	replacement := []byte("new one\r\nnew two\r\nnew three")
+	prefix := append([]byte(nil), source[:detail.Range().Start]...)
+	suffix := append([]byte(nil), source[detail.Range().End:]...)
+	change, err := doc.PrepareReplaceFencedCode(summary.ID(), replacement)
+	if err != nil {
+		t.Fatalf("PrepareReplaceFencedCode(multiline) error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply(multiline) error = %v", err)
+	}
+	want := []byte("before\r\n\r\n````go\r\nnew one\r\nnew two\r\nnew three\r\n  `````\t\r\n\r\nafter\r\n")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("multiline result = %q, want %q", got, want)
+	}
+	if !bytes.Equal(got[:len(prefix)], prefix) || !bytes.Equal(got[len(prefix)+len(replacement):], suffix) {
+		t.Fatal("multiline fenced-code replacement modified bytes outside content range")
+	}
+
+	if _, err := doc.PrepareReplaceFencedCode(summary.ID(), []byte("safe\r\n````\r\nrest")); !errors.Is(err, marksplice.ErrInvalidReplacement) {
+		t.Fatalf("PrepareReplaceFencedCode(early closing fence) error = %v, want ErrInvalidReplacement", err)
+	}
+}
+
 func TestPublicFencedCodeFiltersUnsupportedShapeAndRejectsInvalidTargets(t *testing.T) {
 	t.Parallel()
 
@@ -546,6 +597,16 @@ func TestPublicFencedCodeFiltersUnsupportedShapeAndRejectsInvalidTargets(t *test
 	for _, node := range unsupported.Nodes() {
 		if node.Kind() == marksplice.KindFencedCode {
 			t.Fatal("unsupported fenced-code shape was promoted publicly")
+		}
+	}
+
+	indentedMultiline, err := marksplice.Parse([]byte("  ```go\n  one\n  two\n  ```\n"))
+	if err != nil {
+		t.Fatalf("Parse(indented multiline) error = %v", err)
+	}
+	for _, node := range indentedMultiline.Nodes() {
+		if node.Kind() == marksplice.KindFencedCode {
+			t.Fatal("indented multiline fenced-code shape was promoted publicly")
 		}
 	}
 
@@ -576,7 +637,7 @@ func TestPublicFencedCodeFiltersUnsupportedShapeAndRejectsInvalidTargets(t *test
 	if _, err := doc.PrepareReplaceFencedCode(paragraph.ID(), []byte("new")); !errors.Is(err, marksplice.ErrInvalidTargetKind) {
 		t.Fatalf("PrepareReplaceFencedCode(paragraph) error = %v, want ErrInvalidTargetKind", err)
 	}
-	for _, replacement := range [][]byte{nil, []byte("line one\nline two"), []byte("````")} {
+	for _, replacement := range [][]byte{nil, []byte("````")} {
 		if _, err := doc.PrepareReplaceFencedCode(block.ID(), replacement); !errors.Is(err, marksplice.ErrInvalidReplacement) {
 			t.Fatalf("PrepareReplaceFencedCode(%q) error = %v, want ErrInvalidReplacement", replacement, err)
 		}

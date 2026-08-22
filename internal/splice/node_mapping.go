@@ -49,6 +49,7 @@ func baseNodeFromObservation(kind Kind, contentRange Range, observation parser.N
 		ListMarker:           observation.Marker,
 		ListHasParent:        observation.HasListParent,
 		ListParentAnchor:     observation.ListParentAnchor,
+		ListContainerAnchor:  observation.ListContainerAnchor,
 		ListHasChildren:      observation.HasListChildren,
 		ListDirectChildCount: observation.ListDirectChildCount,
 		TableHeader:          observation.TableHeader,
@@ -56,6 +57,7 @@ func baseNodeFromObservation(kind Kind, contentRange Range, observation parser.N
 		TableRowAnchor:       observation.TableRowAnchor,
 		TableAnchor:          observation.TableAnchor,
 		TableColumnCount:     observation.TableColumnCount,
+		TableAlignments:      append([]TableAlignment(nil), observation.TableAlignments...),
 		Anchor:               observation.Anchor,
 		Destination:          observation.Destination,
 		Label:                observation.Label,
@@ -85,6 +87,8 @@ func mapBlockNodeSource(snapshot []byte, observation parser.Node, contentRange R
 		return mapTableRowNodeSource(snapshot, observation, tableRows, node)
 	case KindFencedCode:
 		return mapFencedCodeNodeSource(snapshot, contentRange, node)
+	case KindBlockquote:
+		return mapBlockquoteNodeSource(snapshot, observation, node)
 	default:
 		return nil
 	}
@@ -157,7 +161,7 @@ func mapTableRowNodeSource(snapshot []byte, observation parser.Node, tableRows m
 	if err != nil {
 		return fmt.Errorf("map table row source: %w", err)
 	}
-	if !editable || observation.TableColumnCount <= 0 || len(mapping.Cells) != observation.TableColumnCount {
+	if !editable || observation.TableColumnCount <= 0 || len(mapping.Cells) != observation.TableColumnCount || len(observation.TableAlignments) != observation.TableColumnCount {
 		return nil
 	}
 	node.Range = mapping.LineRange
@@ -181,8 +185,17 @@ func mapTableCellNodeSource(snapshot []byte, observation parser.Node, contentRan
 	return nil
 }
 
+func mapBlockquoteNodeSource(snapshot []byte, observation parser.Node, node *Node) error {
+	contentRange := Range{Start: observation.BlockquoteContentRange.Start, End: observation.BlockquoteContentRange.End}
+	if !contentRange.Valid(len(snapshot)) || contentRange.Start <= node.Range.Start || contentRange.End != node.Range.End {
+		return fmt.Errorf("map blockquote source: invalid content range [%d,%d) for source range [%d,%d)", contentRange.Start, contentRange.End, node.Range.Start, node.Range.End)
+	}
+	node.ContentRange = contentRange
+	return nil
+}
+
 func mapFencedCodeNodeSource(snapshot []byte, contentRange Range, node *Node) error {
-	mapping, err := source.MapSingleLineFencedCode(snapshot, contentRange)
+	mapping, err := source.MapFencedCode(snapshot, contentRange)
 	if err == nil {
 		node.FencedCodeSource = mapping
 		node.Editable = true

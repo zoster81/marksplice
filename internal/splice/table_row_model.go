@@ -3,14 +3,16 @@ package splice
 import "fmt"
 
 type tableRowModel struct {
+	rowIndexes    []int
+	cellIndexes   []int
 	cellIDs       []NodeID
 	headerCellIDs []NodeID
-	rowCount      int
 }
 
 type tableRowModelBuilder struct {
 	nodes                []Node
 	rowIndexes           []int
+	cellIndexes          []int
 	rowOrdinalByAnchor   map[int]int
 	firstRowIndexByTable map[int]int
 	bodyCellCounts       []int
@@ -40,7 +42,7 @@ func resolveTableRowCells(nodes []Node) (tableRowModel, error) {
 	if err != nil {
 		return tableRowModel{}, err
 	}
-	return tableRowModel{cellIDs: cellIDs, headerCellIDs: headerCellIDs, rowCount: len(builder.rowIndexes)}, nil
+	return tableRowModel{rowIndexes: builder.rowIndexes, cellIndexes: builder.cellIndexes, cellIDs: cellIDs, headerCellIDs: headerCellIDs}, nil
 }
 
 func (b *tableRowModelBuilder) collectRows() error {
@@ -92,6 +94,7 @@ func (b *tableRowModelBuilder) resolveCellMembership() error {
 		if cell.Kind != KindTableCell || !cell.Editable {
 			continue
 		}
+		b.cellIndexes = append(b.cellIndexes, index)
 		cell.TableRowID = ""
 		if cell.TableHeader {
 			if err := b.resolveHeaderCell(cell, lastHeaderColumns); err != nil {

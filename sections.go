@@ -67,11 +67,7 @@ func (d *Document) SectionChildHeadingIDs(headingID NodeID) ([]NodeID, bool) {
 	if !ok {
 		return nil, false
 	}
-	ids := make([]NodeID, len(internalIDs))
-	for index, id := range internalIDs {
-		ids[index] = publicNodeID(id)
-	}
-	return ids, true
+	return publicNodeIDs(internalIDs), true
 }
 
 func publicSection(section splice.Section) Section {

@@ -22,6 +22,18 @@ const (
 	KindHTMLBlock
 	KindImage
 	KindTableRow
+	KindThematicBreak
+	KindBlockquote
+)
+
+// TableAlignment identifies the semantic alignment of one GFM table column.
+type TableAlignment uint8
+
+const (
+	TableAlignmentDefault TableAlignment = iota
+	TableAlignmentLeft
+	TableAlignmentRight
+	TableAlignmentCenter
 )
 
 // Range is a half-open byte range [Start, End) in the parsed source snapshot.
@@ -37,29 +49,32 @@ func (r Range) Valid(total int) bool {
 
 // Node is a parser-independent semantic observation used by Marksplice internals.
 type Node struct {
-	Kind                 Kind
-	Range                Range
-	Level                int
-	Checked              bool
-	Ordered              bool
-	Marker               byte
-	HasListParent        bool
-	ListParentAnchor     int
-	HasListChildren      bool
-	ListDirectChildCount int
-	TableHeader          bool
-	TableColumn          int
-	TableRowAnchor       int
-	TableAnchor          int
-	TableColumnCount     int
-	Anchor               int
-	Destination          string
-	Label                string
-	Title                string
-	HasTitle             bool
-	Value                string
-	AutoLinkEmail        bool
-	TopLevel             bool
+	Kind                   Kind
+	Range                  Range
+	BlockquoteContentRange Range
+	Level                  int
+	Checked                bool
+	Ordered                bool
+	Marker                 byte
+	HasListParent          bool
+	ListParentAnchor       int
+	ListContainerAnchor    int
+	HasListChildren        bool
+	ListDirectChildCount   int
+	TableHeader            bool
+	TableColumn            int
+	TableRowAnchor         int
+	TableAnchor            int
+	TableColumnCount       int
+	TableAlignments        []TableAlignment
+	Anchor                 int
+	Destination            string
+	Label                  string
+	Title                  string
+	HasTitle               bool
+	Value                  string
+	AutoLinkEmail          bool
+	TopLevel               bool
 }
 
 // Adapter parses Markdown into Marksplice-owned semantic observations.

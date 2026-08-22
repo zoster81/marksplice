@@ -68,13 +68,13 @@ func (d *Document) PrepareReplaceTableCell(id NodeID, replacement []byte) (Chang
 	return change, nil
 }
 
-// PrepareReplaceFencedCode prepares a source-preserving replacement of one single-line fenced code block's content.
+// PrepareReplaceFencedCode prepares a source-preserving replacement of one supported fenced code block's content.
 func (d *Document) PrepareReplaceFencedCode(id NodeID, replacement []byte) (ChangeSet, error) {
 	target, err := d.editableTargetNode(id, KindFencedCode, "fenced code")
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if err := validateNonEmptySingleLine(replacement); err != nil {
+	if err := validateNonEmpty(replacement); err != nil {
 		return ChangeSet{}, err
 	}
 	mapping := target.FencedCodeSource
@@ -142,7 +142,7 @@ func validateFencedCodeReplacement(candidate []byte, target Node, original sourc
 		if observation.Kind != parser.KindFencedCode {
 			continue
 		}
-		mapping, err := source.MapSingleLineFencedCode(candidate, Range{Start: observation.Range.Start, End: observation.Range.End})
+		mapping, err := source.MapFencedCode(candidate, Range{Start: observation.Range.Start, End: observation.Range.End})
 		if err != nil {
 			continue
 		}

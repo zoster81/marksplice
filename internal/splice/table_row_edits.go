@@ -1,7 +1,5 @@
 package splice
 
-import "github.com/zoster81/marksplice/internal/source"
-
 // PrepareReplaceTableRow prepares replacement of one complete promoted GFM table body row.
 func (d *Document) PrepareReplaceTableRow(id NodeID, replacement []byte) (ChangeSet, error) {
 	target, err := d.tableRowTarget(id)
@@ -113,64 +111,88 @@ func (d *Document) PrepareMoveTableRowAfter(id, anchorID NodeID) (ChangeSet, err
 	return d.prepareMoveTableRow(id, anchorID, true)
 }
 
+type tableRowMovePlan struct {
+	moved      Node
+	anchor     Node
+	movedRange Range
+	insertAt   int
+	operation  string
+	fragment   []byte
+}
+
 func (d *Document) prepareMoveTableRow(id, anchorID NodeID, after bool) (ChangeSet, error) {
-	if id == anchorID {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	moved, err := d.tableRowTarget(id)
+	plan, noOp, err := d.planTableRowMove(id, anchorID, after)
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	anchor, err := d.tableRowTarget(anchorID)
+	if noOp {
+		return d.newChanges(nil, plan.operation)
+	}
+	change, candidate, insertRange, err := d.prepareMoveCandidate(plan.movedRange, plan.insertAt, plan.fragment, plan.operation)
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if moved.TableAnchor != anchor.TableAnchor {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	operation := "table row move before"
-	insertAt := anchor.TableRowSource.LineRange.Start
-	if after {
-		operation = "table row move after"
-		insertAt = anchor.TableRowSource.LineRange.End
-	}
-	if !after && moved.TableRowSource.LineRange.End == anchor.TableRowSource.LineRange.Start ||
-		after && anchor.TableRowSource.LineRange.End == moved.TableRowSource.LineRange.Start {
-		return d.newChanges(nil, operation)
-	}
-	movedRange := moved.TableRowSource.LineRange
-	if insertAt > movedRange.Start && insertAt < movedRange.End {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	fragment := d.source[movedRange.Start:movedRange.End]
-	patchesSource := []source.Patch{
-		{Range: movedRange},
-		{Range: Range{Start: insertAt, End: insertAt}, Replacement: fragment},
-	}
-	change, candidate, err := d.prepareCandidateChanges(patchesSource, operation)
-	if err != nil {
-		return ChangeSet{}, err
-	}
-	candidateIndex, err := parseTableRowMutationCandidate(candidate)
-	if err != nil {
-		return ChangeSet{}, err
-	}
-	if candidateIndex.rowCount != d.promotedTableRowCount() {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	patches := []patchTransform{
-		{Range: movedRange},
-		{Range: Range{Start: insertAt, End: insertAt}, ReplacementLength: len(fragment)},
-	}
-	if err := d.validateOriginalTableModelAfterPatches(candidate, candidateIndex, patches, &moved); err != nil {
-		return ChangeSet{}, err
-	}
-	movedOffset, ok := movedRangeCandidateOffset(movedRange, insertAt)
-	if !ok {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	if err := d.validateMovedTableRow(candidate, candidateIndex, moved, anchor, movedOffset, patches); err != nil {
+	if err := d.validateTableRowMoveCandidate(candidate, plan, insertRange); err != nil {
 		return ChangeSet{}, err
 	}
 	return change, nil
+}
+
+func (d *Document) planTableRowMove(id, anchorID NodeID, after bool) (tableRowMovePlan, bool, error) {
+	if id == anchorID {
+		return tableRowMovePlan{}, false, ErrInvalidReplacement
+	}
+	moved, err := d.tableRowTarget(id)
+	if err != nil {
+		return tableRowMovePlan{}, false, err
+	}
+	anchor, err := d.tableRowTarget(anchorID)
+	if err != nil {
+		return tableRowMovePlan{}, false, err
+	}
+	if moved.TableAnchor != anchor.TableAnchor {
+		return tableRowMovePlan{}, false, ErrInvalidReplacement
+	}
+	plan := tableRowMovePlan{
+		moved:      moved,
+		anchor:     anchor,
+		movedRange: moved.TableRowSource.LineRange,
+		insertAt:   anchor.TableRowSource.LineRange.Start,
+		operation:  "table row move before",
+	}
+	if after {
+		plan.insertAt = anchor.TableRowSource.LineRange.End
+		plan.operation = "table row move after"
+	}
+	if !after && plan.movedRange.End == anchor.TableRowSource.LineRange.Start ||
+		after && anchor.TableRowSource.LineRange.End == plan.movedRange.Start {
+		return plan, true, nil
+	}
+	if plan.insertAt > plan.movedRange.Start && plan.insertAt < plan.movedRange.End {
+		return tableRowMovePlan{}, false, ErrInvalidReplacement
+	}
+	plan.fragment = d.source[plan.movedRange.Start:plan.movedRange.End]
+	return plan, false, nil
+}
+
+func (d *Document) validateTableRowMoveCandidate(candidate []byte, plan tableRowMovePlan, insertRange Range) error {
+	candidateIndex, err := parseTableRowMutationCandidate(candidate)
+	if err != nil {
+		return err
+	}
+	if candidateIndex.rowCount != d.promotedTableRowCount() {
+		return ErrInvalidReplacement
+	}
+	transforms := []patchTransform{
+		{Range: plan.movedRange},
+		{Range: insertRange, ReplacementLength: len(plan.fragment)},
+	}
+	if err := d.validateOriginalTableModelAfterPatches(candidate, candidateIndex, transforms, &plan.moved); err != nil {
+		return err
+	}
+	movedOffset, ok := movedRangeCandidateOffset(plan.movedRange, plan.insertAt)
+	if !ok {
+		return ErrInvalidReplacement
+	}
+	return d.validateMovedTableRow(candidate, candidateIndex, plan.moved, plan.anchor, movedOffset, transforms)
 }

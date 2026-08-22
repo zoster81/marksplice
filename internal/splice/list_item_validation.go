@@ -25,18 +25,7 @@ func (d *Document) parseListItemSubtreeFragment(fragment []byte, anchor source.L
 		return nil, listItemSubtreeOwnership{}, fmt.Errorf("%w: list-item fragment parse: %v", ErrInvalidReplacement, err)
 	}
 
-	var root Node
-	foundRoot := false
-	for _, node := range fragmentDocument.nodes {
-		if node.Kind != KindListItem || !node.Editable || node.ListItemSource.LineRange.Start != 0 {
-			continue
-		}
-		if foundRoot {
-			return nil, listItemSubtreeOwnership{}, ErrInvalidReplacement
-		}
-		root = node
-		foundRoot = true
-	}
+	root, foundRoot := fragmentDocument.listItemNodeAtLineStart(0)
 	if !foundRoot || root.ListHasParent {
 		return nil, listItemSubtreeOwnership{}, ErrInvalidReplacement
 	}
@@ -107,10 +96,14 @@ func parseListItemMutationCandidate(candidate []byte) (*Document, map[int]listIt
 }
 
 func listItemCandidateMappingsFromDocument(document *Document) (map[int]listItemCandidateMapping, error) {
-	items := make(map[int]listItemCandidateMapping)
-	for _, node := range document.nodes {
-		if node.Kind != KindListItem {
-			continue
+	if document == nil {
+		return nil, ErrInvalidReplacement
+	}
+	items := make(map[int]listItemCandidateMapping, len(document.listItemIndexes))
+	for _, nodeIndex := range document.listItemIndexes {
+		node, ok := document.indexedEditableNode(nodeIndex, KindListItem)
+		if !ok {
+			return nil, ErrInvalidReplacement
 		}
 		mapping := node.ListItemSource
 		if _, exists := items[mapping.LineRange.Start]; exists {
@@ -132,44 +125,53 @@ func (d *Document) validateOriginalListItemsAfterPatch(candidate []byte, candida
 }
 
 func (d *Document) validateOriginalListItemsAfterPatches(candidate []byte, candidateItems map[int]listItemCandidateMapping, patches []patchTransform, skipIDs map[NodeID]struct{}, childCountDeltas map[NodeID]int) error {
-	for _, originalNode := range d.nodes {
-		if originalNode.Kind != KindListItem {
+	ordered, ok := orderedPatchTransforms(patches)
+	if !ok {
+		return ErrInvalidReplacement
+	}
+	for _, nodeIndex := range d.listItemIndexes {
+		original, ok := d.indexedEditableNode(nodeIndex, KindListItem)
+		if !ok {
+			return ErrInvalidReplacement
+		}
+		if _, skip := skipIDs[original.ID]; skip {
 			continue
 		}
-		if _, skip := skipIDs[originalNode.ID]; skip {
-			continue
-		}
-		original := originalNode.ListItemSource
-		expectedLine, ok := rangeAfterPatches(original.LineRange, patches)
-		if !ok {
+		if !d.originalListItemSurvives(candidate, candidateItems, original, ordered, childCountDeltas[original.ID]) {
 			return ErrInvalidReplacement
-		}
-		expectedRange, ok := rangeAfterPatches(original.Range, patches)
-		if !ok {
-			return ErrInvalidReplacement
-		}
-		expectedContent, ok := rangeAfterPatches(original.ContentRange, patches)
-		if !ok {
-			return ErrInvalidReplacement
-		}
-
-		candidateMapping, ok := candidateItems[expectedLine.Start]
-		if !ok || !sameListItemLexicalMapping(candidate, candidateMapping.Mapping, d.source, original, expectedLine, expectedRange, expectedContent) ||
-			candidateMapping.HasParent != originalNode.ListHasParent {
-			return ErrInvalidReplacement
-		}
-		expectedChildCount := originalNode.ListDirectChildCount + childCountDeltas[originalNode.ID]
-		if expectedChildCount < 0 || candidateMapping.DirectChildCount != expectedChildCount || candidateMapping.HasChildren != (expectedChildCount != 0) {
-			return ErrInvalidReplacement
-		}
-		if originalNode.ListHasParent {
-			expectedParentAnchor, ok := listParentAnchorAfterPatches(originalNode, patches)
-			if !ok || candidateMapping.ParentAnchor != expectedParentAnchor {
-				return ErrInvalidReplacement
-			}
 		}
 	}
 	return nil
+}
+
+func (d *Document) originalListItemSurvives(candidate []byte, candidateItems map[int]listItemCandidateMapping, originalNode Node, ordered []patchTransform, childCountDelta int) bool {
+	original := originalNode.ListItemSource
+	expectedLine, ok := rangeAfterOrderedPatches(original.LineRange, ordered)
+	if !ok {
+		return false
+	}
+	expectedRange, ok := rangeAfterOrderedPatches(original.Range, ordered)
+	if !ok {
+		return false
+	}
+	expectedContent, ok := rangeAfterOrderedPatches(original.ContentRange, ordered)
+	if !ok {
+		return false
+	}
+	candidateMapping, ok := candidateItems[expectedLine.Start]
+	if !ok || !sameListItemLexicalMapping(candidate, candidateMapping.Mapping, d.source, original, expectedLine, expectedRange, expectedContent) ||
+		candidateMapping.HasParent != originalNode.ListHasParent {
+		return false
+	}
+	expectedChildCount := originalNode.ListDirectChildCount + childCountDelta
+	if expectedChildCount < 0 || candidateMapping.DirectChildCount != expectedChildCount || candidateMapping.HasChildren != (expectedChildCount != 0) {
+		return false
+	}
+	if !originalNode.ListHasParent {
+		return true
+	}
+	expectedParentAnchor, ok := listParentAnchorAfterOrderedPatches(originalNode, ordered)
+	return ok && candidateMapping.ParentAnchor == expectedParentAnchor
 }
 
 func sameListItemLexicalMapping(candidate []byte, mapped source.ListItemMapping, originalSource []byte, original source.ListItemMapping, expectedLine, expectedRange, expectedContent Range) bool {
@@ -184,6 +186,14 @@ func sameListItemLexicalMapping(candidate []byte, mapped source.ListItemMapping,
 }
 
 func listParentAnchorAfterPatches(item Node, patches []patchTransform) (int, bool) {
+	ordered, ok := orderedPatchTransforms(patches)
+	if !ok {
+		return 0, false
+	}
+	return listParentAnchorAfterOrderedPatches(item, ordered)
+}
+
+func listParentAnchorAfterOrderedPatches(item Node, ordered []patchTransform) (int, bool) {
 	if !item.ListHasParent {
 		return 0, true
 	}
@@ -192,9 +202,9 @@ func listParentAnchorAfterPatches(item Node, patches []patchTransform) (int, boo
 	// Transforming that byte keeps the anchor right-biased when insertion occurs
 	// exactly before the parent while remaining independent of edits later in the
 	// same parent line. This works identically for supported and unsupported parents.
-	expectedParentSource, ok := rangeAfterPatches(
+	expectedParentSource, ok := rangeAfterOrderedPatches(
 		Range{Start: item.ListParentAnchor, End: item.ListParentAnchor + 1},
-		patches,
+		ordered,
 	)
 	if !ok {
 		return 0, false
@@ -231,28 +241,33 @@ func listItemsShareSemanticParent(left, right Node) bool {
 func (d *Document) validateListItemSubtreePlacement(candidate []byte, candidateItems map[int]listItemCandidateMapping, subtree listItemSubtreeOwnership, candidateOffset int, anchor Node, patches []patchTransform) error {
 	subtreeLength := subtree.Range.End - subtree.Range.Start
 	candidateRange := Range{Start: candidateOffset, End: candidateOffset + subtreeLength}
-	if subtreeLength <= 0 || candidateRange.Start < 0 || candidateRange.End > len(candidate) {
+	if subtreeLength <= 0 || candidateRange.Start < 0 || candidateRange.End > len(candidate) ||
+		!bytes.Equal(d.source[subtree.Range.Start:subtree.Range.End], candidate[candidateRange.Start:candidateRange.End]) ||
+		candidateListItemCountWithinRange(candidateItems, candidateRange) != len(subtree.IDs) {
 		return ErrInvalidReplacement
 	}
-	if !bytes.Equal(d.source[subtree.Range.Start:subtree.Range.End], candidate[candidateRange.Start:candidateRange.End]) {
-		return ErrInvalidReplacement
+	if err := d.validatePlacedListItemSubtreeMappings(candidate, candidateItems, subtree, candidateOffset-subtree.Range.Start); err != nil {
+		return err
 	}
+	return validateCandidateListItemSibling(candidateItems, candidateOffset, anchor, patches)
+}
 
-	candidateCount := 0
+func candidateListItemCountWithinRange(candidateItems map[int]listItemCandidateMapping, range_ Range) int {
+	count := 0
 	for _, candidateMapping := range candidateItems {
 		lineRange := candidateMapping.Mapping.LineRange
-		if lineRange.Start >= candidateRange.Start && lineRange.End <= candidateRange.End {
-			candidateCount++
+		if lineRange.Start >= range_.Start && lineRange.End <= range_.End {
+			count++
 		}
 	}
-	if candidateCount != len(subtree.IDs) {
-		return ErrInvalidReplacement
-	}
+	return count
+}
 
-	delta := candidateOffset - subtree.Range.Start
-	for _, originalNode := range d.nodes {
-		if _, inSubtree := subtree.IDs[originalNode.ID]; !inSubtree {
-			continue
+func (d *Document) validatePlacedListItemSubtreeMappings(candidate []byte, candidateItems map[int]listItemCandidateMapping, subtree listItemSubtreeOwnership, delta int) error {
+	for id := range subtree.IDs {
+		originalNode, ok := d.nodeByID(id)
+		if !ok || originalNode.Kind != KindListItem {
+			return ErrInvalidReplacement
 		}
 		original := originalNode.ListItemSource
 		expectedLine := shiftedRange(original.LineRange, delta)
@@ -263,16 +278,15 @@ func (d *Document) validateListItemSubtreePlacement(candidate []byte, candidateI
 			candidateMapping.HasChildren != originalNode.ListHasChildren || candidateMapping.DirectChildCount != originalNode.ListDirectChildCount {
 			return ErrInvalidReplacement
 		}
-		if originalNode.ID != subtree.Root.ID {
-			if candidateMapping.HasParent != originalNode.ListHasParent {
-				return ErrInvalidReplacement
-			}
-			if originalNode.ListHasParent && candidateMapping.ParentAnchor != originalNode.ListParentAnchor+delta {
-				return ErrInvalidReplacement
-			}
+		if originalNode.ID == subtree.Root.ID {
+			continue
+		}
+		if candidateMapping.HasParent != originalNode.ListHasParent ||
+			originalNode.ListHasParent && candidateMapping.ParentAnchor != originalNode.ListParentAnchor+delta {
+			return ErrInvalidReplacement
 		}
 	}
-	return validateCandidateListItemSibling(candidateItems, candidateOffset, anchor, patches)
+	return nil
 }
 
 func (d *Document) exactListItemSubtree(fragment []byte, start int) (listItemSubtreeOwnership, error) {
@@ -326,12 +340,32 @@ func validateReplacedListItemSubtreeRoot(originalSource []byte, target Node, can
 }
 
 func (d *Document) listItemNodeAtLineStart(lineStart int) (Node, bool) {
-	for _, node := range d.nodes {
-		if node.Kind == KindListItem && node.ListItemSource.LineRange.Start == lineStart {
-			return node, true
+	if d == nil || lineStart < 0 {
+		return Node{}, false
+	}
+	low, high := 0, len(d.listItemIndexes)
+	for low < high {
+		middle := low + (high-low)/2
+		nodeIndex := d.listItemIndexes[middle]
+		node, ok := d.indexedEditableNode(nodeIndex, KindListItem)
+		if !ok {
+			return Node{}, false
+		}
+		if node.ListItemSource.LineRange.Start < lineStart {
+			low = middle + 1
+		} else {
+			high = middle
 		}
 	}
-	return Node{}, false
+	if low >= len(d.listItemIndexes) {
+		return Node{}, false
+	}
+	nodeIndex := d.listItemIndexes[low]
+	node, ok := d.indexedEditableNode(nodeIndex, KindListItem)
+	if !ok || node.ListItemSource.LineRange.Start != lineStart {
+		return Node{}, false
+	}
+	return node, true
 }
 
 func listItemIDSet(ids ...NodeID) map[NodeID]struct{} {

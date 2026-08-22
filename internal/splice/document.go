@@ -46,6 +46,8 @@ const (
 	KindHTMLOpaque
 	KindImage
 	KindTableRow
+	KindThematicBreak
+	KindBlockquote
 )
 
 // HeadingStyle identifies the source syntax of a heading.
@@ -55,6 +57,16 @@ const (
 	HeadingStyleUnknown HeadingStyle = HeadingStyle(source.HeadingStyleUnknown)
 	HeadingStyleATX     HeadingStyle = HeadingStyle(source.HeadingStyleATX)
 	HeadingStyleSetext  HeadingStyle = HeadingStyle(source.HeadingStyleSetext)
+)
+
+// TableAlignment identifies the semantic alignment of one GFM table column.
+type TableAlignment = parser.TableAlignment
+
+const (
+	TableAlignmentDefault = parser.TableAlignmentDefault
+	TableAlignmentLeft    = parser.TableAlignmentLeft
+	TableAlignmentRight   = parser.TableAlignmentRight
+	TableAlignmentCenter  = parser.TableAlignmentCenter
 )
 
 // FrontMatterFormat identifies a recognized leading metadata envelope format.
@@ -85,6 +97,7 @@ type Node struct {
 	ListMarker                byte
 	ListHasParent             bool
 	ListParentAnchor          int
+	ListContainerAnchor       int
 	ListParentID              NodeID
 	ListHasChildren           bool
 	ListDirectChildCount      int
@@ -99,6 +112,7 @@ type Node struct {
 	TableRowID                NodeID
 	TableAnchor               int
 	TableColumnCount          int
+	TableAlignments           []TableAlignment
 	TablePreviousRowID        NodeID
 	TableNextRowID            NodeID
 	TableRowCellStart         int
@@ -146,9 +160,11 @@ type Document struct {
 	nodes              []Node
 	nodeIndex          map[NodeID]int
 	listChildIDs       []NodeID
+	listItemIndexes    []int
 	tableCellIDs       []NodeID
 	tableHeaderCellIDs []NodeID
-	tableRowCount      int
+	tableRowIndexes    []int
+	tableCellIndexes   []int
 	sections           []Section
 	sectionIndex       map[NodeID]int
 	frontMatter        frontMatterEnvelope
@@ -181,12 +197,9 @@ func Parse(input []byte) (*Document, error) {
 		}
 		nodes = append(nodes, node)
 	}
-	if err := resolveListItemParentIDs(nodes); err != nil {
-		return nil, fmt.Errorf("resolve list item parents: %w", err)
-	}
-	listChildIDs, err := resolveListItemSubtrees(nodes)
+	listModel, err := resolveListItemModel(nodes)
 	if err != nil {
-		return nil, fmt.Errorf("resolve list item subtrees: %w", err)
+		return nil, fmt.Errorf("resolve list item model: %w", err)
 	}
 	tableModel, err := resolveTableRowCells(nodes)
 	if err != nil {
@@ -213,10 +226,12 @@ func Parse(input []byte) (*Document, error) {
 		source:             snapshot,
 		nodes:              nodes,
 		nodeIndex:          nodeIndex,
-		listChildIDs:       listChildIDs,
+		listChildIDs:       listModel.childIDs,
+		listItemIndexes:    listModel.itemIndexes,
 		tableCellIDs:       tableModel.cellIDs,
 		tableHeaderCellIDs: tableModel.headerCellIDs,
-		tableRowCount:      tableModel.rowCount,
+		tableRowIndexes:    tableModel.rowIndexes,
+		tableCellIndexes:   tableModel.cellIndexes,
 		sections:           sections,
 		sectionIndex:       sectionIndex,
 		frontMatter:        storedFrontMatter,
@@ -225,7 +240,14 @@ func Parse(input []byte) (*Document, error) {
 
 // Nodes returns a copy of the snapshot-local structural nodes.
 func (d *Document) Nodes() []Node {
-	return append([]Node(nil), d.nodes...)
+	if d == nil {
+		return nil
+	}
+	result := make([]Node, len(d.nodes))
+	for index, node := range d.nodes {
+		result[index] = cloneNode(node)
+	}
+	return result
 }
 
 // NodeSummary is the lightweight common structural data needed for enumeration boundaries.
@@ -252,7 +274,11 @@ func (d *Document) NodeSummaryAt(index int) (NodeSummary, bool) {
 
 // Node returns one snapshot-local structural node by ID.
 func (d *Document) Node(id NodeID) (Node, bool) {
-	return d.nodeByID(id)
+	node, ok := d.nodeByID(id)
+	if !ok {
+		return Node{}, false
+	}
+	return cloneNode(node), true
 }
 
 // SourceRange returns a copy of one valid byte range from the immutable source snapshot.
@@ -269,14 +295,20 @@ func (d *Document) ListItemChildIDs(id NodeID) ([]NodeID, bool) {
 		return nil, false
 	}
 	node, ok := d.nodeByID(id)
-	if !ok || node.Kind != KindListItem || !node.Editable || node.ListChildStart < 0 || node.ListChildCount < 0 {
+	if !ok {
 		return nil, false
 	}
-	end := node.ListChildStart + node.ListChildCount
-	if end < node.ListChildStart || end > len(d.listChildIDs) {
+	ids, ok := d.listItemChildIDSpan(node)
+	if !ok {
 		return nil, false
 	}
-	return append([]NodeID(nil), d.listChildIDs[node.ListChildStart:end]...), true
+	return append([]NodeID(nil), ids...), true
+}
+
+func cloneNode(node Node) Node {
+	node.TableAlignments = append([]TableAlignment(nil), node.TableAlignments...)
+	node.TableRowSource.Cells = append([]source.TableCellMapping(nil), node.TableRowSource.Cells...)
+	return node
 }
 
 func indexNodes(nodes []Node) (map[NodeID]int, error) {
@@ -296,6 +328,14 @@ func (d *Document) nodeByID(id NodeID) (Node, bool) {
 		return Node{}, false
 	}
 	return d.nodes[index], true
+}
+
+func (d *Document) indexedEditableNode(index int, kind Kind) (Node, bool) {
+	if d == nil || index < 0 || index >= len(d.nodes) {
+		return Node{}, false
+	}
+	node := d.nodes[index]
+	return node, node.Kind == kind && node.Editable
 }
 
 func mapKind(kind parser.Kind) (Kind, error) {
@@ -334,6 +374,10 @@ func mapKind(kind parser.Kind) (Kind, error) {
 		return KindHTMLOpaque, nil
 	case parser.KindImage:
 		return KindImage, nil
+	case parser.KindThematicBreak:
+		return KindThematicBreak, nil
+	case parser.KindBlockquote:
+		return KindBlockquote, nil
 	default:
 		return KindUnknown, fmt.Errorf("unsupported parser node kind %d", kind)
 	}

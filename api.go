@@ -17,6 +17,8 @@ var (
 	ErrInvalidTargetKind = errors.New("invalid target kind")
 	// ErrSourceConflict reports that a prepared change was applied to a different source snapshot.
 	ErrSourceConflict = errors.New("source snapshot conflict")
+	// ErrInvalidConstruction reports new-document content that cannot be proven to produce the requested GFM structure.
+	ErrInvalidConstruction = errors.New("invalid construction")
 )
 
 // Kind identifies a structural Markdown node category.
@@ -201,6 +203,14 @@ func publicNodeSummary(summary splice.NodeSummary) (Node, bool) {
 
 func publicNodeID(id splice.NodeID) NodeID {
 	return NodeID{value: string(id)}
+}
+
+func publicNodeIDs(ids []splice.NodeID) []NodeID {
+	result := make([]NodeID, len(ids))
+	for index, id := range ids {
+		result[index] = publicNodeID(id)
+	}
+	return result
 }
 
 func internalNodeID(id NodeID) splice.NodeID {

@@ -3,6 +3,7 @@ package splice
 import (
 	"bytes"
 	"fmt"
+	"slices"
 )
 
 func (d *Document) tableRowTarget(id NodeID) (Node, error) {
@@ -31,42 +32,56 @@ func (d *Document) promotedTableRowCount() int {
 	if d == nil {
 		return 0
 	}
-	return d.tableRowCount
+	return len(d.tableRowIndexes)
 }
 
 func indexTableMutationModel(document *Document) (tableMutationIndex, bool) {
-	index := tableMutationIndex{
-		rowsByLineStart:     make(map[int]Node),
-		cellsByContentStart: make(map[int]Node),
+	if document == nil {
+		return tableMutationIndex{}, false
 	}
-	for _, node := range document.nodes {
-		if !node.Editable {
-			continue
+	index := tableMutationIndex{
+		rowsByLineStart:     make(map[int]Node, len(document.tableRowIndexes)),
+		cellsByContentStart: make(map[int]Node, len(document.tableCellIndexes)),
+		rowCount:            len(document.tableRowIndexes),
+	}
+	for _, nodeIndex := range document.tableRowIndexes {
+		node, ok := document.indexedEditableNode(nodeIndex, KindTableRow)
+		if !ok {
+			return tableMutationIndex{}, false
 		}
-		switch node.Kind {
-		case KindTableRow:
-			start := node.TableRowSource.LineRange.Start
-			if _, exists := index.rowsByLineStart[start]; exists {
-				return tableMutationIndex{}, false
-			}
-			index.rowsByLineStart[start] = node
-			index.rowCount++
-		case KindTableCell:
-			start := node.TableCellSource.ContentRange.Start
-			if _, exists := index.cellsByContentStart[start]; exists {
-				return tableMutationIndex{}, false
-			}
-			index.cellsByContentStart[start] = node
+		start := node.TableRowSource.LineRange.Start
+		if _, exists := index.rowsByLineStart[start]; exists {
+			return tableMutationIndex{}, false
 		}
+		index.rowsByLineStart[start] = node
+	}
+	for _, nodeIndex := range document.tableCellIndexes {
+		node, ok := document.indexedEditableNode(nodeIndex, KindTableCell)
+		if !ok {
+			return tableMutationIndex{}, false
+		}
+		start := node.TableCellSource.ContentRange.Start
+		if _, exists := index.cellsByContentStart[start]; exists {
+			return tableMutationIndex{}, false
+		}
+		index.cellsByContentStart[start] = node
 	}
 	return index, true
 }
 
 func anchorAfterPatches(anchor int, patches []patchTransform) (int, bool) {
+	ordered, ok := orderedPatchTransforms(patches)
+	if !ok {
+		return 0, false
+	}
+	return anchorAfterOrderedPatches(anchor, ordered)
+}
+
+func anchorAfterOrderedPatches(anchor int, ordered []patchTransform) (int, bool) {
 	if anchor < 0 {
 		return 0, false
 	}
-	transformed, ok := rangeAfterPatches(Range{Start: anchor, End: anchor + 1}, patches)
+	transformed, ok := rangeAfterOrderedPatches(Range{Start: anchor, End: anchor + 1}, ordered)
 	return transformed.Start, ok
 }
 
@@ -78,44 +93,52 @@ func sameTableRowMapping(candidate []byte, originalSource []byte, original, mapp
 		mapped.TableRowSource.Range == expectedRange &&
 		mapped.TableAnchor == expectedTableAnchor &&
 		mapped.TableColumnCount == original.TableColumnCount &&
+		slices.Equal(mapped.TableAlignments, original.TableAlignments) &&
 		bytes.Equal(originalSource[original.TableRowSource.LineRange.Start:original.TableRowSource.LineRange.End], candidate[expectedLine.Start:expectedLine.End])
 }
 
 func (d *Document) validateOriginalTableModelAfterPatches(candidate []byte, candidateIndex tableMutationIndex, patches []patchTransform, skipRow *Node) error {
-	for _, original := range d.nodes {
-		if !original.Editable {
+	ordered, ok := orderedPatchTransforms(patches)
+	if !ok {
+		return ErrInvalidReplacement
+	}
+	for _, nodeIndex := range d.tableRowIndexes {
+		original, ok := d.indexedEditableNode(nodeIndex, KindTableRow)
+		if !ok {
+			return ErrInvalidReplacement
+		}
+		if skipRow != nil && original.ID == skipRow.ID {
 			continue
 		}
-		switch original.Kind {
-		case KindTableRow:
-			if skipRow != nil && original.ID == skipRow.ID {
-				continue
-			}
-			if !d.originalTableRowSurvives(candidate, candidateIndex, original, patches) {
-				return ErrInvalidReplacement
-			}
-		case KindTableCell:
-			if skipRow != nil && tableCellInsideRow(original, *skipRow) {
-				continue
-			}
-			if !d.originalTableCellSurvives(candidate, candidateIndex, original, patches) {
-				return ErrInvalidReplacement
-			}
+		if !d.originalTableRowSurvives(candidate, candidateIndex, original, ordered) {
+			return ErrInvalidReplacement
+		}
+	}
+	for _, nodeIndex := range d.tableCellIndexes {
+		original, ok := d.indexedEditableNode(nodeIndex, KindTableCell)
+		if !ok {
+			return ErrInvalidReplacement
+		}
+		if skipRow != nil && tableCellInsideRow(original, *skipRow) {
+			continue
+		}
+		if !d.originalTableCellSurvives(candidate, candidateIndex, original, ordered) {
+			return ErrInvalidReplacement
 		}
 	}
 	return nil
 }
 
-func (d *Document) originalTableRowSurvives(candidate []byte, candidateIndex tableMutationIndex, original Node, patches []patchTransform) bool {
-	expectedLine, ok := rangeAfterPatches(original.TableRowSource.LineRange, patches)
+func (d *Document) originalTableRowSurvives(candidate []byte, candidateIndex tableMutationIndex, original Node, ordered []patchTransform) bool {
+	expectedLine, ok := rangeAfterOrderedPatches(original.TableRowSource.LineRange, ordered)
 	if !ok {
 		return false
 	}
-	expectedRange, ok := rangeAfterPatches(original.TableRowSource.Range, patches)
+	expectedRange, ok := rangeAfterOrderedPatches(original.TableRowSource.Range, ordered)
 	if !ok {
 		return false
 	}
-	expectedTableAnchor, ok := anchorAfterPatches(original.TableAnchor, patches)
+	expectedTableAnchor, ok := anchorAfterOrderedPatches(original.TableAnchor, ordered)
 	if !ok {
 		return false
 	}
@@ -128,12 +151,12 @@ func tableCellInsideRow(cell, row Node) bool {
 	return start >= row.TableRowSource.LineRange.Start && start < row.TableRowSource.LineRange.End
 }
 
-func (d *Document) originalTableCellSurvives(candidate []byte, candidateIndex tableMutationIndex, original Node, patches []patchTransform) bool {
-	expectedRaw, ok := rangeAfterPatches(original.TableCellSource.Range, patches)
+func (d *Document) originalTableCellSurvives(candidate []byte, candidateIndex tableMutationIndex, original Node, ordered []patchTransform) bool {
+	expectedRaw, ok := rangeAfterOrderedPatches(original.TableCellSource.Range, ordered)
 	if !ok {
 		return false
 	}
-	expectedContent, ok := rangeAfterPatches(original.TableCellSource.ContentRange, patches)
+	expectedContent, ok := rangeAfterOrderedPatches(original.TableCellSource.ContentRange, ordered)
 	if !ok || !expectedRaw.Valid(len(candidate)) || !expectedContent.Valid(len(candidate)) || !original.TableCellSource.Range.Valid(len(d.source)) {
 		return false
 	}
@@ -143,12 +166,12 @@ func (d *Document) originalTableCellSurvives(candidate []byte, candidateIndex ta
 		bytes.Equal(d.source[original.TableCellSource.Range.Start:original.TableCellSource.Range.End], candidate[expectedRaw.Start:expectedRaw.End])
 }
 
-func candidateOwnedTableRow(candidate []byte, candidateIndex tableMutationIndex, start int, fragment []byte, columnCount, tableAnchor int) bool {
+func candidateOwnedTableRow(candidate []byte, candidateIndex tableMutationIndex, start int, fragment []byte, columnCount, tableAnchor int, alignments []TableAlignment) bool {
 	if len(fragment) == 0 || start < 0 || start > len(candidate) || len(fragment) > len(candidate)-start {
 		return false
 	}
 	row, ok := candidateIndex.rowsByLineStart[start]
-	if !ok || row.TableRowSource.LineRange != (Range{Start: start, End: start + len(fragment)}) || row.TableColumnCount != columnCount || row.TableAnchor != tableAnchor {
+	if !ok || row.TableRowSource.LineRange != (Range{Start: start, End: start + len(fragment)}) || row.TableColumnCount != columnCount || row.TableAnchor != tableAnchor || !slices.Equal(row.TableAlignments, alignments) {
 		return false
 	}
 	return bytes.Equal(candidate[start:start+len(fragment)], fragment)
@@ -159,7 +182,7 @@ func validateReplacedTableRow(candidate []byte, candidateIndex tableMutationInde
 	if !ok {
 		return ErrInvalidReplacement
 	}
-	if !candidateOwnedTableRow(candidate, candidateIndex, original.TableRowSource.LineRange.Start, replacement, original.TableColumnCount, expectedTableAnchor) {
+	if !candidateOwnedTableRow(candidate, candidateIndex, original.TableRowSource.LineRange.Start, replacement, original.TableColumnCount, expectedTableAnchor, original.TableAlignments) {
 		return ErrInvalidReplacement
 	}
 	return nil
@@ -179,7 +202,7 @@ func validateInsertedTableRow(candidate []byte, candidateIndex tableMutationInde
 	if !ok {
 		return ErrInvalidReplacement
 	}
-	if !candidateOwnedTableRow(candidate, candidateIndex, insertAt, fragment, anchor.TableColumnCount, candidateAnchor.TableAnchor) {
+	if !candidateOwnedTableRow(candidate, candidateIndex, insertAt, fragment, anchor.TableColumnCount, candidateAnchor.TableAnchor, candidateAnchor.TableAlignments) {
 		return ErrInvalidReplacement
 	}
 	return nil
@@ -195,7 +218,7 @@ func (d *Document) validateMovedTableRow(candidate []byte, candidateIndex tableM
 		return ErrInvalidReplacement
 	}
 	fragment := d.source[originalLine.Start:originalLine.End]
-	if !candidateOwnedTableRow(candidate, candidateIndex, movedOffset, fragment, moved.TableColumnCount, candidateAnchor.TableAnchor) {
+	if !candidateOwnedTableRow(candidate, candidateIndex, movedOffset, fragment, moved.TableColumnCount, candidateAnchor.TableAnchor, candidateAnchor.TableAlignments) {
 		return ErrInvalidReplacement
 	}
 	return nil

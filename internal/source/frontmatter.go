@@ -44,10 +44,31 @@ type FrontMatterMapping struct {
 // MapLeadingFrontMatter recognizes a closed metadata envelope only when it begins at byte zero.
 // The Markdown body remains GFM; this scanner is a Marksplice-owned document-envelope layer.
 func MapLeadingFrontMatter(input []byte) (FrontMatterMapping, bool) {
-	if len(input) < 7 {
+	format, delimiter, openingEnd, bodyStart, ok := scanFrontMatterOpening(input)
+	if !ok {
 		return FrontMatterMapping{}, false
 	}
+	closingStart, closingEnd, ok := findFrontMatterClosing(input, bodyStart, delimiter)
+	if !ok {
+		return FrontMatterMapping{}, false
+	}
+	fields := collectUniqueFrontMatterFields(input, bodyStart, closingStart, format)
+	if len(fields) == 0 {
+		return FrontMatterMapping{}, false
+	}
+	return FrontMatterMapping{
+		Format:       format,
+		Range:        Range{Start: 0, End: closingEnd},
+		OpeningRange: Range{Start: 0, End: openingEnd},
+		ClosingRange: Range{Start: closingStart, End: closingEnd},
+		Fields:       fields,
+	}, true
+}
 
+func scanFrontMatterOpening(input []byte) (FrontMatterFormat, []byte, int, int, bool) {
+	if len(input) < 7 {
+		return FrontMatterUnknown, nil, 0, 0, false
+	}
 	openingEnd := physicalLineEnd(input, 0)
 	var format FrontMatterFormat
 	var delimiter []byte
@@ -59,22 +80,20 @@ func MapLeadingFrontMatter(input []byte) (FrontMatterMapping, bool) {
 		format = FrontMatterTOML
 		delimiter = []byte("+++")
 	default:
-		return FrontMatterMapping{}, false
+		return FrontMatterUnknown, nil, 0, 0, false
 	}
-
 	bodyStart, ok := nextPhysicalLineStart(input, openingEnd)
 	if !ok {
-		return FrontMatterMapping{}, false
+		return FrontMatterUnknown, nil, 0, 0, false
 	}
+	return format, delimiter, openingEnd, bodyStart, true
+}
 
-	closingStart := -1
-	closingEnd := -1
+func findFrontMatterClosing(input []byte, bodyStart int, delimiter []byte) (int, int, bool) {
 	for lineStart := bodyStart; lineStart < len(input); {
 		lineEnd := physicalLineEnd(input, lineStart)
 		if bytes.Equal(input[lineStart:lineEnd], delimiter) {
-			closingStart = lineStart
-			closingEnd = lineEnd
-			break
+			return lineStart, lineEnd, true
 		}
 		next, ok := nextPhysicalLineStart(input, lineEnd)
 		if !ok {
@@ -82,10 +101,10 @@ func MapLeadingFrontMatter(input []byte) (FrontMatterMapping, bool) {
 		}
 		lineStart = next
 	}
-	if closingStart < 0 {
-		return FrontMatterMapping{}, false
-	}
+	return 0, 0, false
+}
 
+func collectUniqueFrontMatterFields(input []byte, bodyStart, closingStart int, format FrontMatterFormat) []FrontMatterFieldMapping {
 	candidates := make([]FrontMatterFieldMapping, 0)
 	for lineStart := bodyStart; lineStart < closingStart; {
 		lineEnd := physicalLineEnd(input, lineStart)
@@ -98,7 +117,6 @@ func MapLeadingFrontMatter(input []byte) (FrontMatterMapping, bool) {
 		}
 		lineStart = next
 	}
-
 	counts := make(map[string]int, len(candidates))
 	for _, field := range candidates {
 		counts[field.Key]++
@@ -109,17 +127,7 @@ func MapLeadingFrontMatter(input []byte) (FrontMatterMapping, bool) {
 			fields = append(fields, field)
 		}
 	}
-	if len(fields) == 0 {
-		return FrontMatterMapping{}, false
-	}
-
-	return FrontMatterMapping{
-		Format:       format,
-		Range:        Range{Start: 0, End: closingEnd},
-		OpeningRange: Range{Start: 0, End: openingEnd},
-		ClosingRange: Range{Start: closingStart, End: closingEnd},
-		Fields:       fields,
-	}, true
+	return fields
 }
 
 func mapFrontMatterField(input []byte, lineStart, lineEnd int, format FrontMatterFormat) (FrontMatterFieldMapping, bool) {
@@ -127,52 +135,11 @@ func mapFrontMatterField(input []byte, lineStart, lineEnd int, format FrontMatte
 		return FrontMatterFieldMapping{}, false
 	}
 	line := input[lineStart:lineEnd]
-	if len(line) == 0 {
+	keyRange, valueStart, ok := scanFrontMatterKeyValueStart(line, format)
+	if !ok {
 		return FrontMatterFieldMapping{}, false
 	}
-
-	pos := 0
-	if format == FrontMatterTOML {
-		for pos < len(line) && isHorizontalSpace(line[pos]) {
-			pos++
-		}
-	} else if isHorizontalSpace(line[0]) {
-		return FrontMatterFieldMapping{}, false
-	}
-
-	keyStart := pos
-	for pos < len(line) && isSimpleMetadataKeyByte(line[pos]) {
-		pos++
-	}
-	if pos == keyStart {
-		return FrontMatterFieldMapping{}, false
-	}
-	keyEnd := pos
-	key := string(line[keyStart:keyEnd])
-
-	if format == FrontMatterYAML {
-		if pos >= len(line) || line[pos] != ':' {
-			return FrontMatterFieldMapping{}, false
-		}
-		pos++
-	} else {
-		for pos < len(line) && isHorizontalSpace(line[pos]) {
-			pos++
-		}
-		if pos >= len(line) || line[pos] != '=' {
-			return FrontMatterFieldMapping{}, false
-		}
-		pos++
-	}
-
-	for pos < len(line) && isHorizontalSpace(line[pos]) {
-		pos++
-	}
-	if pos >= len(line) {
-		return FrontMatterFieldMapping{}, false
-	}
-
-	value, style, quote, ok := scanSimpleMetadataValue(line, pos, format)
+	value, style, quote, ok := scanSimpleMetadataValue(line, valueStart, format)
 	if !ok || value.Start == value.End {
 		return FrontMatterFieldMapping{}, false
 	}
@@ -180,12 +147,47 @@ func mapFrontMatterField(input []byte, lineStart, lineEnd int, format FrontMatte
 	return FrontMatterFieldMapping{
 		Format:     format,
 		Range:      Range{Start: lineStart, End: lineEnd},
-		KeyRange:   Range{Start: lineStart + keyStart, End: lineStart + keyEnd},
+		KeyRange:   Range{Start: lineStart + keyRange.Start, End: lineStart + keyRange.End},
 		ValueRange: Range{Start: lineStart + value.Start, End: lineStart + value.End},
-		Key:        key,
+		Key:        string(line[keyRange.Start:keyRange.End]),
 		Style:      style,
 		Quote:      quote,
 	}, true
+}
+
+func scanFrontMatterKeyValueStart(line []byte, format FrontMatterFormat) (Range, int, bool) {
+	if len(line) == 0 {
+		return Range{}, 0, false
+	}
+	pos := 0
+	if format == FrontMatterTOML {
+		pos = skipHorizontalSpace(line, pos, len(line))
+	} else if isHorizontalSpace(line[0]) {
+		return Range{}, 0, false
+	}
+
+	keyStart := pos
+	for pos < len(line) && isSimpleMetadataKeyByte(line[pos]) {
+		pos++
+	}
+	if pos == keyStart {
+		return Range{}, 0, false
+	}
+	keyRange := Range{Start: keyStart, End: pos}
+
+	if format == FrontMatterTOML {
+		pos = skipHorizontalSpace(line, pos, len(line))
+		if pos >= len(line) || line[pos] != '=' {
+			return Range{}, 0, false
+		}
+	} else if pos >= len(line) || line[pos] != ':' {
+		return Range{}, 0, false
+	}
+	pos = skipHorizontalSpace(line, pos+1, len(line))
+	if pos >= len(line) {
+		return Range{}, 0, false
+	}
+	return keyRange, pos, true
 }
 
 func scanSimpleMetadataValue(line []byte, start int, format FrontMatterFormat) (Range, FrontMatterValueStyle, byte, bool) {

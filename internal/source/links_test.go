@@ -64,6 +64,24 @@ func TestMapSimpleInlineLinkPreservesDestinationBoundaries(t *testing.T) {
 	}
 }
 
+func TestMapSimpleInlineLinkPreservesNoTitleAndRejectsUnexpectedSourceTitle(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("[label](old/path)\n")
+	got, err := MapSimpleInlineLink(source, 0, Range{Start: 1, End: 6}, "old/path", "", false)
+	if err != nil {
+		t.Fatalf("MapSimpleInlineLink(no title) error = %v", err)
+	}
+	if got.Range != (Range{Start: 0, End: 17}) || got.DestinationRange != (Range{Start: 8, End: 16}) || got.HasTitle || got.TitleRange != (Range{}) {
+		t.Fatalf("no-title mapping = %+v, want exact destination and no title", got)
+	}
+
+	_, err = MapSimpleInlineLink([]byte("[label](old/path \"title\")\n"), 0, Range{Start: 1, End: 6}, "old/path", "", false)
+	if !errors.Is(err, ErrUnsupportedInlineLinkShape) {
+		t.Fatalf("MapSimpleInlineLink(unexpected source title) error = %v, want ErrUnsupportedInlineLinkShape", err)
+	}
+}
+
 func TestMapSimpleInlineLinkRejectsUnprovenShape(t *testing.T) {
 	t.Parallel()
 
@@ -134,6 +152,19 @@ func TestMapSimpleImagePreservesDestinationBoundaries(t *testing.T) {
 				t.Fatalf("mapping = %+v, want range %v alt %v destination %v title %v angle %v", got, tt.wantRange, tt.alt, tt.wantDest, tt.wantTitle, tt.wantAngle)
 			}
 		})
+	}
+}
+
+func TestMapSimpleImagePreservesNoTitle(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("![alt](old/path)\n")
+	got, err := MapSimpleImage(source, 0, Range{Start: 2, End: 5})
+	if err != nil {
+		t.Fatalf("MapSimpleImage(no title) error = %v", err)
+	}
+	if got.Range != (Range{Start: 0, End: 16}) || got.DestinationRange != (Range{Start: 7, End: 15}) || got.HasTitle || got.TitleRange != (Range{}) {
+		t.Fatalf("no-title image mapping = %+v, want exact destination and no title", got)
 	}
 }
 

@@ -32,8 +32,18 @@ func (d *Document) editableTargetNode(id NodeID, expected Kind, description stri
 	return target, nil
 }
 
+func validateNonEmpty(replacement []byte) error {
+	if len(replacement) == 0 {
+		return ErrInvalidReplacement
+	}
+	return nil
+}
+
 func validateNonEmptySingleLine(replacement []byte) error {
-	if len(replacement) == 0 || bytes.ContainsAny(replacement, "\r\n") {
+	if err := validateNonEmpty(replacement); err != nil {
+		return err
+	}
+	if bytes.ContainsAny(replacement, "\r\n") {
 		return ErrInvalidReplacement
 	}
 	return nil
@@ -67,6 +77,16 @@ func (d *Document) prepareCandidateChanges(patches []source.Patch, operation str
 	return change, candidate, nil
 }
 
+func (d *Document) prepareMoveCandidate(moved Range, insertAt int, fragment []byte, operation string) (ChangeSet, []byte, Range, error) {
+	insertRange := rangeWithLength(insertAt, 0)
+	patches := []source.Patch{
+		{Range: moved},
+		{Range: insertRange, Replacement: fragment},
+	}
+	change, candidate, err := d.prepareCandidateChanges(patches, operation)
+	return change, candidate, insertRange, err
+}
+
 func parseCandidate(candidate []byte) ([]parser.Node, error) {
 	observations, err := goldmarkparser.New().Parse(candidate)
 	if err != nil {
@@ -93,26 +113,14 @@ func rangeAfterPatch(range_, patch Range, replacementLength int) (Range, bool) {
 }
 
 func rangeAfterPatches(range_ Range, patches []patchTransform) (Range, bool) {
-	ordered := append([]patchTransform(nil), patches...)
-	sort.Slice(ordered, func(i, j int) bool {
-		if ordered[i].Range.Start == ordered[j].Range.Start {
-			return ordered[i].Range.End < ordered[j].Range.End
-		}
-		return ordered[i].Range.Start < ordered[j].Range.Start
-	})
-
-	for i, patch := range ordered {
-		if patch.ReplacementLength < 0 || patch.Range.Start < 0 || patch.Range.End < patch.Range.Start {
-			return Range{}, false
-		}
-		if i > 0 {
-			previous := ordered[i-1].Range
-			if patch.Range.Start == previous.Start || patch.Range.Start < previous.End {
-				return Range{}, false
-			}
-		}
+	ordered, ok := orderedPatchTransforms(patches)
+	if !ok {
+		return Range{}, false
 	}
+	return rangeAfterOrderedPatches(range_, ordered)
+}
 
+func rangeAfterOrderedPatches(range_ Range, ordered []patchTransform) (Range, bool) {
 	delta := 0
 	for _, patch := range ordered {
 		switch {
@@ -125,6 +133,41 @@ func rangeAfterPatches(range_ Range, patches []patchTransform) (Range, bool) {
 		}
 	}
 	return shiftedRange(range_, delta), true
+}
+
+func orderedPatchTransforms(patches []patchTransform) ([]patchTransform, bool) {
+	needsSort := false
+	for i, patch := range patches {
+		if patch.ReplacementLength < 0 || patch.Range.Start < 0 || patch.Range.End < patch.Range.Start {
+			return nil, false
+		}
+		if i != 0 && patchTransformLess(patch, patches[i-1]) {
+			needsSort = true
+		}
+	}
+
+	ordered := patches
+	if needsSort {
+		ordered = append([]patchTransform(nil), patches...)
+		sort.Slice(ordered, func(i, j int) bool {
+			return patchTransformLess(ordered[i], ordered[j])
+		})
+	}
+	for i := 1; i < len(ordered); i++ {
+		previous := ordered[i-1].Range
+		current := ordered[i].Range
+		if current.Start == previous.Start || current.Start < previous.End {
+			return nil, false
+		}
+	}
+	return ordered, true
+}
+
+func patchTransformLess(left, right patchTransform) bool {
+	if left.Range.Start != right.Range.Start {
+		return left.Range.Start < right.Range.Start
+	}
+	return left.Range.End < right.Range.End
 }
 
 func movedRangeCandidateOffset(moved Range, insertAt int) (int, bool) {

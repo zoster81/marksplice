@@ -113,6 +113,37 @@ func TestTableCellSourceMappingCacheReusesOneRowMapping(t *testing.T) {
 	}
 }
 
+func TestDocumentNodeCopiesDoNotAliasTableAlignments(t *testing.T) {
+	t.Parallel()
+
+	doc, err := Parse([]byte("| A | B |\n| :--- | ---: |\n| one | two |\n"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	rows := nodesOfKind(doc.Nodes(), KindTableRow)
+	if len(rows) != 1 || len(rows[0].TableAlignments) != 2 || len(rows[0].TableRowSource.Cells) != 2 {
+		t.Fatalf("table rows = %+v, want one row with two alignments/cells", rows)
+	}
+	rowID := rows[0].ID
+	rows[0].TableAlignments[0] = TableAlignmentCenter
+	rows[0].TableRowSource.Cells[0].Column = 99
+
+	again := nodesOfKind(doc.Nodes(), KindTableRow)
+	if len(again) != 1 || again[0].TableAlignments[0] != TableAlignmentLeft || again[0].TableAlignments[1] != TableAlignmentRight || again[0].TableRowSource.Cells[0].Column != 0 {
+		t.Fatalf("Nodes() table copy = alignments %v cells %+v, want [left right] and original cells", again[0].TableAlignments, again[0].TableRowSource.Cells)
+	}
+	node, ok := doc.Node(rowID)
+	if !ok {
+		t.Fatalf("Node(%q) ok = false", rowID)
+	}
+	node.TableAlignments[1] = TableAlignmentCenter
+	node.TableRowSource.Cells[1].Column = 99
+	nodeAgain, ok := doc.Node(rowID)
+	if !ok || nodeAgain.TableAlignments[0] != TableAlignmentLeft || nodeAgain.TableAlignments[1] != TableAlignmentRight || nodeAgain.TableRowSource.Cells[1].Column != 1 {
+		t.Fatalf("Node() table copy = alignments %v cells %+v, %v; want [left right], original cells, true", nodeAgain.TableAlignments, nodeAgain.TableRowSource.Cells, ok)
+	}
+}
+
 func TestPreparedChangeRejectsStaleSource(t *testing.T) {
 	t.Parallel()
 

@@ -590,7 +590,7 @@ func TestPrepareReplaceFencedCodeRejectsUnsafeReplacementAndWrongTarget(t *testi
 		t.Fatalf("fenced/paragraph counts = %d/%d, want 1/1", len(blocks), len(paragraphs))
 	}
 
-	for _, replacement := range [][]byte{nil, []byte("line one\nline two"), []byte("````")} {
+	for _, replacement := range [][]byte{nil, []byte("````")} {
 		if _, err := doc.PrepareReplaceFencedCode(blocks[0].ID, replacement); !errors.Is(err, ErrInvalidReplacement) {
 			t.Fatalf("PrepareReplaceFencedCode(%q) error = %v, want ErrInvalidReplacement", replacement, err)
 		}

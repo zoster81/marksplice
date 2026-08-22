@@ -49,13 +49,13 @@ The final table-family review made two concrete reuse/performance changes.
 
 First, insert, replacement, and move now share one `candidateOwnedTableRow` proof for exact candidate span, byte ownership, column count, and private table anchor. Operation-specific logic is limited to how the expected start/table anchor is derived.
 
-Second, the M39/M40 resolver now returns a small `tableRowModel` containing the flat promoted-cell adjacency plus the already-known promoted row count. `Document` stores that scalar row count, so M36–M41 mutations no longer scan the entire original node collection solely to recount body rows before comparing candidate cardinality.
+Second, the M39/M40 resolver originally returned a small `tableRowModel` containing the flat promoted-cell adjacency plus the already-known promoted row count. That removed a full original-node recount from M36–M41 mutations. The later post-M43 whole-codebase consolidation replaces the redundant scalar count with `len(tableRowIndexes)` and retains the builder's compact source-ordered row/cell node-index slices, so candidate indexing and original survivor validation operate only on the relevant table families instead of filtering the complete document-node collection.
 
-No persistent table-anchor map is introduced; the only new durable collection is the compact cell-ID adjacency required by M40.
+No persistent table-anchor map is introduced. Durable table-family collections remain compact linear arrays: body/header adjacency IDs plus source-ordered row/editable-cell node indexes.
 
 ## Complexity
 
-A replacement performs one source patch, one candidate parse, one operation-local candidate row/cell index, and one survivor scan. The safety oracle remains O(n+t) for source size `n` and table-model validation work `t`. The final refactor removes an extra O(nodes) original-row-count scan from every table-row mutation and removes duplicated ownership-proof branches.
+A replacement performs one source patch, one candidate parse, one operation-local candidate row/cell index, and family-scoped survivor validation. The safety oracle remains O(n+t) for source size `n` and relevant table-model work `t`; post-M43 consolidation no longer adds a separate complete-document-node filter pass for original rows/cells. The refactors also remove the old O(nodes) row recount and duplicated ownership-proof branches.
 
 ## Devil's advocate review
 

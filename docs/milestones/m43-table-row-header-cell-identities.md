@@ -33,13 +33,13 @@ The refactored M39/M40 table-model builder then:
 3. assigns one flat header-cell adjacency block per table that has promoted body rows;
 4. stores only scalar header start/count metadata on each promoted row.
 
-Rows in the same table share the same flat header block. Temporary maps, counts, starts, and fill cursors are discarded after parsing. M43 therefore adds one persistent promoted-header `[]NodeID` array, not duplicated per-row slices or a persistent table-anchor map.
+Rows in the same table share the same flat header block. Temporary maps, counts, starts, and fill cursors are discarded after parsing. M43 therefore adds one persistent promoted-header `[]NodeID` array, not duplicated per-row slices or a persistent table-anchor map. A later post-M43 whole-codebase consolidation additionally retains the builder's compact source-ordered body-row and editable-cell node-index slices; these arrays carry no table-anchor relationship and let mutation candidate/survivor validation operate on the table family without filtering every document node.
 
 The public/internal accessor shares bounds/lookup plumbing with M40, revalidates every returned node through the authoritative node index, and requires header kind, no body-row identity, matching private table ownership, valid column bounds, and strictly increasing columns.
 
 ## Complexity
 
-Let `n` be the already materialized promoted-node sequence, `r` promoted body rows, and `h` promoted non-empty header cells. The refactored builder remains linear: O(n+r) construction with O(r+h) temporary work and O(h) new persistent header adjacency. One lookup is O(k) time and O(k) returned memory for `k` promoted header cells, with no table/document rescan.
+Let `n` be the already materialized promoted-node sequence, `r` promoted body rows, `c` promoted editable table cells, and `h` promoted non-empty header cells. The refactored builder remains linear: O(n+r+c) construction, O(r+h) temporary adjacency work, and O(r+c+h) persistent compact table-family indexes/adjacency. One header lookup is O(k) time and O(k) returned memory for `k` promoted header cells, with no table/document rescan; table mutation survivor validation iterates the retained row/cell families rather than all structural nodes.
 
 The final table-model refactor split row collection, cell membership, range assignment, adjacency fill, and accessor validation into focused helpers. The project's production complexity analyzer no longer reports any `table_row_model.go` function among its highest-complexity entries.
 

@@ -59,7 +59,7 @@ M32 reuses those facts:
 6. persist only the flat child-ID array plus each node's start/count;
 7. continue the existing leaf-up subtree completeness/end proof.
 
-Temporary count/offset/cursor arrays remain O(l) and are discarded after parse.
+Temporary count/offset/cursor arrays remain O(l) and are discarded after parse. At the M32 exit, the source-ordered node-index sequence was temporary as well; the later post-M43 whole-codebase consolidation retains that already-built `[]int` sequence for family-scoped mutation validation and fail-closed O(log l) line-start lookup. It carries no parent/child relation and does not introduce a second hierarchy map.
 
 ## Access path
 
@@ -71,7 +71,7 @@ The root package converts those IDs into public opaque `NodeID` values when cons
 
 Let `l` be the number of supported list items and `c` the supported direct-child count for one item.
 
-Parse-time hierarchy construction remains O(l) time and O(l) temporary memory. Persistent child-edge storage is O(l) because every supported non-root item contributes at most one parent edge.
+Parse-time hierarchy construction remains O(l) time. Persistent list-family indexing is O(l): the flat child-edge storage contributes at most one parent edge per supported non-root item, and the later retained source-order node-index sequence stores one integer per supported item. Temporary hierarchy work remains O(l).
 
 `ParentID()` remains O(1). `ChildIDs()` is O(c) because it copies only the requested child span. A complete supported hierarchy traversal is O(l), not O(l²).
 

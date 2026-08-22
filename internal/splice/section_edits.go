@@ -1,7 +1,5 @@
 package splice
 
-import "github.com/zoster81/marksplice/internal/source"
-
 // PrepareRemoveSection prepares removal of one complete derived section subtree.
 func (d *Document) PrepareRemoveSection(id NodeID) (ChangeSet, error) {
 	section, _, err := d.sectionTarget(id)
@@ -190,78 +188,108 @@ func (d *Document) PrepareMoveSectionAfter(id, anchorID NodeID) (ChangeSet, erro
 	return d.prepareMoveSection(id, anchorID, true)
 }
 
+type sectionMovePlan struct {
+	moved                Section
+	movedIndex           int
+	movedEnd             int
+	expected             []Section
+	movedCandidateIndex  int
+	anchorCandidateIndex int
+	insertAt             int
+	operation            string
+	fragment             []byte
+}
+
 func (d *Document) prepareMoveSection(id, anchorID NodeID, after bool) (ChangeSet, error) {
+	plan, noOp, err := d.planSectionMove(id, anchorID, after)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if noOp {
+		return d.newChanges(nil, plan.operation)
+	}
+	change, candidate, _, err := d.prepareMoveCandidate(plan.moved.Range, plan.insertAt, plan.fragment, plan.operation)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if err := d.validateSectionMoveCandidate(candidate, plan); err != nil {
+		return ChangeSet{}, err
+	}
+	return change, nil
+}
+
+func (d *Document) planSectionMove(id, anchorID NodeID, after bool) (sectionMovePlan, bool, error) {
 	if id == anchorID {
-		return ChangeSet{}, ErrInvalidReplacement
+		return sectionMovePlan{}, false, ErrInvalidReplacement
 	}
 	moved, movedIndex, err := d.sectionTarget(id)
 	if err != nil {
-		return ChangeSet{}, err
+		return sectionMovePlan{}, false, err
 	}
 	anchor, _, err := d.sectionTarget(anchorID)
 	if err != nil {
-		return ChangeSet{}, err
+		return sectionMovePlan{}, false, err
 	}
 	if moved.Level != anchor.Level {
-		return ChangeSet{}, ErrInvalidReplacement
+		return sectionMovePlan{}, false, ErrInvalidReplacement
 	}
-
 	movedEnd := sectionSubtreeEndIndex(d.sections, movedIndex, moved.Range)
 	expected, movedCandidateIndex, anchorCandidateIndex, ok := sectionOrderAfterMove(d.sections, movedIndex, movedEnd, anchorID, after)
 	if !ok {
-		return ChangeSet{}, ErrInvalidReplacement
+		return sectionMovePlan{}, false, ErrInvalidReplacement
 	}
-
-	operation := "section move before"
-	insertAt := anchor.Range.Start
+	plan := sectionMovePlan{
+		moved:                moved,
+		movedIndex:           movedIndex,
+		movedEnd:             movedEnd,
+		expected:             expected,
+		movedCandidateIndex:  movedCandidateIndex,
+		anchorCandidateIndex: anchorCandidateIndex,
+		insertAt:             anchor.Range.Start,
+		operation:            "section move before",
+	}
 	if after {
-		operation = "section move after"
-		insertAt = anchor.Range.End
+		plan.insertAt = anchor.Range.End
+		plan.operation = "section move after"
 	}
 	if sameSectionOrder(d.sections, expected) {
-		return d.newChanges(nil, operation)
+		return plan, true, nil
 	}
-	if insertAt > moved.Range.Start && insertAt < moved.Range.End {
-		return ChangeSet{}, ErrInvalidReplacement
+	if plan.insertAt > moved.Range.Start && plan.insertAt < moved.Range.End {
+		return sectionMovePlan{}, false, ErrInvalidReplacement
 	}
+	plan.fragment = d.source[moved.Range.Start:moved.Range.End]
+	return plan, false, nil
+}
 
-	fragment := d.source[moved.Range.Start:moved.Range.End]
-	patches := []source.Patch{
-		{Range: moved.Range},
-		{Range: Range{Start: insertAt, End: insertAt}, Replacement: fragment},
-	}
-	change, candidate, err := d.prepareCandidateChanges(patches, operation)
-	if err != nil {
-		return ChangeSet{}, err
-	}
+func (d *Document) validateSectionMoveCandidate(candidate []byte, plan sectionMovePlan) error {
 	candidateDocument, err := parseSectionMutationCandidate(candidate)
 	if err != nil {
-		return ChangeSet{}, err
+		return err
 	}
-	if candidateDocument.SectionCount() != len(expected) {
-		return ChangeSet{}, ErrInvalidReplacement
+	if candidateDocument.SectionCount() != len(plan.expected) {
+		return ErrInvalidReplacement
 	}
-	if err := d.validateSectionHeadingSequence(candidate, candidateDocument, expected); err != nil {
-		return ChangeSet{}, err
+	if err := d.validateSectionHeadingSequence(candidate, candidateDocument, plan.expected); err != nil {
+		return err
 	}
-
-	movedOffset, ok := movedRangeCandidateOffset(moved.Range, insertAt)
+	movedOffset, ok := movedRangeCandidateOffset(plan.moved.Range, plan.insertAt)
 	if !ok {
-		return ChangeSet{}, ErrInvalidReplacement
+		return ErrInvalidReplacement
 	}
-	if err := d.validateMovedSectionSubtree(candidate, candidateDocument, movedIndex, movedEnd, movedCandidateIndex, movedOffset); err != nil {
-		return ChangeSet{}, err
+	if err := d.validateMovedSectionSubtree(candidate, candidateDocument, plan.movedIndex, plan.movedEnd, plan.movedCandidateIndex, movedOffset); err != nil {
+		return err
 	}
-	candidateMoved, ok := candidateDocument.SectionAt(movedCandidateIndex)
-	if !ok || candidateMoved.Range != (Range{Start: movedOffset, End: movedOffset + len(fragment)}) {
-		return ChangeSet{}, ErrInvalidReplacement
+	candidateMoved, ok := candidateDocument.SectionAt(plan.movedCandidateIndex)
+	if !ok || candidateMoved.Range != (Range{Start: movedOffset, End: movedOffset + len(plan.fragment)}) {
+		return ErrInvalidReplacement
 	}
-	candidateAnchor, ok := candidateDocument.SectionAt(anchorCandidateIndex)
+	candidateAnchor, ok := candidateDocument.SectionAt(plan.anchorCandidateIndex)
 	if !ok || candidateMoved.HasParent != candidateAnchor.HasParent ||
 		(candidateMoved.HasParent && candidateMoved.ParentHeadingID != candidateAnchor.ParentHeadingID) {
-		return ChangeSet{}, ErrInvalidReplacement
+		return ErrInvalidReplacement
 	}
-	return change, nil
+	return nil
 }
 
 // PrepareReplaceSectionBody prepares replacement of one section's direct body while preserving its section hierarchy.

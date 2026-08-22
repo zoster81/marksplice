@@ -2,6 +2,7 @@ package goldmark
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
@@ -65,6 +66,51 @@ func TestGFM029SpecCompatibilityGuards(t *testing.T) {
 	}
 }
 
+func TestAdapterExposesTopLevelThematicBreakRange(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("before\n\n---\n\nafter\n")
+	nodes, err := New().Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	start := bytes.Index(source, []byte("---"))
+	for _, node := range nodes {
+		if node.Kind != markparser.KindThematicBreak {
+			continue
+		}
+		if node.Range.Start != start || node.Range.End != start+3 || !node.TopLevel {
+			t.Fatalf("thematic-break observation = range %v top-level %v, want [%d,%d) true", node.Range, node.TopLevel, start, start+3)
+		}
+		return
+	}
+	t.Fatal("top-level thematic break observation missing")
+}
+
+func TestAdapterExposesSimpleTopLevelBlockquoteRanges(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("before\n\n> quoted *text*\n\nafter\n")
+	nodes, err := New().Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	start := bytes.Index(source, []byte("> quoted *text*"))
+	contentStart := start + len("> ")
+	contentEnd := contentStart + len("quoted *text*")
+	for _, node := range nodes {
+		if node.Kind != markparser.KindBlockquote {
+			continue
+		}
+		if node.Range.Start != start || node.Range.End != contentEnd ||
+			node.BlockquoteContentRange.Start != contentStart || node.BlockquoteContentRange.End != contentEnd || !node.TopLevel {
+			t.Fatalf("blockquote observation = range %v content %v top-level %v, want [%d,%d) [%d,%d) true", node.Range, node.BlockquoteContentRange, node.TopLevel, start, contentEnd, contentStart, contentEnd)
+		}
+		return
+	}
+	t.Fatal("simple top-level blockquote observation missing")
+}
+
 func TestAdapterExposesSharedTableRowAnchors(t *testing.T) {
 	t.Parallel()
 
@@ -108,6 +154,33 @@ func TestAdapterExposesSharedTableRowAnchors(t *testing.T) {
 			t.Fatalf("body row/table/column = %d/%d/%d, want %d/%d/%d", node.TableRowAnchor, node.TableAnchor, node.TableColumn, bodyAnchor, tableAnchor, column)
 		}
 	}
+}
+
+func TestAdapterExposesTableRowAlignments(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| Left | Right | Center | Default |\n| :--- | ---: | :---: | --- |\n| l | r | c | d |\n")
+	nodes, err := New().Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	bodyAnchor := bytes.Index(source, []byte("| l | r | c | d |"))
+	want := []markparser.TableAlignment{
+		markparser.TableAlignmentLeft,
+		markparser.TableAlignmentRight,
+		markparser.TableAlignmentCenter,
+		markparser.TableAlignmentDefault,
+	}
+	for _, node := range nodes {
+		if node.Kind != markparser.KindTableRow || node.TableRowAnchor != bodyAnchor {
+			continue
+		}
+		if !slices.Equal(node.TableAlignments, want) {
+			t.Fatalf("body table alignments = %v, want %v", node.TableAlignments, want)
+		}
+		return
+	}
+	t.Fatal("aligned body table row observation missing")
 }
 
 func TestAdapterTableColumnsCountUnobservedEmptyCells(t *testing.T) {

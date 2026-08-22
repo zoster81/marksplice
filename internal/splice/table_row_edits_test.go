@@ -3,6 +3,7 @@ package splice
 import (
 	"bytes"
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -205,6 +206,41 @@ func TestTableRowReplacementValidatesOwnedBodyRow(t *testing.T) {
 	}
 	if wantEOF := []byte("| A | B |\n| - | - |\n| tail | value |"); !bytes.Equal(eofGot, wantEOF) {
 		t.Fatalf("EOF replacement = %q, want %q", eofGot, wantEOF)
+	}
+}
+
+func TestAlignedTableRowReplacementPreservesSemanticAlignments(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| A | B |\n| :--- | ---: |\n| one | two |\n| three | four |\n")
+	doc, err := Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	rows := internalTableRows(doc)
+	if len(rows) != 2 || !slices.Equal(rows[0].TableAlignments, []TableAlignment{TableAlignmentLeft, TableAlignmentRight}) {
+		t.Fatalf("aligned rows = %+v, want left/right semantics", rows)
+	}
+	change, err := doc.PrepareReplaceTableRow(rows[0].ID, []byte("| changed | value |\n"))
+	if err != nil {
+		t.Fatalf("PrepareReplaceTableRow() error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	want := []byte("| A | B |\n| :--- | ---: |\n| changed | value |\n| three | four |\n")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("replacement result = %q, want %q", got, want)
+	}
+	reparsed, err := Parse(got)
+	if err != nil {
+		t.Fatalf("Parse(replaced) error = %v", err)
+	}
+	for index, row := range internalTableRows(reparsed) {
+		if !slices.Equal(row.TableAlignments, []TableAlignment{TableAlignmentLeft, TableAlignmentRight}) {
+			t.Fatalf("row %d alignments = %v, want left/right", index, row.TableAlignments)
+		}
 	}
 }
 

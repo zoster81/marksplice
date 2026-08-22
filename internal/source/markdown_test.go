@@ -194,7 +194,7 @@ func TestMapTableCellRejectsUnprovenShape(t *testing.T) {
 	}
 }
 
-func TestMapSingleLineFencedCodePreservesFenceBoundaries(t *testing.T) {
+func TestMapFencedCodePreservesFenceBoundaries(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -240,9 +240,9 @@ func TestMapSingleLineFencedCodePreservesFenceBoundaries(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := MapSingleLineFencedCode(tt.source, tt.content)
+			got, err := MapFencedCode(tt.source, tt.content)
 			if err != nil {
-				t.Fatalf("MapSingleLineFencedCode() error = %v", err)
+				t.Fatalf("MapFencedCode() error = %v", err)
 			}
 			if got.Range != tt.wantRange || got.ContentRange != tt.content || got.InfoRange != tt.wantInfo ||
 				got.FenceChar != tt.wantChar || got.FenceLength != tt.wantFenceLength || got.ClosingFenceLength != tt.wantClosingLength ||
@@ -253,7 +253,25 @@ func TestMapSingleLineFencedCodePreservesFenceBoundaries(t *testing.T) {
 	}
 }
 
-func TestMapSingleLineFencedCodeRejectsUnprovenShape(t *testing.T) {
+func TestMapFencedCodePreservesMultilineBoundaries(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("````go\r\nfirst\r\nsecond\r\n  `````\t\r\n")
+	content := Range{Start: len("````go\r\n"), End: len("````go\r\nfirst\r\nsecond")}
+	got, err := MapFencedCode(source, content)
+	if err != nil {
+		t.Fatalf("MapFencedCode(multiline) error = %v", err)
+	}
+	wantRange := Range{Start: 0, End: len(source) - len("\r\n")}
+	wantInfo := Range{Start: 4, End: 6}
+	if got.Range != wantRange || got.ContentRange != content || got.InfoRange != wantInfo ||
+		got.FenceChar != '`' || got.FenceLength != 4 || got.ClosingFenceLength != 5 ||
+		got.OpeningIndent != 0 || got.ClosingIndent != 2 {
+		t.Fatalf("multiline mapping = %+v, want range %v content %v info %v char ` lengths 4/5 indents 0/2", got, wantRange, content, wantInfo)
+	}
+}
+
+func TestMapFencedCodeRejectsUnprovenShape(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -267,9 +285,9 @@ func TestMapSingleLineFencedCodeRejectsUnprovenShape(t *testing.T) {
 			content: Range{Start: 4, End: 7},
 		},
 		{
-			name:    "semantic range crosses line ending",
-			source:  []byte("```\none\ntwo\n```\n"),
-			content: Range{Start: 4, End: 11},
+			name:    "indented multiline fence has non-contiguous semantic indentation",
+			source:  []byte("  ```\n  one\n  two\n  ```\n"),
+			content: Range{Start: 8, End: 17},
 		},
 		{
 			name:    "semantic range stops before physical line end",
@@ -288,9 +306,9 @@ func TestMapSingleLineFencedCodeRejectsUnprovenShape(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := MapSingleLineFencedCode(tt.source, tt.content)
+			_, err := MapFencedCode(tt.source, tt.content)
 			if !errors.Is(err, ErrUnsupportedFencedCodeShape) {
-				t.Fatalf("MapSingleLineFencedCode() error = %v, want ErrUnsupportedFencedCodeShape", err)
+				t.Fatalf("MapFencedCode() error = %v, want ErrUnsupportedFencedCodeShape", err)
 			}
 		})
 	}

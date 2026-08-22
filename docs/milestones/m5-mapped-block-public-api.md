@@ -24,7 +24,7 @@ The internal node model gains a snapshot-local `Editable` capability flag. For s
 For M5:
 
 - a table cell is editable only when `source.MapTableCell` succeeds for the semantic observation;
-- a fenced-code node is editable only when `source.MapSingleLineFencedCode` succeeds;
+- a fenced-code node is editable only when the source mapper succeeds; the mapper is now named `source.MapFencedCode`, while M5 itself proved only the original single-line subset;
 - unsupported semantic fenced-code shapes remain present internally and do not make `Parse` fail, but remain non-editable;
 - the stored original mapping is reused by mutation preparation instead of rescanning the immutable source snapshot.
 
