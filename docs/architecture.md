@@ -31,14 +31,17 @@ Marksplice has two deliberately separate core paths:
 
 Existing documents are immutable source snapshots. Ordinary edits use minimal source-bound patches and never authorize normalization of untouched source. New documents may use deterministic canonical GFM because there is no author formatting to preserve. New-document writing must never be substituted for the existing-document edit path.
 
-M0 is the green repository-bootstrap baseline and M1–M90 are complete. Detailed milestone chronology, feature contracts, and verification evidence live in `docs/milestones/`; this document records only architecture that remains durable across those milestones.
+M0 is the green repository-bootstrap baseline and M1–M91 are complete. Detailed milestone chronology, feature contracts, and verification evidence live in `docs/milestones/`; this document records only architecture that remains durable across those milestones.
 
 ## Package boundaries
 
 - `internal/parser/goldmark` owns Goldmark-specific parsing, AST traversal, and narrowly scoped GFM compatibility behavior. No Goldmark type crosses this boundary.
 - `internal/source` owns parser-independent byte ranges, lexical source proof, source fingerprints, validated patches, and patch application.
 - `internal/splice` combines parser observations with source mappings, builds immutable snapshot indexes/relationships, and prepares structural mutations.
+- `internal/publictest` owns black-box tests that import the root module API exactly as an external Go consumer would.
 - root package `marksplice` owns reviewed public types and operations. It may wrap internal implementation values but must not expose Goldmark or `internal/*` types.
+
+The public package deliberately remains at the Go module root because the canonical import path is `github.com/zoster81/marksplice`. Moving that package under a top-level `src/` directory would change the natural import path to `github.com/zoster81/marksplice/src` or require a forwarding facade whose only purpose is repository cosmetics. Root Go filenames are therefore grouped by responsibility instead: `api*.go` owns parsed-document/read/edit APIs and `builder*.go` owns new-document construction plus its package-private proof/writer helpers. Longer-form documentation stays under `docs/`, while external-style public API tests stay out of the root under `internal/publictest/`.
 
 Keep orchestration separate from syntax-specific proof. Shared plumbing may centralize target lookup, patch transforms, candidate assembly, and candidate parsing, while lexical/source mappers and semantic validators remain feature-specific when their safety invariants differ. Reuse focused lexical primitives rather than duplicating scanners across families.
 
@@ -174,6 +177,8 @@ The Go module path is `github.com/zoster81/marksplice`. `go.mod` owns the minimu
 
 M90 adds no Markdown/runtime behavior. It prepares public Go-module consumption through portable package examples, cross-platform public CI, dependency-update metadata, beta/release documentation, security-reporting guidance, and an external consumer-module compilation test. The separately licensed, hash-pinned GFM conformance corpus remains external to the repository and therefore remains a stricter maintainer gate rather than a vendored public-CI input.
 
+M91 is a repository-layout refactor only. It moves the black-box public API tests from the module root to `internal/publictest`, groups root package filenames into `api*` and `builder*` families, and adds `docs/README.md` as the documentation index. It does not change the module path, package name, exported API, Markdown behavior, or ordinary consumer import path. Coverage gates after M91 must use cross-package instrumentation because the consumer-style tests now live in a separate package directory.
+
 ## Public capability and history references
 
-`docs/capabilities.md` is the authoritative current read/edit/create matrix and forward roadmap. `docs/goldmark-capability-matrix.md` records parser/source ownership by syntax family. `docs/releasing.md` records public module/version policy. `docs/milestones/` retains the detailed M0–M90 contracts, design evolution, and historical verification evidence.
+`docs/README.md` is the documentation index. `docs/capabilities.md` is the authoritative current read/edit/create matrix and forward roadmap. `docs/goldmark-capability-matrix.md` records parser/source ownership by syntax family. `docs/releasing.md` records public module/version policy. `docs/milestones/` retains the detailed M0–M91 contracts, design evolution, and historical verification evidence.

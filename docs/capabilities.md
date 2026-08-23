@@ -54,7 +54,7 @@ The current production maintainability gate is cyclomatic complexity 15 or lower
 
 ## Completed capability families
 
-The current conservative model is complete through M90. Detailed chronology belongs to milestone records; the durable capability families are:
+The current conservative model is functionally complete through M90, with M91 adding repository-layout hardening only. Detailed chronology belongs to milestone records; the durable capability families are:
 
 - **Mapped public editing foundation (M1–M11):** source-preserving paragraph/heading/list/task/table-cell/fenced-code/simple-inline/link/image/front-matter/HTML capabilities, snapshot-bound identity, and bounded source reading.
 - **Sections and list hierarchy (M12–M34):** exact section body/subtree operations, sibling/child structure, complete supported list-subtree ownership, source-preserving structural edits, and compact parent/child navigation.
@@ -65,6 +65,7 @@ The current conservative model is complete through M90. Detailed chronology belo
 - **Front-matter construction (M80):** one optional leading YAML/TOML envelope with deterministic LF formatting, ordered unique simple fields, conservative double-quoted string values, and proof through the existing source-layer front-matter mapper.
 - **Broader blockquote construction (M81–M86):** M81 extends `AppendBlockquote` to one parser-proven LF-multiline depth-1 paragraph; M82 adds explicit depth 2–64 single-paragraph construction; M83 adds `AppendBlockquoteBlocks` for depth 1–64 child-builder composition; M84–M85 add the remaining reviewed non-blockquote body families; M86 admits recursive blockquote children while bounding every total structural chain at 64. Marksplice derives every canonical `> ` prefix and proves the exact construction-only hierarchy without widening existing-source blockquote promotion.
 - **First public beta readiness (M90):** keeps release/version state outside runtime code while adding portable pkg.go.dev examples, cross-platform Go 1.26/1.27 CI, dependency-update metadata, beta/release/security documentation, and an external consumer-module verification path for `github.com/zoster81/marksplice`.
+- **Repository-layout hardening (M91):** no capability/API change; removes black-box test clutter from the module root, groups root source files by API/builder responsibility, adds a documentation index, and adopts cross-package coverage instrumentation appropriate to consumer-style tests.
 
 ## Forward roadmap
 
@@ -78,4 +79,4 @@ The roadmap is ordered by architectural leverage rather than by a promise that e
 
 M89 extends the existing `Inline` intent with `ReferenceLinkInline` and `ReferenceImageInline` rather than introducing a reference-specific public AST. Only full reference syntax is generated. The reference label must match exactly one already-appended top-level builder definition by exact string; Goldmark case-normalization is not accepted as construction authority, and forward/collapsed/shortcut forms fail closed. Validation uses an ephemeral construction-only proof source so resolved destination/title semantics can be checked without widening ordinary parsed-source link/image editability.
 
-M90 then prepares the same module for its first public beta without changing Markdown semantics. The next high-leverage product boundary is therefore structured typed link/image labels or broader autolink generation. Existing-source blockquote promotion and document graph/workspace intelligence remain independent roadmap items.
+M90 prepares the module for its first public beta and M91 hardens the repository layout without changing Markdown semantics or the consumer import path. The next high-leverage product boundary is therefore structured typed link/image labels or broader autolink generation. Existing-source blockquote promotion and document graph/workspace intelligence remain independent roadmap items.

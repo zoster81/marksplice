@@ -78,7 +78,7 @@ The documented M1–M62 tree then passed the complete project verification gate:
 After the M62 gate, the complete M1–M62 codebase was reviewed again for reuse, responsibility boundaries, dead complexity, and immutable-data ownership. The refactor deliberately keeps feature-specific safety proof separate while consolidating only responsibilities with identical semantics:
 
 - the construction implementation is split into public builder/API declarations, input validation/retained construction state, canonical writers, and reparse proof rather than one approximately 1,200-line file;
-- public typed detail value objects remain in `details.go`, while `Document` typed lookup/conversion plumbing is isolated in `detail_accessors.go`;
+- public typed detail value objects remain in `api_types.go`, while `Document` typed lookup/conversion plumbing is isolated in `api_details.go`;
 - Goldmark observations are separated into dispatch/block, inline, and structural list/table/task files without changing the parser-independent observation contract;
 - source mapping separates shared unsupported-shape errors and heading/task, list, table, and fenced-code mapping responsibilities while retaining the existing focused link/front-matter/HTML/inline files;
 - list-item, section, and table-row moves now reuse one private `prepareMoveCandidate` helper for the identical two-patch delete+insert candidate assembly, while planning, no-op detection, and every family-specific candidate/survivor proof remain separate.

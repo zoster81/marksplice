@@ -11,7 +11,7 @@ Marksplice is an open-source Pure-Go library for understanding, creating, and st
 
 Marksplice is currently **beta software under active development**. The first public module release is planned as `v0.1.0-beta.1`; until v1, public APIs and behavior may change incompatibly between releases.
 
-The repository has a green retrospective M0 bootstrap record and completed engineering milestones M1–M89. The current model has two deliberately separate paths:
+The repository has a green retrospective M0 bootstrap record and completed engineering milestones M1–M91. The current model has two deliberately separate paths:
 
 - parsed `Document` snapshots expose reviewed source-mapped read/edit capabilities and prepare minimal source-bound changes that reject stale input;
 - `DocumentBuilder` creates new deterministic GFM and validates generated structure through the same parser/source-model boundary before returning bytes.
@@ -20,7 +20,7 @@ The current public surface covers reviewed paragraphs/headings/sections, support
 
 The public API remains intentionally narrower than everything the semantic parser can recognize. Unsupported or ambiguous shapes are preserved or kept internal until exact source ownership and caller-facing semantics are proven.
 
-See [`docs/capabilities.md`](docs/capabilities.md) for the authoritative current read/edit/create matrix and roadmap. Detailed milestone contracts and historical verification evidence live in [`docs/milestones/`](docs/milestones/).
+See [`docs/README.md`](docs/README.md) for the documentation map and repository layout, [`docs/capabilities.md`](docs/capabilities.md) for the authoritative current read/edit/create matrix and roadmap, and [`docs/milestones/`](docs/milestones/) for detailed milestone contracts and historical verification evidence.
 
 ## Design principles
 
@@ -68,6 +68,7 @@ Parsed `Document` values instead retain exact immutable source. Mutations target
 
 ## Documentation
 
+- [`docs/README.md`](docs/README.md): documentation index and repository-layout map.
 - [`docs/capabilities.md`](docs/capabilities.md): current product-facing read/edit/create matrix and forward roadmap.
 - [`docs/architecture.md`](docs/architecture.md): durable architecture, source-preservation, performance, safety, and complexity decisions.
 - [`docs/gfm-conformance.md`](docs/gfm-conformance.md): normative GFM profile, pinned conformance source hierarchy, and update procedure.
@@ -87,6 +88,8 @@ github.com/zoster81/marksplice
 ```
 
 The `go 1.26` directive is the current minimum compatibility floor. Public CI exercises Go 1.26 and Go 1.27 on Linux, Windows, and macOS.
+
+The public `marksplice` package intentionally lives at the module root so consumers import exactly `github.com/zoster81/marksplice`. Root source files are grouped into `api*` and `builder*` families; black-box consumer-style API tests live under `internal/publictest/`, and longer-form project documentation lives under `docs/`. A top-level `src/` package is intentionally avoided because it would change the natural Go import path or require an artificial forwarding facade.
 
 At minimum, normal development uses:
 

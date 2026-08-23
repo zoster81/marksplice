@@ -46,6 +46,14 @@ git status --short
 
 Do not claim a check passed unless it was actually executed. A skipped check should be reported with the reason.
 
+The black-box public API suite lives in `internal/publictest` and imports `github.com/zoster81/marksplice` like an external consumer. Consequently, `go test . -cover` measures only the root package's local examples and is not a meaningful project coverage figure. Maintainer coverage gates must instrument the module packages across package boundaries; normal functional verification remains `go test ./...`.
+
+## Repository layout
+
+The canonical public package stays at the module root so its import path remains `github.com/zoster81/marksplice`. Root Go files are grouped by responsibility: `api*.go` for parsed-document/read/edit APIs, `builder*.go` for new-document construction, plus `doc.go` and `example_test.go`. Private parser/source/splice implementation and black-box tests live under `internal/`; longer-form documentation lives under `docs/` and is indexed by [`docs/README.md`](docs/README.md).
+
+Do not introduce a top-level `src/` package merely for visual separation: in a Go module that would change the natural consumer import path or force a redundant forwarding facade. New directories should represent real package or documentation boundaries.
+
 ## Markdown profile and dependency policy
 
 GitHub Flavored Markdown (GFM) is the repository's single normative Markdown syntax profile. Follow [`docs/gfm-conformance.md`](docs/gfm-conformance.md) for the normative source hierarchy, approved snapshot, CommonMark relationship, advisory-source policy, and specification-update procedure. Do not add separate dialect modes or non-GFM syntax extensions without an explicit architecture decision and corresponding conformance tests.

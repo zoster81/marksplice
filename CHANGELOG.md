@@ -8,7 +8,7 @@ The project uses Semantic Versioning-compatible Go module tags. Until v1, the pu
 
 - Continue API review and capability expansion toward a stable v1 contract.
 
-## v0.1.0-beta.1 — planned first public beta
+## v0.1.0-beta.1 — 2026-08-23
 
 - Initial public beta of `github.com/zoster81/marksplice`.
 - Source-preserving structural parsing and reviewed mutation APIs for existing GFM.
@@ -16,5 +16,3 @@ The project uses Semantic Versioning-compatible Go module tags. Until v1, the pu
 - Typed full reference-link and reference-image construction with exact existing-definition proof.
 - GFM 0.29 conformance policy with Goldmark isolated behind an internal adapter.
 - Apache-2.0 licensing and Go 1.26 minimum language/toolchain requirement.
-
-The release date is intentionally omitted until the beta tag is actually published.

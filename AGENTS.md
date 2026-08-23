@@ -11,10 +11,11 @@ Keep responsibilities separated and link rather than duplicate details:
 - `docs/capabilities.md` owns the current product-facing read/edit/create capability matrix and forward roadmap; it does not supersede architecture, conformance, parser/source ownership, or milestone evidence.
 - `docs/goldmark-capability-matrix.md` owns the Goldmark-versus-Marksplice parser/source responsibility boundary.
 - Each `docs/milestones/mNN-*.md` file owns the detailed contract, design record, verification evidence, and exit decision for that milestone. Historical gate results in milestone files remain historical evidence and should not be rewritten merely because a later gate becomes stricter.
-- Milestone families are grouped only for navigation: M0 bootstrap; M1–M11 feasibility/public mapped capabilities; M12–M17 sections; M18–M34 list hierarchy plus section-child navigation; M35–M43 table row/cell model; M44–M62 new-document construction; M63–M70 public table/alignment/column editing; M71–M74 thematic-break/simple-blockquote promotion and removal; M75–M79 typed-inline construction; M80 front-matter construction; M81–M82 broader single-paragraph blockquote construction; M83–M86 multi-block/recursive blockquote construction; M87 typed link/image title construction; M88 bounded structured typed-inline nesting; M89 typed full-reference link/image construction; M90 first-public-beta readiness.
+- Milestone families are grouped only for navigation: M0 bootstrap; M1–M11 feasibility/public mapped capabilities; M12–M17 sections; M18–M34 list hierarchy plus section-child navigation; M35–M43 table row/cell model; M44–M62 new-document construction; M63–M70 public table/alignment/column editing; M71–M74 thematic-break/simple-blockquote promotion and removal; M75–M79 typed-inline construction; M80 front-matter construction; M81–M82 broader single-paragraph blockquote construction; M83–M86 multi-block/recursive blockquote construction; M87 typed link/image title construction; M88 bounded structured typed-inline nesting; M89 typed full-reference link/image construction; M90 first-public-beta readiness; M91 repository-layout hardening.
 - `go.mod` and `go.sum` own exact Go dependency versions.
 - `LICENSE` and `NOTICE` own licensing and project attribution.
 - `CONTRIBUTING.md` owns contributor workflow and the current local verification commands.
+- `docs/README.md` owns the tracked documentation index and repository-layout map.
 - `docs/releasing.md` owns public module versioning, beta-release policy, first-push readiness, and publication verification.
 - `CHANGELOG.md` owns public release notes; `SECURITY.md` owns vulnerability-reporting guidance.
 
@@ -53,7 +54,7 @@ On Windows, when PowerShell is required, use `pwsh` (PowerShell 7+) whenever it 
 
 ## Scope
 
-M0 is the green repository-bootstrap baseline and M1–M90 are complete engineering milestones. Their detailed contracts and historical evidence live only in the milestone records; current product status belongs in `docs/capabilities.md`.
+M0 is the green repository-bootstrap baseline and M1–M91 are complete engineering milestones. Their detailed contracts and historical evidence live only in the milestone records; current product status belongs in `docs/capabilities.md`.
 
 Future work must extend, not bypass, the established invariants: source preservation, parser isolation, snapshot-bound identity and stale-source safety, explicit source ownership, mapped-capability promotion, host/candidate validation for structural edits, compact derived adjacency instead of redundant persistent indexes, canonical writing only for new source, parser/model proof of generated source, deterministic failure on ambiguous shapes, and bounded complexity.
 
