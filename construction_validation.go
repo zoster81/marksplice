@@ -20,8 +20,11 @@ const (
 	constructionTableBlock
 	constructionThematicBreak
 	constructionBlockquote
+	constructionBlockquoteBlocks
 	constructionNestedUnorderedList
 	constructionNestedOrderedList
+
+	maxConstructionBlockquoteDepth = 64
 )
 
 type constructionListItem struct {
@@ -40,6 +43,7 @@ type constructionTable struct {
 type constructionBlock struct {
 	kind        constructionBlockKind
 	level       int
+	depth       int
 	inlineGFM   string
 	info        string
 	label       string
@@ -48,6 +52,7 @@ type constructionBlock struct {
 	hasTitle    bool
 	items       []constructionListItem
 	table       constructionTable
+	children    []constructionBlock
 }
 
 func (b *DocumentBuilder) appendConstructionBlock(block constructionBlock) error {
@@ -74,7 +79,15 @@ func validateConstructionBlock(block constructionBlock) error {
 	case constructionThematicBreak:
 		return nil
 	case constructionBlockquote:
-		return validateConstructionInlineGFM(block.inlineGFM)
+		if err := validateConstructionBlockquoteDepth(block.depth); err != nil {
+			return err
+		}
+		return validateConstructionBlockquoteGFM(block.inlineGFM)
+	case constructionBlockquoteBlocks:
+		if err := validateConstructionBlockquoteDepth(block.depth); err != nil {
+			return err
+		}
+		return validateConstructionBlockquoteChildren(block.children, block.depth)
 	case constructionUnorderedList, constructionOrderedList, constructionUnorderedTaskList, constructionOrderedTaskList,
 		constructionNestedUnorderedList, constructionNestedOrderedList:
 		return validateConstructionListItems(block.items)
@@ -89,6 +102,84 @@ func validateConstructionBlock(block constructionBlock) error {
 		return validateConstructionTable(block.table)
 	default:
 		return fmt.Errorf("%w: unsupported construction block", ErrInvalidConstruction)
+	}
+}
+
+func validateConstructionBlockquoteDepth(depth int) error {
+	if depth < 1 || depth > maxConstructionBlockquoteDepth {
+		return fmt.Errorf("%w: blockquote depth must be between 1 and %d", ErrInvalidConstruction, maxConstructionBlockquoteDepth)
+	}
+	return nil
+}
+
+type constructionBlockquoteValidationFrame struct {
+	children    []constructionBlock
+	parentDepth int
+}
+
+func validateConstructionBlockquoteChildren(children []constructionBlock, outerDepth int) error {
+	if len(children) == 0 {
+		return fmt.Errorf("%w: blockquote child sequence is empty", ErrInvalidConstruction)
+	}
+	stack := []constructionBlockquoteValidationFrame{{children: children, parentDepth: outerDepth}}
+	for len(stack) != 0 {
+		frame := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		for index, child := range frame.children {
+			if !supportedConstructionBlockquoteChild(child.kind) {
+				return fmt.Errorf("%w: unsupported blockquote child at index %d", ErrInvalidConstruction, index)
+			}
+			if err := validateConstructionBlockquoteChild(child); err != nil {
+				return fmt.Errorf("%w: blockquote child at index %d: %v", ErrInvalidConstruction, index, err)
+			}
+			if child.kind != constructionBlockquote && child.kind != constructionBlockquoteBlocks {
+				continue
+			}
+			totalDepth := frame.parentDepth + child.depth
+			if totalDepth > maxConstructionBlockquoteDepth {
+				return fmt.Errorf("%w: total blockquote depth exceeds %d", ErrInvalidConstruction, maxConstructionBlockquoteDepth)
+			}
+			if child.kind == constructionBlockquoteBlocks {
+				stack = append(stack, constructionBlockquoteValidationFrame{children: child.children, parentDepth: totalDepth})
+			}
+		}
+	}
+	source, expected := writeConstructionBlocks(children)
+	if err := validateConstructionDocument(source, expected); err != nil {
+		return fmt.Errorf("%w: blockquote child sequence: %v", ErrInvalidConstruction, err)
+	}
+	return nil
+}
+
+func validateConstructionBlockquoteChild(child constructionBlock) error {
+	switch child.kind {
+	case constructionBlockquote:
+		if err := validateConstructionBlockquoteDepth(child.depth); err != nil {
+			return err
+		}
+		return validateConstructionBlockquoteGFM(child.inlineGFM)
+	case constructionBlockquoteBlocks:
+		if err := validateConstructionBlockquoteDepth(child.depth); err != nil {
+			return err
+		}
+		if len(child.children) == 0 {
+			return fmt.Errorf("%w: blockquote child sequence is empty", ErrInvalidConstruction)
+		}
+		return nil
+	default:
+		return validateConstructionBlock(child)
+	}
+}
+
+func supportedConstructionBlockquoteChild(kind constructionBlockKind) bool {
+	switch kind {
+	case constructionParagraph, constructionHeading, constructionThematicBreak, constructionFencedCode,
+		constructionUnorderedList, constructionOrderedList, constructionUnorderedTaskList, constructionOrderedTaskList,
+		constructionNestedUnorderedList, constructionNestedOrderedList, constructionReferenceDefinition, constructionTableBlock,
+		constructionBlockquote, constructionBlockquoteBlocks:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -178,6 +269,18 @@ func validateConstructionInlineGFM(inlineGFM string) error {
 	default:
 		return nil
 	}
+}
+
+func validateConstructionBlockquoteGFM(content string) error {
+	if err := validateConstructionParagraphGFM(content); err != nil {
+		return err
+	}
+	for _, line := range strings.Split(content, "\n") {
+		if line == "" {
+			return fmt.Errorf("%w: blockquote paragraph contains an empty physical line", ErrInvalidConstruction)
+		}
+	}
+	return nil
 }
 
 func validateConstructionFenceContent(content string) error {

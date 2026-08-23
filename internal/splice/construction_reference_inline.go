@@ -1,0 +1,55 @@
+package splice
+
+import (
+	"fmt"
+
+	"github.com/zoster81/marksplice/internal/parser"
+	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
+)
+
+// ConstructionReferenceInlineExpectation is construction-only proof input for
+// one full reference link or image.
+type ConstructionReferenceInlineExpectation struct {
+	Kind           Kind
+	SyntaxRange    Range
+	LabelRange     Range
+	ReferenceRange Range
+	Reference      string
+	Destination    string
+	Title          string
+	HasTitle       bool
+}
+
+// ValidateConstructionReferenceInlines proves full reference link/image
+// semantics without promoting ordinary parsed reference inlines.
+func ValidateConstructionReferenceInlines(source []byte, expected []ConstructionReferenceInlineExpectation) error {
+	converted := make([]parser.ConstructionReferenceInlineExpectation, len(expected))
+	for index, want := range expected {
+		kind, ok := constructionReferenceParserKind(want.Kind)
+		if !ok {
+			return fmt.Errorf("unsupported construction reference inline kind %d", want.Kind)
+		}
+		converted[index] = parser.ConstructionReferenceInlineExpectation{
+			Kind:           kind,
+			SyntaxRange:    parser.Range{Start: want.SyntaxRange.Start, End: want.SyntaxRange.End},
+			LabelRange:     parser.Range{Start: want.LabelRange.Start, End: want.LabelRange.End},
+			ReferenceRange: parser.Range{Start: want.ReferenceRange.Start, End: want.ReferenceRange.End},
+			Reference:      want.Reference,
+			Destination:    want.Destination,
+			Title:          want.Title,
+			HasTitle:       want.HasTitle,
+		}
+	}
+	return goldmarkparser.ValidateConstructionReferenceInlines(source, converted)
+}
+
+func constructionReferenceParserKind(kind Kind) (parser.Kind, bool) {
+	switch kind {
+	case KindInlineLink:
+		return parser.KindInlineLink, true
+	case KindImage:
+		return parser.KindImage, true
+	default:
+		return parser.KindUnknown, false
+	}
+}

@@ -48,6 +48,7 @@ const (
 	KindTableRow
 	KindThematicBreak
 	KindBlockquote
+	KindTable
 )
 
 // HeadingStyle identifies the source syntax of a heading.
@@ -113,6 +114,13 @@ type Node struct {
 	TableAnchor               int
 	TableColumnCount          int
 	TableAlignments           []TableAlignment
+	TableID                   NodeID
+	TableBodyRowCount         int
+	TableLastBodyRowAnchor    int
+	TablePromotedRowStart     int
+	TablePromotedRowCount     int
+	TableOwnedHeaderCellStart int
+	TableOwnedHeaderCellCount int
 	TablePreviousRowID        NodeID
 	TableNextRowID            NodeID
 	TableRowCellStart         int
@@ -122,6 +130,7 @@ type Node struct {
 	Editable                  bool
 	TableCellSource           source.TableCellMapping
 	TableRowSource            source.TableRowMapping
+	TableSource               source.TableMapping
 	FencedCodeSource          source.FencedCodeMapping
 	StrikethroughSource       source.StrikethroughMapping
 	InlineLinkSource          source.InlineLinkMapping
@@ -130,6 +139,8 @@ type Node struct {
 	AutoLinkSource            source.AutoLinkMapping
 	CodeSpanSource            source.CodeSpanMapping
 	EmphasisSource            source.EmphasisMapping
+	ThematicBreakSource       source.ThematicBreakMapping
+	BlockquoteSource          source.BlockquoteMapping
 	Anchor                    int
 	Destination               string
 	Label                     string
@@ -156,18 +167,20 @@ type frontMatterEnvelope struct {
 
 // Document is an immutable parsed source snapshot used by the feasibility slice.
 type Document struct {
-	source             []byte
-	nodes              []Node
-	nodeIndex          map[NodeID]int
-	listChildIDs       []NodeID
-	listItemIndexes    []int
-	tableCellIDs       []NodeID
-	tableHeaderCellIDs []NodeID
-	tableRowIndexes    []int
-	tableCellIndexes   []int
-	sections           []Section
-	sectionIndex       map[NodeID]int
-	frontMatter        frontMatterEnvelope
+	source                  []byte
+	nodes                   []Node
+	nodeIndex               map[NodeID]int
+	listChildIDs            []NodeID
+	listItemIndexes         []int
+	tableCellIDs            []NodeID
+	tableHeaderCellIDs      []NodeID
+	tableRowIndexes         []int
+	tableCellIndexes        []int
+	tableRowIDs             []NodeID
+	tableOwnedHeaderCellIDs []NodeID
+	sections                []Section
+	sectionIndex            map[NodeID]int
+	frontMatter             frontMatterEnvelope
 }
 
 // Parse creates a snapshot-local Marksplice model using the internal Goldmark adapter.
@@ -205,6 +218,10 @@ func Parse(input []byte) (*Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve table row cells: %w", err)
 	}
+	tableOwnerModel, err := resolveTables(nodes)
+	if err != nil {
+		return nil, fmt.Errorf("resolve tables: %w", err)
+	}
 
 	nodeIndex, err := indexNodes(nodes)
 	if err != nil {
@@ -223,18 +240,20 @@ func Parse(input []byte) (*Document, error) {
 		}
 	}
 	return &Document{
-		source:             snapshot,
-		nodes:              nodes,
-		nodeIndex:          nodeIndex,
-		listChildIDs:       listModel.childIDs,
-		listItemIndexes:    listModel.itemIndexes,
-		tableCellIDs:       tableModel.cellIDs,
-		tableHeaderCellIDs: tableModel.headerCellIDs,
-		tableRowIndexes:    tableModel.rowIndexes,
-		tableCellIndexes:   tableModel.cellIndexes,
-		sections:           sections,
-		sectionIndex:       sectionIndex,
-		frontMatter:        storedFrontMatter,
+		source:                  snapshot,
+		nodes:                   nodes,
+		nodeIndex:               nodeIndex,
+		listChildIDs:            listModel.childIDs,
+		listItemIndexes:         listModel.itemIndexes,
+		tableCellIDs:            tableModel.cellIDs,
+		tableHeaderCellIDs:      tableModel.headerCellIDs,
+		tableRowIndexes:         tableModel.rowIndexes,
+		tableCellIndexes:        tableModel.cellIndexes,
+		tableRowIDs:             tableOwnerModel.rowIDs,
+		tableOwnedHeaderCellIDs: tableOwnerModel.headerCellIDs,
+		sections:                sections,
+		sectionIndex:            sectionIndex,
+		frontMatter:             storedFrontMatter,
 	}, nil
 }
 
@@ -308,6 +327,9 @@ func (d *Document) ListItemChildIDs(id NodeID) ([]NodeID, bool) {
 func cloneNode(node Node) Node {
 	node.TableAlignments = append([]TableAlignment(nil), node.TableAlignments...)
 	node.TableRowSource.Cells = append([]source.TableCellMapping(nil), node.TableRowSource.Cells...)
+	node.TableSource.Header.Cells = append([]source.TableCellMapping(nil), node.TableSource.Header.Cells...)
+	node.TableSource.Delimiter.Cells = append([]source.TableCellMapping(nil), node.TableSource.Delimiter.Cells...)
+	node.TableSource.DelimiterAlignments = append([]source.TableDelimiterAlignment(nil), node.TableSource.DelimiterAlignments...)
 	return node
 }
 
@@ -338,49 +360,38 @@ func (d *Document) indexedEditableNode(index int, kind Kind) (Node, bool) {
 	return node, node.Kind == kind && node.Editable
 }
 
+var spliceKindByParserKind = [parser.KindTable + 1]Kind{
+	parser.KindParagraph:           KindParagraph,
+	parser.KindHeading:             KindHeading,
+	parser.KindTask:                KindTask,
+	parser.KindListItem:            KindListItem,
+	parser.KindTableCell:           KindTableCell,
+	parser.KindFencedCode:          KindFencedCode,
+	parser.KindStrikethrough:       KindStrikethrough,
+	parser.KindInlineLink:          KindInlineLink,
+	parser.KindReferenceDefinition: KindReferenceDefinition,
+	parser.KindAutoLink:            KindAutoLink,
+	parser.KindCodeSpan:            KindCodeSpan,
+	parser.KindEmphasis:            KindEmphasis,
+	parser.KindStrong:              KindStrong,
+	parser.KindRawHTML:             KindHTMLOpaque,
+	parser.KindHTMLBlock:           KindHTMLOpaque,
+	parser.KindImage:               KindImage,
+	parser.KindTableRow:            KindTableRow,
+	parser.KindThematicBreak:       KindThematicBreak,
+	parser.KindBlockquote:          KindBlockquote,
+	parser.KindTable:               KindTable,
+}
+
 func mapKind(kind parser.Kind) (Kind, error) {
-	switch kind {
-	case parser.KindParagraph:
-		return KindParagraph, nil
-	case parser.KindHeading:
-		return KindHeading, nil
-	case parser.KindTask:
-		return KindTask, nil
-	case parser.KindListItem:
-		return KindListItem, nil
-	case parser.KindTableCell:
-		return KindTableCell, nil
-	case parser.KindTableRow:
-		return KindTableRow, nil
-	case parser.KindFencedCode:
-		return KindFencedCode, nil
-	case parser.KindStrikethrough:
-		return KindStrikethrough, nil
-	case parser.KindInlineLink:
-		return KindInlineLink, nil
-	case parser.KindReferenceDefinition:
-		return KindReferenceDefinition, nil
-	case parser.KindAutoLink:
-		return KindAutoLink, nil
-	case parser.KindCodeSpan:
-		return KindCodeSpan, nil
-	case parser.KindEmphasis:
-		return KindEmphasis, nil
-	case parser.KindStrong:
-		return KindStrong, nil
-	case parser.KindHTMLBlock:
-		return KindHTMLOpaque, nil
-	case parser.KindRawHTML:
-		return KindHTMLOpaque, nil
-	case parser.KindImage:
-		return KindImage, nil
-	case parser.KindThematicBreak:
-		return KindThematicBreak, nil
-	case parser.KindBlockquote:
-		return KindBlockquote, nil
-	default:
+	if kind <= parser.KindUnknown || int(kind) >= len(spliceKindByParserKind) {
 		return KindUnknown, fmt.Errorf("unsupported parser node kind %d", kind)
 	}
+	mapped := spliceKindByParserKind[kind]
+	if mapped == KindUnknown {
+		return KindUnknown, fmt.Errorf("unsupported parser node kind %d", kind)
+	}
+	return mapped, nil
 }
 
 func makeNodeID(fingerprint source.Fingerprint, kind Kind, range_ Range) NodeID {

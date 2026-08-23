@@ -21,15 +21,17 @@ func TestPublicDocumentSnapshotAndNodeLookup(t *testing.T) {
 	input[0] = 'X'
 
 	nodes := doc.Nodes()
-	if len(nodes) != 4 {
-		t.Fatalf("public node count = %d, want heading, list item, task, and paragraph", len(nodes))
+	if len(nodes) != 5 {
+		t.Fatalf("public node count = %d, want heading, blockquote, list item, task, and paragraph", len(nodes))
 	}
 
-	var heading, paragraph, listItem, task marksplice.Node
+	var heading, blockquote, paragraph, listItem, task marksplice.Node
 	for _, node := range nodes {
 		switch node.Kind() {
 		case marksplice.KindHeading:
 			heading = node
+		case marksplice.KindBlockquote:
+			blockquote = node
 		case marksplice.KindParagraph:
 			paragraph = node
 		case marksplice.KindListItem:
@@ -38,12 +40,12 @@ func TestPublicDocumentSnapshotAndNodeLookup(t *testing.T) {
 			task = node
 		}
 	}
-	if heading.ID().String() == "" || paragraph.ID().String() == "" || listItem.ID().String() == "" || task.ID().String() == "" {
-		t.Fatalf("promoted IDs = heading %v paragraph %v list item %v task %v, want non-empty", heading.ID(), paragraph.ID(), listItem.ID(), task.ID())
+	if heading.ID().String() == "" || blockquote.ID().String() == "" || paragraph.ID().String() == "" || listItem.ID().String() == "" || task.ID().String() == "" {
+		t.Fatalf("promoted IDs = heading %v blockquote %v paragraph %v list item %v task %v, want non-empty", heading.ID(), blockquote.ID(), paragraph.ID(), listItem.ID(), task.ID())
 	}
 	for _, node := range nodes {
 		switch node.Kind() {
-		case marksplice.KindHeading, marksplice.KindParagraph, marksplice.KindListItem, marksplice.KindTask:
+		case marksplice.KindHeading, marksplice.KindBlockquote, marksplice.KindParagraph, marksplice.KindListItem, marksplice.KindTask:
 		default:
 			t.Fatalf("Nodes() exposed unpromoted kind %v", node.Kind())
 		}

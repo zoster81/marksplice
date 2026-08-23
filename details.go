@@ -165,6 +165,7 @@ func (t Task) Checked() bool {
 type TableCell struct {
 	id          NodeID
 	sourceRange Range
+	tableID     NodeID
 	rowID       NodeID
 	header      bool
 	column      int
@@ -186,6 +187,15 @@ func (c TableCell) Header() bool {
 	return c.header
 }
 
+// TableID returns the promoted GFM table that owns this cell.
+// The boolean is false when no promoted table identity is available.
+func (c TableCell) TableID() (NodeID, bool) {
+	if c.tableID.value == "" {
+		return NodeID{}, false
+	}
+	return c.tableID, true
+}
+
 // RowID returns the promoted GFM body row that owns this cell.
 // The boolean is false for header cells and when no promoted body-row identity is available.
 func (c TableCell) RowID() (NodeID, bool) {
@@ -200,10 +210,32 @@ func (c TableCell) Column() int {
 	return c.column
 }
 
+// Table is immutable typed detail for one promoted GFM table.
+type Table struct {
+	id           NodeID
+	sourceRange  Range
+	columnCount  int
+	bodyRowCount int
+}
+
+// ID returns the table's snapshot-scoped node identity.
+func (t Table) ID() NodeID { return t.id }
+
+// Range returns the exact complete table source span.
+// It owns the header row, delimiter row, and every semantic body row; when present, the final owned line terminator is included.
+func (t Table) Range() Range { return t.sourceRange }
+
+// ColumnCount returns the semantic/source-proven number of table columns.
+func (t Table) ColumnCount() int { return t.columnCount }
+
+// BodyRowCount returns the semantic number of body rows, including rows outside the promoted public row subset.
+func (t Table) BodyRowCount() int { return t.bodyRowCount }
+
 // TableRow is immutable typed detail for one promoted GFM table body row.
 type TableRow struct {
 	id          NodeID
 	sourceRange Range
+	tableID     NodeID
 	columnCount int
 	previousID  NodeID
 	nextID      NodeID
@@ -218,6 +250,15 @@ func (r TableRow) Range() Range { return r.sourceRange }
 
 // ColumnCount returns the semantic/source-proven number of columns in the body row.
 func (r TableRow) ColumnCount() int { return r.columnCount }
+
+// TableID returns the promoted GFM table that owns this body row.
+// The boolean is false when no promoted table identity is available.
+func (r TableRow) TableID() (NodeID, bool) {
+	if r.tableID.value == "" {
+		return NodeID{}, false
+	}
+	return r.tableID, true
+}
 
 // PreviousID returns the nearest promoted body row before this row in the same table.
 func (r TableRow) PreviousID() (NodeID, bool) {
@@ -234,6 +275,37 @@ func (r TableRow) NextID() (NodeID, bool) {
 	}
 	return r.nextID, true
 }
+
+// ThematicBreak is immutable typed detail for one promoted top-level thematic break.
+type ThematicBreak struct {
+	id          NodeID
+	sourceRange Range
+}
+
+// ID returns the thematic break's snapshot-scoped node identity.
+func (t ThematicBreak) ID() NodeID { return t.id }
+
+// Range returns the exact complete physical line owned by structural thematic-break operations.
+// When present, the line terminator is included.
+func (t ThematicBreak) Range() Range { return t.sourceRange }
+
+// Blockquote is immutable typed detail for one promoted simple top-level blockquote.
+type Blockquote struct {
+	id           NodeID
+	sourceRange  Range
+	contentRange Range
+}
+
+// ID returns the blockquote's snapshot-scoped node identity.
+func (b Blockquote) ID() NodeID { return b.id }
+
+// Range returns the exact complete physical blockquote line owned by structural operations.
+// When present, the line terminator is included.
+func (b Blockquote) Range() Range { return b.sourceRange }
+
+// ContentRange returns the exact inner single-paragraph source span.
+// Leading indentation, the '>' marker, its optional following space, and the line terminator are outside this range.
+func (b Blockquote) ContentRange() Range { return b.contentRange }
 
 // FencedCode is immutable typed detail for one promoted supported fenced code block.
 type FencedCode struct {

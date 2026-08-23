@@ -18,6 +18,22 @@ func (d *Document) PrepareRenameHeading(id NodeID, replacement []byte) (ChangeSe
 	return publicChangeSet(d.document.PrepareRenameHeading(internalNodeID(id), replacement))
 }
 
+// PrepareRemoveThematicBreak prepares source-preserving removal of one complete promoted top-level thematic-break line.
+func (d *Document) PrepareRemoveThematicBreak(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindThematicBreak, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveThematicBreak(internalNodeID(id)))
+}
+
+// PrepareRemoveBlockquote prepares source-preserving removal of one complete promoted simple top-level blockquote line.
+func (d *Document) PrepareRemoveBlockquote(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindBlockquote, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveBlockquote(internalNodeID(id)))
+}
+
 // PrepareRemoveSection prepares source-preserving removal of one complete promoted section subtree.
 func (d *Document) PrepareRemoveSection(headingID NodeID) (ChangeSet, error) {
 	if _, err := d.promotedNode(headingID, splice.KindHeading, true); err != nil {
@@ -164,6 +180,70 @@ func (d *Document) PrepareSetTaskChecked(id NodeID, checked bool) (ChangeSet, er
 		return ChangeSet{}, err
 	}
 	return publicChangeSet(d.document.PrepareSetTaskChecked(internalNodeID(id), checked))
+}
+
+// PrepareSetTableColumnAlignment prepares a source-preserving alignment change for one promoted GFM table column.
+func (d *Document) PrepareSetTableColumnAlignment(id NodeID, column int, alignment TableAlignment) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindTable, false); err != nil {
+		return ChangeSet{}, err
+	}
+	internalAlignment, ok := internalTableAlignment(alignment)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return publicChangeSet(d.document.PrepareSetTableColumnAlignment(internalNodeID(id), column, internalAlignment))
+}
+
+// PrepareSetTableAlignments prepares one atomic source-preserving alignment update for every promoted GFM table column.
+func (d *Document) PrepareSetTableAlignments(id NodeID, alignments []TableAlignment) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindTable, false); err != nil {
+		return ChangeSet{}, err
+	}
+	internalAlignments := make([]splice.TableAlignment, len(alignments))
+	for index, alignment := range alignments {
+		converted, ok := internalTableAlignment(alignment)
+		if !ok {
+			return ChangeSet{}, ErrInvalidReplacement
+		}
+		internalAlignments[index] = converted
+	}
+	return publicChangeSet(d.document.PrepareSetTableAlignments(internalNodeID(id), internalAlignments))
+}
+
+// PrepareAppendTableRow prepares appending one caller-owned compatible body row to a promoted GFM table.
+func (d *Document) PrepareAppendTableRow(id NodeID, fragment []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindTable, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareAppendTableRow(internalNodeID(id), fragment))
+}
+
+// PrepareInsertTableColumn prepares source-preserving insertion of one complete promoted GFM table column.
+func (d *Document) PrepareInsertTableColumn(id NodeID, column int, header []byte, alignment TableAlignment, body [][]byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindTable, false); err != nil {
+		return ChangeSet{}, err
+	}
+	internalAlignment, ok := internalTableAlignment(alignment)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return publicChangeSet(d.document.PrepareInsertTableColumn(internalNodeID(id), column, header, internalAlignment, body))
+}
+
+// PrepareRemoveTableColumn prepares source-preserving removal of one complete promoted GFM table column.
+func (d *Document) PrepareRemoveTableColumn(id NodeID, column int) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindTable, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveTableColumn(internalNodeID(id), column))
+}
+
+// PrepareMoveTableColumn prepares moving one complete promoted GFM table column to a new zero-based position.
+func (d *Document) PrepareMoveTableColumn(id NodeID, from, to int) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindTable, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareMoveTableColumn(internalNodeID(id), from, to))
 }
 
 // PrepareReplaceTableRow prepares source-preserving replacement of one complete promoted GFM table body row.

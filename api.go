@@ -44,6 +44,9 @@ const (
 	KindHTMLAnchor
 	KindImage
 	KindTableRow
+	KindTable
+	KindThematicBreak
+	KindBlockquote
 )
 
 // NodeID identifies a node within one parsed source snapshot.
@@ -217,47 +220,37 @@ func internalNodeID(id NodeID) splice.NodeID {
 	return splice.NodeID(id.value)
 }
 
+var publicKindByInternalKind = [splice.KindTable + 1]Kind{
+	splice.KindParagraph:            KindParagraph,
+	splice.KindHeading:              KindHeading,
+	splice.KindTask:                 KindTask,
+	splice.KindListItem:             KindListItem,
+	splice.KindTableCell:            KindTableCell,
+	splice.KindFencedCode:           KindFencedCode,
+	splice.KindStrikethrough:        KindStrikethrough,
+	splice.KindInlineLink:           KindInlineLink,
+	splice.KindReferenceDefinition:  KindReferenceDefinition,
+	splice.KindAutoLink:             KindAutoLink,
+	splice.KindCodeSpan:             KindCodeSpan,
+	splice.KindEmphasis:             KindEmphasis,
+	splice.KindStrong:               KindStrong,
+	splice.KindYAMLFrontMatterField: KindFrontMatterField,
+	splice.KindTOMLFrontMatterField: KindFrontMatterField,
+	splice.KindHTMLComment:          KindHTMLComment,
+	splice.KindHTMLAnchor:           KindHTMLAnchor,
+	splice.KindImage:                KindImage,
+	splice.KindTableRow:             KindTableRow,
+	splice.KindThematicBreak:        KindThematicBreak,
+	splice.KindBlockquote:           KindBlockquote,
+	splice.KindTable:                KindTable,
+}
+
 func publicKind(kind splice.Kind) (Kind, bool) {
-	switch kind {
-	case splice.KindParagraph:
-		return KindParagraph, true
-	case splice.KindHeading:
-		return KindHeading, true
-	case splice.KindListItem:
-		return KindListItem, true
-	case splice.KindTask:
-		return KindTask, true
-	case splice.KindTableCell:
-		return KindTableCell, true
-	case splice.KindTableRow:
-		return KindTableRow, true
-	case splice.KindFencedCode:
-		return KindFencedCode, true
-	case splice.KindStrikethrough:
-		return KindStrikethrough, true
-	case splice.KindCodeSpan:
-		return KindCodeSpan, true
-	case splice.KindEmphasis:
-		return KindEmphasis, true
-	case splice.KindStrong:
-		return KindStrong, true
-	case splice.KindInlineLink:
-		return KindInlineLink, true
-	case splice.KindReferenceDefinition:
-		return KindReferenceDefinition, true
-	case splice.KindAutoLink:
-		return KindAutoLink, true
-	case splice.KindYAMLFrontMatterField, splice.KindTOMLFrontMatterField:
-		return KindFrontMatterField, true
-	case splice.KindHTMLComment:
-		return KindHTMLComment, true
-	case splice.KindHTMLAnchor:
-		return KindHTMLAnchor, true
-	case splice.KindImage:
-		return KindImage, true
-	default:
+	if kind <= splice.KindUnknown || int(kind) >= len(publicKindByInternalKind) {
 		return KindUnknown, false
 	}
+	public := publicKindByInternalKind[kind]
+	return public, public != KindUnknown
 }
 
 func publicError(err error) error {

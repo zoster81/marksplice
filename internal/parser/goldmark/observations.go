@@ -10,6 +10,13 @@ import (
 )
 
 func observeNode(source []byte, node ast.Node) (parser.Node, bool, error) {
+	if observed, matched, err := observeBlockNode(source, node); matched || err != nil {
+		return observed, matched, err
+	}
+	return observeInlineNode(source, node)
+}
+
+func observeBlockNode(source []byte, node ast.Node) (parser.Node, bool, error) {
 	switch typed := node.(type) {
 	case *ast.Paragraph:
 		return observeParagraph(source, typed)
@@ -27,8 +34,17 @@ func observeNode(source []byte, node ast.Node) (parser.Node, bool, error) {
 		return observeHTMLBlock(source, typed)
 	case *ast.ListItem:
 		return observeListItem(source, typed)
+	case *extensionast.Table:
+		return observeTable(source, typed)
 	case *extensionast.TableRow:
 		return observeTableRow(source, typed)
+	default:
+		return parser.Node{}, false, nil
+	}
+}
+
+func observeInlineNode(source []byte, node ast.Node) (parser.Node, bool, error) {
+	switch typed := node.(type) {
 	case *ast.AutoLink:
 		return observeAutoLink(source, typed)
 	case *ast.CodeSpan:

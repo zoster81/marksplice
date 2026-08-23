@@ -14,44 +14,49 @@ type InlineLinkMapping struct {
 
 // MapSimpleInlineLink maps a single-line plain-text-label inline link to its source destination.
 func MapSimpleInlineLink(input []byte, anchor int, label Range, destination, title string, hasTitle bool) (InlineLinkMapping, error) {
-	if anchor < 0 || anchor >= len(input) || input[anchor] != '[' || !label.Valid(len(input)) || label.Start == label.End {
-		return InlineLinkMapping{}, fmt.Errorf("%w: invalid anchor or label range", ErrUnsupportedInlineLinkShape)
-	}
-	lineEnd, destinationStart, ok := inlineDestinationOpening(input, anchor, 1, label)
-	if !ok {
-		return InlineLinkMapping{}, fmt.Errorf("%w: label is not followed by an inline-link destination", ErrUnsupportedInlineLinkShape)
-	}
-	if containsLineBreak(input[anchor:destinationStart]) {
-		return InlineLinkMapping{}, fmt.Errorf("%w: link prefix crosses a physical line", ErrUnsupportedInlineLinkShape)
-	}
-	if destination == "" {
-		return InlineLinkMapping{}, fmt.Errorf("%w: unsupported empty destination", ErrUnsupportedInlineLinkShape)
-	}
-
-	pos := skipHorizontalSpace(input, destinationStart, lineEnd)
-	destinationRange, angle, next, ok := scanMarkdownLinkDestination(input, pos, lineEnd)
-	if !ok || string(input[destinationRange.Start:destinationRange.End]) != destination {
-		return InlineLinkMapping{}, fmt.Errorf("%w: source destination does not match semantic destination", ErrUnsupportedInlineLinkShape)
+	lineEnd, destinationStart, err := validateInlineLinkPrefix(input, anchor, label, destination)
+	if err != nil {
+		return InlineLinkMapping{}, err
 	}
 	policy := inlineTitleForbidden
 	if hasTitle {
 		policy = inlineTitleRequired
 	}
-	tail, issue := scanInlineTitleTail(input, next, lineEnd, policy)
-	if issue == inlineTailInvalidTitle || hasTitle && string(input[tail.titleRange.Start:tail.titleRange.End]) != title {
+	parsed, issue := scanInlineDestinationTail(input, destinationStart, lineEnd, policy)
+	if issue == inlineTailInvalidDestination || string(input[parsed.destinationRange.Start:parsed.destinationRange.End]) != destination {
+		return InlineLinkMapping{}, fmt.Errorf("%w: source destination does not match semantic destination", ErrUnsupportedInlineLinkShape)
+	}
+	if issue == inlineTailInvalidTitle || hasTitle && string(input[parsed.tail.titleRange.Start:parsed.tail.titleRange.End]) != title {
 		return InlineLinkMapping{}, fmt.Errorf("%w: source title does not match semantic title", ErrUnsupportedInlineLinkShape)
 	}
 	if issue != inlineTailOK {
 		return InlineLinkMapping{}, fmt.Errorf("%w: missing inline-link closing parenthesis", ErrUnsupportedInlineLinkShape)
 	}
 	return InlineLinkMapping{
-		Range:            Range{Start: anchor, End: tail.end},
+		Range:            Range{Start: anchor, End: parsed.tail.end},
 		LabelRange:       label,
-		DestinationRange: destinationRange,
-		TitleRange:       tail.titleRange,
-		AngleDestination: angle,
+		DestinationRange: parsed.destinationRange,
+		TitleRange:       parsed.tail.titleRange,
+		AngleDestination: parsed.angle,
 		HasTitle:         hasTitle,
 	}, nil
+}
+
+func validateInlineLinkPrefix(input []byte, anchor int, label Range, destination string) (int, int, error) {
+	if anchor < 0 || anchor >= len(input) || input[anchor] != '[' || !label.Valid(len(input)) || label.Start == label.End {
+		return 0, 0, fmt.Errorf("%w: invalid anchor or label range", ErrUnsupportedInlineLinkShape)
+	}
+	lineEnd, destinationStart, ok := inlineDestinationOpening(input, anchor, 1, label)
+	if !ok {
+		return 0, 0, fmt.Errorf("%w: label is not followed by an inline-link destination", ErrUnsupportedInlineLinkShape)
+	}
+	if containsLineBreak(input[anchor:destinationStart]) {
+		return 0, 0, fmt.Errorf("%w: link prefix crosses a physical line", ErrUnsupportedInlineLinkShape)
+	}
+	if destination == "" {
+		return 0, 0, fmt.Errorf("%w: unsupported empty destination", ErrUnsupportedInlineLinkShape)
+	}
+	return lineEnd, destinationStart, nil
 }
 
 // ImageMapping binds one simple inline image to its exact source destination.
@@ -77,13 +82,10 @@ func MapSimpleImage(input []byte, anchor int, alt Range) (ImageMapping, error) {
 		return ImageMapping{}, fmt.Errorf("%w: image prefix crosses a physical line", ErrUnsupportedImageShape)
 	}
 
-	pos := skipHorizontalSpace(input, destinationStart, lineEnd)
-	destinationRange, angle, next, ok := scanMarkdownLinkDestination(input, pos, lineEnd)
-	if !ok {
-		return ImageMapping{}, fmt.Errorf("%w: unsupported or empty image destination", ErrUnsupportedImageShape)
-	}
-	tail, issue := scanInlineTitleTail(input, next, lineEnd, inlineTitleOptionalSeparated)
+	parsed, issue := scanInlineDestinationTail(input, destinationStart, lineEnd, inlineTitleOptionalSeparated)
 	switch issue {
+	case inlineTailInvalidDestination:
+		return ImageMapping{}, fmt.Errorf("%w: unsupported or empty image destination", ErrUnsupportedImageShape)
 	case inlineTailUnseparatedTitle:
 		return ImageMapping{}, fmt.Errorf("%w: image title is not separated from destination", ErrUnsupportedImageShape)
 	case inlineTailInvalidTitle:
@@ -92,12 +94,12 @@ func MapSimpleImage(input []byte, anchor int, alt Range) (ImageMapping, error) {
 		return ImageMapping{}, fmt.Errorf("%w: missing inline-image closing parenthesis", ErrUnsupportedImageShape)
 	}
 	return ImageMapping{
-		Range:            Range{Start: anchor, End: tail.end},
+		Range:            Range{Start: anchor, End: parsed.tail.end},
 		AltRange:         alt,
-		DestinationRange: destinationRange,
-		TitleRange:       tail.titleRange,
-		AngleDestination: angle,
-		HasTitle:         tail.hasTitle,
+		DestinationRange: parsed.destinationRange,
+		TitleRange:       parsed.tail.titleRange,
+		AngleDestination: parsed.angle,
+		HasTitle:         parsed.tail.hasTitle,
 	}, nil
 }
 
@@ -318,6 +320,7 @@ type inlineTailIssue uint8
 
 const (
 	inlineTailOK inlineTailIssue = iota
+	inlineTailInvalidDestination
 	inlineTailUnseparatedTitle
 	inlineTailInvalidTitle
 	inlineTailMissingClosing
@@ -327,6 +330,22 @@ type inlineTitleTail struct {
 	titleRange Range
 	hasTitle   bool
 	end        int
+}
+
+type inlineDestinationTail struct {
+	destinationRange Range
+	angle            bool
+	tail             inlineTitleTail
+}
+
+func scanInlineDestinationTail(input []byte, start, limit int, policy inlineTitlePolicy) (inlineDestinationTail, inlineTailIssue) {
+	pos := skipHorizontalSpace(input, start, limit)
+	destinationRange, angle, next, ok := scanMarkdownLinkDestination(input, pos, limit)
+	if !ok {
+		return inlineDestinationTail{}, inlineTailInvalidDestination
+	}
+	tail, issue := scanInlineTitleTail(input, next, limit, policy)
+	return inlineDestinationTail{destinationRange: destinationRange, angle: angle, tail: tail}, issue
 }
 
 func scanInlineTitleTail(input []byte, start, limit int, policy inlineTitlePolicy) (inlineTitleTail, inlineTailIssue) {

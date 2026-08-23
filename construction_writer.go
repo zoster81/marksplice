@@ -10,14 +10,31 @@ import (
 
 func writeConstructionBlocks(blocks []constructionBlock) ([]byte, []constructionExpectation) {
 	var output bytes.Buffer
+	expected := appendConstructionBlocks(&output, blocks)
+	return output.Bytes(), expected
+}
+
+func writeConstructionDocument(frontMatter *constructionFrontMatter, blocks []constructionBlock) ([]byte, []constructionExpectation) {
+	var output bytes.Buffer
+	if frontMatter != nil {
+		writeConstructionFrontMatterTo(&output, *frontMatter)
+		if len(blocks) != 0 {
+			output.WriteByte('\n')
+		}
+	}
+	expected := appendConstructionBlocks(&output, blocks)
+	return output.Bytes(), expected
+}
+
+func appendConstructionBlocks(output *bytes.Buffer, blocks []constructionBlock) []constructionExpectation {
 	expected := make([]constructionExpectation, 0, len(blocks))
 	for index, block := range blocks {
 		if index != 0 {
 			output.WriteByte('\n')
 		}
-		expected = append(expected, writeConstructionBlock(&output, block)...)
+		expected = append(expected, writeConstructionBlock(output, block)...)
 	}
-	return output.Bytes(), expected
+	return expected
 }
 
 func writeConstructionBlock(output *bytes.Buffer, block constructionBlock) []constructionExpectation {
@@ -53,18 +70,9 @@ func writeConstructionBlock(output *bytes.Buffer, block constructionBlock) []con
 		output.WriteByte('\n')
 		return []constructionExpectation{expectation}
 	case constructionBlockquote:
-		start := output.Len()
-		output.WriteString("> ")
-		contentStart := output.Len()
-		output.WriteString(block.inlineGFM)
-		contentEnd := output.Len()
-		expectation := constructionExpectation{
-			kind:         splice.KindBlockquote,
-			contentRange: splice.Range{Start: contentStart, End: contentEnd},
-			sourceRange:  splice.Range{Start: start, End: contentEnd},
-		}
-		output.WriteByte('\n')
-		return []constructionExpectation{expectation}
+		return []constructionExpectation{writeConstructionBlockquote(output, block.depth, block.inlineGFM)}
+	case constructionBlockquoteBlocks:
+		return []constructionExpectation{writeConstructionBlockquoteBlocks(output, block.depth, block.children)}
 	case constructionUnorderedList, constructionOrderedList, constructionUnorderedTaskList, constructionOrderedTaskList,
 		constructionNestedUnorderedList, constructionNestedOrderedList:
 		ordered := block.kind == constructionOrderedList || block.kind == constructionOrderedTaskList || block.kind == constructionNestedOrderedList
@@ -78,6 +86,65 @@ func writeConstructionBlock(output *bytes.Buffer, block constructionBlock) []con
 	default:
 		return nil
 	}
+}
+
+func writeConstructionBlockquoteBlocks(output *bytes.Buffer, depth int, blocks []constructionBlock) constructionExpectation {
+	innerSource, _ := writeConstructionBlocks(blocks)
+	start := output.Len()
+	prefix := strings.Repeat("> ", depth)
+	lineStart := 0
+	for lineStart < len(innerSource) {
+		lineEnd := bytes.IndexByte(innerSource[lineStart:], '\n')
+		if lineEnd < 0 {
+			lineEnd = len(innerSource)
+		} else {
+			lineEnd += lineStart
+		}
+		output.WriteString(prefix)
+		output.Write(innerSource[lineStart:lineEnd])
+		if lineEnd == len(innerSource) {
+			break
+		}
+		output.WriteByte('\n')
+		lineStart = lineEnd + 1
+	}
+	end := output.Len() - 1
+	return constructionExpectation{
+		kind:        splice.KindBlockquote,
+		sourceRange: splice.Range{Start: start, End: end},
+		blockquote: constructionBlockquoteProof{
+			depth:       depth,
+			innerSource: append([]byte(nil), innerSource...),
+		},
+	}
+}
+
+func writeConstructionBlockquote(output *bytes.Buffer, depth int, content string) constructionExpectation {
+	start := output.Len()
+	lines := strings.Split(content, "\n")
+	contentRanges := make([]splice.Range, len(lines))
+	prefix := strings.Repeat("> ", depth)
+	for index, line := range lines {
+		if index != 0 {
+			output.WriteByte('\n')
+		}
+		output.WriteString(prefix)
+		contentStart := output.Len()
+		output.WriteString(line)
+		contentRanges[index] = splice.Range{Start: contentStart, End: output.Len()}
+	}
+	end := output.Len()
+	expectation := constructionExpectation{
+		kind:         splice.KindBlockquote,
+		contentRange: contentRanges[0],
+		sourceRange:  splice.Range{Start: start, End: end},
+		blockquote: constructionBlockquoteProof{
+			depth:         depth,
+			contentRanges: contentRanges,
+		},
+	}
+	output.WriteByte('\n')
+	return expectation
 }
 
 type constructionListFrame struct {
@@ -311,16 +378,11 @@ func constructionTableDelimiter(alignment TableAlignment) string {
 func constructionSpliceTableAlignments(alignments []TableAlignment) []splice.TableAlignment {
 	result := make([]splice.TableAlignment, len(alignments))
 	for index, alignment := range alignments {
-		switch alignment {
-		case TableAlignmentLeft:
-			result[index] = splice.TableAlignmentLeft
-		case TableAlignmentRight:
-			result[index] = splice.TableAlignmentRight
-		case TableAlignmentCenter:
-			result[index] = splice.TableAlignmentCenter
-		default:
-			result[index] = splice.TableAlignmentDefault
+		converted, ok := internalTableAlignment(alignment)
+		if !ok {
+			converted = splice.TableAlignmentDefault
 		}
+		result[index] = converted
 	}
 	return result
 }

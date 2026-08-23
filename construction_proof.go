@@ -16,6 +16,13 @@ type constructionExpectation struct {
 	fence        constructionFenceProof
 	reference    constructionReferenceProof
 	tableRow     constructionTableRowProof
+	blockquote   constructionBlockquoteProof
+}
+
+type constructionBlockquoteProof struct {
+	depth         int
+	contentRanges []splice.Range
+	innerSource   []byte
 }
 
 type constructionListProof struct {
@@ -59,6 +66,10 @@ type constructionTableRowProof struct {
 }
 
 func validateConstructionDocument(source []byte, expected []constructionExpectation) error {
+	if err := validateConstructionBlockquoteProofs(source, expected); err != nil {
+		return err
+	}
+	nodeExpected := constructionNodeExpectations(expected)
 	document, err := splice.Parse(source)
 	if err != nil {
 		return fmt.Errorf("%w: generated GFM parse: %v", ErrInvalidConstruction, err)
@@ -74,21 +85,53 @@ func validateConstructionDocument(source []byte, expected []constructionExpectat
 			}
 			tasks[node.Range.Start] = node
 		}
-		if !isConstructionProofNode(node) {
+		if isConstructionOnlyBlockquoteObservation(node, expected) || !isConstructionProofNode(node) {
 			continue
 		}
-		if matched >= len(expected) {
+		if matched >= len(nodeExpected) {
 			return fmt.Errorf("%w: generated unexpected top-level block", ErrInvalidConstruction)
 		}
-		if err := validateConstructionExpectation(node, expected[matched]); err != nil {
+		if err := validateConstructionExpectation(node, nodeExpected[matched]); err != nil {
 			return err
 		}
 		matched++
 	}
-	if matched != len(expected) {
+	if matched != len(nodeExpected) {
 		return fmt.Errorf("%w: generated block count changed", ErrInvalidConstruction)
 	}
 	return validateConstructionTaskExpectations(tasks, expected)
+}
+
+func validateConstructionBlockquoteProofs(source []byte, expected []constructionExpectation) error {
+	for _, want := range expected {
+		if want.kind != splice.KindBlockquote {
+			continue
+		}
+		if len(want.blockquote.innerSource) != 0 {
+			if err := splice.ValidateConstructionNestedBlockquoteBlocks(source, want.sourceRange, want.blockquote.innerSource, want.blockquote.depth); err != nil {
+				return fmt.Errorf("%w: generated blockquote child sequence changed: %v", ErrInvalidConstruction, err)
+			}
+			continue
+		}
+		if want.blockquote.depth == 1 && len(want.blockquote.contentRanges) == 1 {
+			continue
+		}
+		if err := splice.ValidateConstructionNestedBlockquoteParagraph(source, want.sourceRange, want.blockquote.contentRanges, want.blockquote.depth); err != nil {
+			return fmt.Errorf("%w: generated blockquote paragraph changed: %v", ErrInvalidConstruction, err)
+		}
+	}
+	return nil
+}
+
+func constructionNodeExpectations(expected []constructionExpectation) []constructionExpectation {
+	result := make([]constructionExpectation, 0, len(expected))
+	for _, want := range expected {
+		if want.kind == splice.KindBlockquote && (len(want.blockquote.innerSource) != 0 || want.blockquote.depth > 1 || len(want.blockquote.contentRanges) > 1) {
+			continue
+		}
+		result = append(result, want)
+	}
+	return result
 }
 
 func validateConstructionTaskExpectations(tasks map[int]splice.Node, expected []constructionExpectation) error {
@@ -104,6 +147,21 @@ func validateConstructionTaskExpectations(tasks map[int]splice.Node, expected []
 		}
 	}
 	return nil
+}
+
+func isConstructionOnlyBlockquoteObservation(node splice.Node, expected []constructionExpectation) bool {
+	if node.Range.Start >= node.Range.End {
+		return false
+	}
+	for _, want := range expected {
+		if want.kind != splice.KindBlockquote || len(want.blockquote.innerSource) == 0 {
+			continue
+		}
+		if node.Range.Start >= want.sourceRange.Start && node.Range.End <= want.sourceRange.End {
+			return true
+		}
+	}
+	return false
 }
 
 func isConstructionProofNode(node splice.Node) bool {
@@ -165,14 +223,18 @@ func validateConstructionParagraphExpectation(node splice.Node, want constructio
 }
 
 func validateConstructionThematicBreakExpectation(node splice.Node, want constructionExpectation) error {
-	if node.Range != want.contentRange || !node.TopLevel || node.Editable {
+	if node.Range != want.contentRange || !node.TopLevel || !node.Editable || node.ThematicBreakSource.Range != want.contentRange {
 		return fmt.Errorf("%w: generated thematic-break mapping changed", ErrInvalidConstruction)
 	}
 	return nil
 }
 
 func validateConstructionBlockquoteExpectation(node splice.Node, want constructionExpectation) error {
-	if node.Range != want.sourceRange || node.ContentRange != want.contentRange || !node.TopLevel || node.Editable {
+	mapping := node.BlockquoteSource
+	if len(want.blockquote.innerSource) != 0 || want.blockquote.depth != 1 || len(want.blockquote.contentRanges) != 1 || want.blockquote.contentRanges[0] != want.contentRange ||
+		node.Range != want.sourceRange || node.ContentRange != want.contentRange || !node.TopLevel || !node.Editable ||
+		mapping.Range != want.sourceRange || mapping.ContentRange != want.contentRange ||
+		mapping.MarkerRange != (splice.Range{Start: want.sourceRange.Start, End: want.sourceRange.Start + 1}) {
 		return fmt.Errorf("%w: generated blockquote mapping changed", ErrInvalidConstruction)
 	}
 	return nil

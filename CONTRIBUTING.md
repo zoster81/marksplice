@@ -1,6 +1,6 @@
 # Contributing to Marksplice
 
-Marksplice has passed its initial source-preserving editing feasibility gate. Contributions should continue to favor correctness, deterministic behavior, and narrow evidence-backed changes over API breadth while the post-M1 public model is designed.
+Marksplice has passed its initial source-preserving editing feasibility gate and is preparing its public v0 beta series. Contributions should continue to favor correctness, deterministic behavior, and narrow evidence-backed changes over API breadth. Until v1, public APIs remain under active review and compatibility-breaking changes must be called out explicitly in the changelog and release notes.
 
 ## Before changing code
 
@@ -20,6 +20,10 @@ When practical:
 
 Source-preservation tests must verify bytes outside changed spans, not only semantic equivalence.
 
+## Supported Go versions
+
+The minimum supported Go version is defined by the `go` directive in `go.mod`, currently Go 1.26. Public CI also tests the current Go 1.27 release on Linux, Windows, and macOS. Changes should remain compatible with the minimum version unless the minimum-version policy is deliberately changed in the same reviewed update.
+
 ## Required local checks
 
 For code changes, run the applicable subset of:
@@ -31,6 +35,9 @@ go test -race ./...
 go vet ./...
 staticcheck ./...
 golangci-lint run
+gocyclo -over 15 -ignore '_test\.go$' .
+unparam ./...
+unparam -tests ./...
 govulncheck ./...
 gitleaks dir . --no-banner --redact
 git diff --check
@@ -52,6 +59,10 @@ When the approved GFM specification snapshot is provisioned separately, set `MAR
 Ordinary edits to existing Markdown must not render and replace the complete document. Prepared changes must use validated source ranges, preserve untouched bytes, and fail closed when applied to a different source snapshot.
 
 Use byte offsets for source mutation boundaries. Be deliberate about LF/CRLF, Unicode, malformed input, duplicate human-readable labels, large inputs, and deterministic behavior.
+
+## Releases and publication
+
+Public module versioning, beta policy, first-push preparation, and release verification are defined in [`docs/releasing.md`](docs/releasing.md). Contributors should not move or recreate published module tags. A release must be cut from the exact reviewed commit that passed the applicable verification gates.
 
 ## Scope discipline
 

@@ -72,7 +72,11 @@ func listItemPhysicalLineStart(source []byte, item *ast.ListItem) (int, bool) {
 
 func observeTableRow(source []byte, row *extensionast.TableRow) (parser.Node, bool, error) {
 	table, ok := row.Parent().(*extensionast.Table)
-	if !ok || row.Pos() < 0 || table.Pos() < 0 || row.ChildCount() == 0 {
+	if !ok || row.Pos() < 0 || row.ChildCount() == 0 {
+		return parser.Node{}, false, nil
+	}
+	tableAnchor, ok := tableSourceAnchor(table)
+	if !ok {
 		return parser.Node{}, false, nil
 	}
 	alignments, ok := observeTableAlignments(row.Alignments, row.ChildCount())
@@ -89,7 +93,7 @@ func observeTableRow(source []byte, row *extensionast.TableRow) (parser.Node, bo
 		Kind:             parser.KindTableRow,
 		Range:            range_,
 		TableRowAnchor:   start,
-		TableAnchor:      table.Pos(),
+		TableAnchor:      tableAnchor,
 		TableColumnCount: row.ChildCount(),
 		TableAlignments:  alignments,
 	}, true, nil
@@ -123,7 +127,11 @@ func observeTableCell(source []byte, cell *extensionast.TableCell, column int) (
 		return parser.Node{}, false
 	}
 	table, ok := parent.Parent().(*extensionast.Table)
-	if !ok || table.Pos() < 0 {
+	if !ok {
+		return parser.Node{}, false
+	}
+	tableAnchor, ok := tableSourceAnchor(table)
+	if !ok {
 		return parser.Node{}, false
 	}
 	lines := cell.Lines()
@@ -141,7 +149,7 @@ func observeTableCell(source []byte, cell *extensionast.TableCell, column int) (
 		TableHeader:    parent.Kind() == extensionast.KindTableHeader,
 		TableColumn:    column,
 		TableRowAnchor: parent.Pos(),
-		TableAnchor:    table.Pos(),
+		TableAnchor:    tableAnchor,
 	}, true
 }
 

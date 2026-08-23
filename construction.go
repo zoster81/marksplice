@@ -4,13 +4,20 @@ import "fmt"
 
 // DocumentBuilder constructs a new GFM document independently from parsed source snapshots.
 //
-// M44-M62 support top-level ATX headings, parser-proven paragraphs, thematic
-// breaks, simple single-line blockquotes, flat or homogeneous nested
-// unordered/ordered lists and task lists, supported fenced code, simple
-// reference definitions, and canonical unaligned/aligned tables. Generated documents
-// use LF line endings, one blank line between blocks, and one final line ending.
+// M44-M89 support one optional document-leading YAML/TOML front-matter
+// envelope, top-level ATX headings, parser-proven paragraphs, thematic breaks,
+// parser-proven single-paragraph and reviewed multi-block blockquotes, flat or
+// homogeneous nested unordered/ordered lists and task lists, supported fenced code,
+// simple reference definitions,
+// canonical unaligned/aligned tables, and typed inline construction for
+// semantic text plus conservative code/emphasis/strong, strikethrough, link,
+// image, and angle-autolink content, including bounded reviewed structured
+// inline nesting. Generated documents use LF line endings,
+// one blank line between GFM blocks, one blank line between retained front
+// matter and a non-empty body, and one final line ending.
 type DocumentBuilder struct {
-	blocks []constructionBlock
+	frontMatter *constructionFrontMatter
+	blocks      []constructionBlock
 }
 
 // NewDocumentBuilder returns an empty new-document builder.
@@ -44,7 +51,8 @@ type TaskListItemInput struct {
 	Depth     int
 }
 
-// TableAlignment selects the semantic alignment of one newly constructed GFM table column.
+// TableAlignment identifies the semantic alignment of a GFM table column.
+// It is used for new-document construction and read-only parsed table alignment access.
 type TableAlignment uint8
 
 const (
@@ -89,18 +97,73 @@ func (b *DocumentBuilder) AppendParagraph(inlineGFM string) error {
 	})
 }
 
-// AppendBlockquote appends one simple top-level single-line blockquote.
+// AppendBlockquote appends one top-level blockquote containing one paragraph.
 //
-// M56 writes canonical '> ' source and accepts the block only when reparsing
-// proves exactly one top-level blockquote containing one paragraph with the
-// requested exact content bytes.
+// M56 introduced the canonical single-line '> ' form. M81 extends the same API
+// to non-empty LF-separated paragraph GFM and writes canonical '> ' on every
+// physical line. The block is retained only when construction-only source and
+// semantic proof reproduce exactly one top-level blockquote paragraph; broader
+// existing-source blockquote promotion remains unchanged.
 func (b *DocumentBuilder) AppendBlockquote(inlineGFM string) error {
 	if b == nil {
 		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
 	}
 	return b.appendConstructionBlock(constructionBlock{
 		kind:      constructionBlockquote,
+		depth:     1,
 		inlineGFM: inlineGFM,
+	})
+}
+
+// AppendNestedBlockquote appends one explicitly nested blockquote containing one paragraph.
+//
+// depth is structural container depth and must be between 2 and 64. The writer
+// derives the canonical repeated "> " prefix on every physical line; caller
+// content remains raw paragraph GFM and must not introduce container structure
+// that changes the requested nesting hierarchy.
+func (b *DocumentBuilder) AppendNestedBlockquote(depth int, inlineGFM string) error {
+	if b == nil {
+		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
+	}
+	if depth < 2 || depth > maxConstructionBlockquoteDepth {
+		return fmt.Errorf("%w: nested blockquote depth must be between 2 and %d", ErrInvalidConstruction, maxConstructionBlockquoteDepth)
+	}
+	return b.appendConstructionBlock(constructionBlock{
+		kind:      constructionBlockquote,
+		depth:     depth,
+		inlineGFM: inlineGFM,
+	})
+}
+
+// AppendBlockquoteBlocks appends one blockquote container from an existing child builder.
+//
+// depth must be between 1 and 64. content is treated as an immutable construction
+// snapshot: its current reviewed body blocks are copied into the new container,
+// while later changes to content do not affect this builder. M83-M86 accept
+// every reviewed body-block construction family, including recursive blockquote
+// children whose total structural depth remains at most 64. Front matter remains
+// a document envelope and is never accepted as a blockquote child.
+func (b *DocumentBuilder) AppendBlockquoteBlocks(depth int, content *DocumentBuilder) error {
+	if b == nil {
+		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
+	}
+	if content == nil {
+		return fmt.Errorf("%w: nil blockquote child builder", ErrInvalidConstruction)
+	}
+	if content == b {
+		return fmt.Errorf("%w: blockquote child builder cannot be the destination builder", ErrInvalidConstruction)
+	}
+	if err := validateConstructionBlockquoteDepth(depth); err != nil {
+		return err
+	}
+	if content.frontMatter != nil {
+		return fmt.Errorf("%w: blockquote child builder cannot contain front matter", ErrInvalidConstruction)
+	}
+	children := append([]constructionBlock(nil), content.blocks...)
+	return b.appendConstructionBlock(constructionBlock{
+		kind:     constructionBlockquoteBlocks,
+		depth:    depth,
+		children: children,
 	})
 }
 
@@ -319,7 +382,12 @@ func (b *DocumentBuilder) Markdown() ([]byte, error) {
 	if b == nil {
 		return nil, fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
 	}
-	source, expected := writeConstructionBlocks(b.blocks)
+	source, expected := writeConstructionDocument(b.frontMatter, b.blocks)
+	if b.frontMatter != nil {
+		if err := validateConstructionFrontMatter(source, *b.frontMatter); err != nil {
+			return nil, err
+		}
+	}
 	if err := validateConstructionDocument(source, expected); err != nil {
 		return nil, err
 	}

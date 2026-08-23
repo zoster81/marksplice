@@ -25,8 +25,8 @@ func New() *Adapter {
 	return &Adapter{markdown: newMarkdown()}
 }
 
-func newMarkdown(options ...goldmark.Option) goldmark.Markdown {
-	return newMarkdownWithExtensions([]goldmark.Extender{extension.GFM}, options...)
+func newMarkdown() goldmark.Markdown {
+	return newMarkdownWithExtensions([]goldmark.Extender{extension.GFM})
 }
 
 func newMarkdownWithExtensions(extenders []goldmark.Extender, options ...goldmark.Option) goldmark.Markdown {

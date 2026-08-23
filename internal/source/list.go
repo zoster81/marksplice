@@ -42,24 +42,35 @@ func MapSingleLineListItem(input []byte, content Range, ordered bool, marker byt
 }
 
 func listItemMarkerStart(prefix []byte, ordered bool, marker byte) (int, bool) {
-	end := len(prefix)
-	for end > 0 && (prefix[end-1] == ' ' || prefix[end-1] == '\t') {
-		end--
-	}
-	if end == len(prefix) || end == 0 {
+	end, ok := listItemMarkerEnd(prefix)
+	if !ok {
 		return 0, false
 	}
-
-	if !ordered {
-		if marker != '-' && marker != '*' && marker != '+' || prefix[end-1] != marker {
-			return 0, false
-		}
-		return end - 1, true
+	if ordered {
+		return orderedListItemMarkerStart(prefix, end, marker)
 	}
+	return unorderedListItemMarkerStart(prefix, end, marker)
+}
+
+func listItemMarkerEnd(prefix []byte) (int, bool) {
+	end := len(prefix)
+	for end > 0 && isHorizontalSpace(prefix[end-1]) {
+		end--
+	}
+	return end, end != len(prefix) && end != 0
+}
+
+func unorderedListItemMarkerStart(prefix []byte, end int, marker byte) (int, bool) {
+	if marker != '-' && marker != '*' && marker != '+' || prefix[end-1] != marker {
+		return 0, false
+	}
+	return end - 1, true
+}
+
+func orderedListItemMarkerStart(prefix []byte, end int, marker byte) (int, bool) {
 	if marker != '.' && marker != ')' || prefix[end-1] != marker {
 		return 0, false
 	}
-
 	digitsEnd := end - 1
 	digitsStart := digitsEnd
 	for digitsStart > 0 && prefix[digitsStart-1] >= '0' && prefix[digitsStart-1] <= '9' {

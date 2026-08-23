@@ -24,6 +24,7 @@ const (
 	KindTableRow
 	KindThematicBreak
 	KindBlockquote
+	KindTable
 )
 
 // TableAlignment identifies the semantic alignment of one GFM table column.
@@ -67,6 +68,8 @@ type Node struct {
 	TableAnchor            int
 	TableColumnCount       int
 	TableAlignments        []TableAlignment
+	TableBodyRowCount      int
+	TableLastBodyRowAnchor int
 	Anchor                 int
 	Destination            string
 	Label                  string

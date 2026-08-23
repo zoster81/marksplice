@@ -148,7 +148,7 @@ func TestPublicDocumentBuilderWritesCanonicalSimpleBlockquote(t *testing.T) {
 		t.Fatalf("Markdown() = %q, want %q", got, want)
 	}
 
-	for _, inline := range []string{"", "line one\nline two", "line one\rline two", "# heading", "---", "- item", "contains\x00nul", string([]byte{0xff})} {
+	for _, inline := range []string{"", "line one\rline two", "# heading", "---", "- item", "contains\x00nul", string([]byte{0xff})} {
 		var invalid marksplice.DocumentBuilder
 		if err := invalid.AppendBlockquote(inline); !errors.Is(err, marksplice.ErrInvalidConstruction) {
 			t.Fatalf("AppendBlockquote(%q) error = %v, want ErrInvalidConstruction", inline, err)

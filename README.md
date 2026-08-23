@@ -1,32 +1,82 @@
 # Marksplice
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/zoster81/marksplice.svg)](https://pkg.go.dev/github.com/zoster81/marksplice)
+[![CI](https://github.com/zoster81/marksplice/actions/workflows/ci.yml/badge.svg)](https://github.com/zoster81/marksplice/actions/workflows/ci.yml)
+
 Structured GitHub Flavored Markdown creation and source-preserving manipulation for Go.
 
-Marksplice is an open-source Pure-Go library for understanding, creating, and structurally editing GitHub Flavored Markdown (GFM). New documents may be generated from reviewed structured intent, while edits to existing documents preserve untouched source bytes whenever an operation does not semantically require broader changes.
+Marksplice is an open-source Pure-Go library for understanding, creating, and structurally editing GitHub Flavored Markdown (GFM). New documents may be generated from reviewed structured intent, while edits to existing documents preserve untouched source bytes whenever the requested operation does not semantically require broader changes.
 
 ## Status
 
-Marksplice has a green retrospective M0 repository-bootstrap record and has passed engineering milestones M1 through M62: lossless-editing feasibility, the public-API foundation, reviewed block/inline/link APIs, conservative metadata/HTML APIs, a hierarchical section model, bounded immutable-snapshot source reading, simple inline-image destination editing, and reviewed structural mutations. The current surface covers top-level paragraphs/headings, M1-proven leaf single-line list items and GFM task markers, mapped non-empty table cells, source-mapped GFM table body rows with exact physical-line ranges, promoted body-cell↔row identity navigation, same-table promoted row neighbors, body-row→promoted-header identity navigation, and reviewed replace/remove/insert/same-table move operations, supported single-line and conservative multiline fenced code, simple strikethrough/code-span/emphasis/strong spans, simple inline links/reference definitions/autolinks and inline images, unique simple leading YAML/TOML front-matter fields, simple HTML comments/anchors, source-bound section hierarchy/ranges anchored to heading IDs plus source-ordered immediate child-heading identity lookup, copied reads of any valid snapshot-local byte range, fail-closed section remove/body/subtree replacement, same-level section sibling insertion/movement, direct-child section append, same-shape complete list-item subtree insertion around complete compatible anchors, atomic movement of complete supported list-item subtrees around complete compatible anchors, direct-child list-subtree append validated in host context, complete list-item subtree replacement preserving the external sibling/parent relationship, complete removal of fully supported list-item subtrees, semantic `HasChildren` plus snapshot-local immediate supported `ParentID`/source-ordered `ChildIDs` navigation for promoted list items, and an exact public `SubtreeRange()` for complete supported list-item subtrees while preserving the content-only `Range()` contract. The published GitHub Flavored Markdown 0.29 specification is the project's single normative Markdown syntax profile.
+Marksplice is currently **beta software under active development**. The first public module release is planned as `v0.1.0-beta.1`; until v1, public APIs and behavior may change incompatibly between releases.
 
-M44-M62 establish the structured new-document path: `DocumentBuilder` writes deterministic LF GFM for parser-proven top-level ATX headings, single-line or parser-proven LF-multiline paragraphs, canonical thematic breaks, simple single-line blockquotes, flat or homogeneous nested unordered/ordered lists, flat or homogeneous nested unordered/ordered task lists, supported single-line or LF-multiline fenced code, canonical no-title or conservatively titled reference definitions, and canonical tables with optional explicit GFM column alignment. Flat lists retain the historical string/`TaskListItem` APIs; nested lists use source-ordered construction-only `ListItemInput`/`TaskListItemInput` values whose structural `Depth` is converted to canonical indentation from the generated parent content column. Lists use canonical `-` or container-local sequential `1.`, `2.`, ... markers; task items write canonical `[ ]`/`[x]`; fenced code uses adaptive backtick fences selected against every potentially closing body run; reference definitions use angle-bracket destinations; M61 titled definitions add one canonical double-quoted title and reject title bytes requiring escaping; tables use outer pipes and M62 maps explicit default/left/right/center alignment to `---`, `:---`, `---:`, and `:---:` delimiter cells. Construction reuses the existing list/task/fence/reference/table source mappings and private semantic container anchors rather than trusting lexical separators alone. Successful output can be passed to `Parse` to enter the ordinary immutable snapshot/editing model. Construction does not replace the source-preserving path for existing documents.
+The repository has a green retrospective M0 bootstrap record and completed engineering milestones M1–M89. The current model has two deliberately separate paths:
 
-The public API remains intentionally narrow rather than feature-complete. Additional editing and construction families will be promoted only after their caller-facing semantics, generation rules, and source-preserving behavior where applicable are reviewed.
+- parsed `Document` snapshots expose reviewed source-mapped read/edit capabilities and prepare minimal source-bound changes that reject stale input;
+- `DocumentBuilder` creates new deterministic GFM and validates generated structure through the same parser/source-model boundary before returning bytes.
+
+The current public surface covers reviewed paragraphs/headings/sections, supported list and task hierarchies, fenced code, GFM tables with public table/row/cell ownership and conservative row/alignment/column structural edits, simple inline spans/links/images/reference definitions/autolinks, source-proven top-level thematic breaks and simple one-line existing-source blockquotes, unique simple YAML/TOML front-matter fields with canonical new-document envelope construction, simple HTML comments/anchors, typed inline construction for semantic text/code/emphasis/strong/strikethrough/links/images/autolinks including conservative canonical link/image titles, bounded reviewed emphasis-family nesting, and full reference-link/reference-image construction against an already-present exact reference definition, canonical single-paragraph blockquote construction at depth 1 or explicit nesting depth 2–64, and construction-only multi-block blockquotes composed from reviewed builder children including recursively nested blockquotes with total depth bounded at 64.
+
+The public API remains intentionally narrower than everything the semantic parser can recognize. Unsupported or ambiguous shapes are preserved or kept internal until exact source ownership and caller-facing semantics are proven.
+
+See [`docs/capabilities.md`](docs/capabilities.md) for the authoritative current read/edit/create matrix and roadmap. Detailed milestone contracts and historical verification evidence live in [`docs/milestones/`](docs/milestones/).
 
 ## Design principles
 
 - follow the published GitHub Flavored Markdown 0.29 specification as the single normative Markdown syntax profile;
 - create new GFM through deterministic reviewed construction rules and parser/model proof;
 - parse existing GFM for semantic understanding without implying whole-document normalization;
-- preserve untouched author choices such as heading/list/fence styles, whitespace, line endings, and other lexical trivia during existing-document edits;
+- preserve untouched author choices such as heading/list/fence styles, whitespace, delimiters, numbering, and line endings during existing-document edits;
 - bind prepared edits to exact source snapshots and reject stale application;
+- promote public capabilities only after operation-oriented source ownership is proven;
 - keep Goldmark behind an internal adapter and expose only Marksplice-owned types;
-- keep filesystem, network, MCP, and host authorization concerns outside the core library.
+- keep filesystem, network, command-execution, and host authorization concerns outside the core library.
 
-See [`docs/architecture.md`](docs/architecture.md) for durable design decisions, [`docs/gfm-conformance.md`](docs/gfm-conformance.md) for the normative Markdown/conformance policy, and [`docs/milestones/`](docs/milestones/) for milestone evidence and exit decisions.
+## Installation
 
-## Public API foundation
+Marksplice requires Go 1.26 or newer. After the first public beta tag is published, install it explicitly because Go does not prefer pre-release versions by default:
 
-The current public surface contains two separate reviewed paths. `DocumentBuilder` provides reviewed new-document construction for canonical top-level ATX headings, single-line or parser-proven LF-multiline paragraphs, thematic breaks, simple single-line blockquotes, flat or homogeneous nested unordered/ordered lists and task lists, supported single-line or LF-multiline fenced code, canonical no-title or conservatively titled reference definitions, and canonical unaligned or explicitly aligned tables, all guarded by parser/source-mapping proof appropriate to each family. Nested list construction is expressed as source/preorder `Depth` rather than caller-owned whitespace; the builder derives marker-width-aware indentation and validates semantic parent/container/direct-child/subtree structure after reparsing. M62 table alignment is construction input only: Goldmark's public semantic alignment values are mapped into internal proof metadata and existing parsed table details remain unchanged. Parsed `Document` snapshots deliberately promote only reviewed, source-mapped capabilities: immutable snapshots, opaque snapshot-scoped node identities, the reviewed block/inline/link/image families above, mapped GFM table body rows, unique simple leading front-matter scalar fields, narrowly mapped HTML comments/anchors, sections derived from promoted heading identities, and copied bounded reads through `Document.SourceRange`. M35 body-row details expose only snapshot ID, exact complete physical-line `Range()`, and semantic/source-proven `ColumnCount()`; table headers remain M5 `TableCell` details and delimiter rows are not promoted as mutable rows. M39 adds `TableCell.RowID()` for promoted body cells, while M40 adds `Document.TableRowCellIDs` for source-ordered promoted non-empty body cells; empty semantic columns remain represented by `ColumnCount()` rather than synthesized cell identities. M42 adds comparable `TableRow.PreviousID()`/`NextID()` navigation among promoted body rows of the same table, and M43 adds `Document.TableRowHeaderCellIDs` for source-ordered promoted non-empty header cells of the owning table; neither milestone introduces a public `Table`, table ID, or synthetic empty-cell identity. `PrepareReplaceTableRow`, `PrepareRemoveTableRow`, `PrepareInsertTableRowBefore`/`After`, and `PrepareMoveTableRowBefore`/`After` preserve exact caller/source row bytes, use host-candidate proof, never synthesize line separators, and restrict movement to the same table. Section views expose exact direct-body and complete-subtree ranges plus parent hierarchy without introducing a second node-ID namespace; `Document.SectionChildHeadingIDs` adds source-ordered immediate child navigation while preserving the established comparable `Section` value contract and reusing the existing section index. `PrepareRemoveSection`, `PrepareReplaceSectionBody`, `PrepareReplaceSection`, `PrepareInsertSectionBefore`/`After`, `PrepareMoveSectionBefore`/`After`, and `PrepareAppendSectionChild` provide the reviewed section mutation set. Promoted supported list items retain content-only `ListItem.Range()` replacement semantics; `HasChildren()` distinguishes leaf items from single-line-head parents and `ParentID()` returns the immediate parent identity when that parent is itself supported/promoted. Parent IDs are resolved once during parse from existing physical-line anchors and actual snapshot node IDs; unsupported complex parents are not synthesized. Private parse-time physical-line ownership powers `PrepareInsertListItemBefore`/`After` and atomic `PrepareMoveListItemBefore`/`After`. M26 allows the insertion anchor to be a complete supported parent subtree; M29 further allows the caller fragment to be one complete supported same-shape list-item subtree after standalone ownership/completeness proof. M27 applies the same complete-anchor rule to atomic moves, and M28 allows the moved source itself to be a complete supported subtree. `after` uses the private subtree end, candidate validation proves semantic siblinghood with the anchor, and every inserted or moved descendant keeps its subtree-relative mapping/parentage, overlapping source/anchor subtrees fail closed, and move no-ops remain subtree-aware and snapshot-bound. `PrepareRemoveListItem` removes a leaf line or, when M24's private completeness proof succeeds, the complete supported subtree. `PrepareAppendListItemChild` accepts caller-owned child syntax and proves the immediate parent relation in the host GFM candidate, so variable marker width/post-marker spacing and container prefixes are handled without fixed indentation rules. M24 additionally allows append on an existing parent only when private semantic direct-child counts prove that its complete descendant subtree is represented by supported list items; an unsupported descendant fails closed instead of producing a guessed insertion boundary. Parent content replacement is allowed and validates descendants. Structural mutations fail closed when candidate parsing cannot preserve required surviving mappings, never synthesize whitespace repairs, and never renumber lists. Typed mutation details expose only operation-specific source ranges and reviewed semantic state; named operations prepare minimal source-bound changes. Unsupported semantic shapes such as normalized-space code spans, compound emphasis, ambiguous/complex metadata, opaque HTML, multiline or multi-block non-list-child list items, and container-aware sections remain internal rather than appearing publicly actionable. Internal M1 syntax coverage remains broader than the public API and is not automatically a compatibility commitment.
+```text
+go get github.com/zoster81/marksplice@v0.1.0-beta.1
+```
+
+A consuming `go.mod` may instead contain:
+
+```text
+require github.com/zoster81/marksplice v0.1.0-beta.1
+```
+
+The module path remains `github.com/zoster81/marksplice` throughout v0 and v1.
+
+## Quick start
+
+```go
+builder := marksplice.NewDocumentBuilder()
+_ = builder.AppendHeadingContent(1, marksplice.TextInline("Marksplice"))
+_ = builder.AppendParagraphContent(marksplice.TextInline("Source preserving GFM"))
+source, err := builder.Markdown()
+```
+
+Executable examples for construction, parsing, and source-preserving heading mutation live in `example_test.go` and are published by pkg.go.dev.
+
+## Construction and editing
+
+`DocumentBuilder` writes canonical LF GFM for reviewed new-document families such as headings, parser-proven paragraphs, lists/tasks including homogeneous nesting, fenced code, reference definitions, tables with optional alignment, thematic breaks, and blockquotes. `AppendBlockquote` owns one paragraph at depth 1, `AppendNestedBlockquote` accepts one paragraph at explicit depths 2–64, and `AppendBlockquoteBlocks` snapshots another builder's reviewed body blocks and quotes that sequence at depth 1–64. Multi-block composition accepts every reviewed body-block construction family, including recursive blockquote children when total structural depth stays at most 64; front matter remains excluded because it is a document envelope. It can also own one document-leading canonical YAML or TOML front-matter envelope with conservative double-quoted string fields. Typed-inline entrypoints provide a semantic-text alternative to the historical raw-GFM block APIs, including `AppendNestedBlockquoteContent`; `LinkInlineWithTitle` and `ImageInlineWithTitle` add conservative canonical double-quoted titles. M88 allows bounded nesting of `CodeInline`, `EmphasisInline`, `StrongInline`, and `StrikethroughInline` inside emphasis/strong/strikethrough wrappers, while ambiguous GFM delimiter combinations fail closed. M89 adds `ReferenceLinkInline` and `ReferenceImageInline` for canonical full-reference forms whose exact label must match exactly one top-level reference definition already present in the same builder; collapsed/shortcut forms and forward definitions remain outside this slice. Existing parsed-source editing contracts remain unchanged.
+
+Parsed `Document` values instead retain exact immutable source. Mutations target operation-specific ranges and validate the candidate source when surrounding Markdown interpretation could change. Structural operations never use the construction writer to reformat an existing document.
+
+## Documentation
+
+- [`docs/capabilities.md`](docs/capabilities.md): current product-facing read/edit/create matrix and forward roadmap.
+- [`docs/architecture.md`](docs/architecture.md): durable architecture, source-preservation, performance, safety, and complexity decisions.
+- [`docs/gfm-conformance.md`](docs/gfm-conformance.md): normative GFM profile, pinned conformance source hierarchy, and update procedure.
+- [`docs/goldmark-capability-matrix.md`](docs/goldmark-capability-matrix.md): Goldmark-versus-Marksplice responsibility boundary.
+- [`docs/milestones/`](docs/milestones/): feature-specific historical contracts, design records, tests, and exit decisions.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): contributor workflow and current verification commands.
+- [`docs/releasing.md`](docs/releasing.md): public beta versioning, first-push readiness, and Go-module publication procedure.
+- [`SECURITY.md`](SECURITY.md): private vulnerability-reporting policy.
+- [`CHANGELOG.md`](CHANGELOG.md): public release notes and beta history.
 
 ## Development
 
@@ -36,7 +86,9 @@ The module path is:
 github.com/zoster81/marksplice
 ```
 
-Run the standard checks with the Go toolchain selected for the repository:
+The `go 1.26` directive is the current minimum compatibility floor. Public CI exercises Go 1.26 and Go 1.27 on Linux, Windows, and macOS.
+
+At minimum, normal development uses:
 
 ```text
 go test ./...
@@ -44,7 +96,7 @@ go test -race ./...
 go vet ./...
 ```
 
-Additional static, vulnerability, and secret-scanning checks are described in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Additional static, complexity, vulnerability, secret-scanning, conformance, and hygiene checks are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Author
 

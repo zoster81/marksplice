@@ -219,7 +219,7 @@ func (d *Document) listItemSubtreeIDs(root Node, subtreeRange Range) (map[NodeID
 }
 
 func (d *Document) listItemChildIDSpan(parent Node) ([]NodeID, bool) {
-	if d == nil || parent.Kind != KindListItem || !parent.Editable || parent.ListChildStart < 0 || parent.ListChildCount < 0 || parent.ListChildCount > parent.ListDirectChildCount {
+	if !validListItemChildSpanRequest(d, parent) {
 		return nil, false
 	}
 	start := parent.ListChildStart
@@ -228,15 +228,32 @@ func (d *Document) listItemChildIDSpan(parent Node) ([]NodeID, bool) {
 		return nil, false
 	}
 	ids := d.listChildIDs[start : start+count]
+	if !d.validListItemChildren(parent, ids) {
+		return nil, false
+	}
+	return ids, true
+}
+
+func validListItemChildSpanRequest(d *Document, parent Node) bool {
+	return d != nil && parent.Kind == KindListItem && parent.Editable &&
+		parent.ListChildStart >= 0 && parent.ListChildCount >= 0 && parent.ListChildCount <= parent.ListDirectChildCount
+}
+
+func (d *Document) validListItemChildren(parent Node, ids []NodeID) bool {
 	previousStart := parent.ListItemSource.LineRange.Start
 	for _, id := range ids {
 		child, ok := d.nodeByID(id)
-		if !ok || child.Kind != KindListItem || !child.Editable || child.ListParentID != parent.ID || child.ListParentAnchor != parent.ListItemSource.LineRange.Start || child.ListItemSource.LineRange.Start <= previousStart {
-			return nil, false
+		if !ok || !validListItemChild(parent, child, previousStart) {
+			return false
 		}
 		previousStart = child.ListItemSource.LineRange.Start
 	}
-	return ids, true
+	return true
+}
+
+func validListItemChild(parent, child Node, previousStart int) bool {
+	return child.Kind == KindListItem && child.Editable && child.ListParentID == parent.ID &&
+		child.ListParentAnchor == parent.ListItemSource.LineRange.Start && child.ListItemSource.LineRange.Start > previousStart
 }
 
 func (d *Document) promotedListItemCount() int {

@@ -40,32 +40,34 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 
 func baseNodeFromObservation(kind Kind, contentRange Range, observation parser.Node) Node {
 	node := Node{
-		Kind:                 kind,
-		Range:                contentRange,
-		ContentRange:         contentRange,
-		Level:                observation.Level,
-		Checked:              observation.Checked,
-		ListOrdered:          observation.Ordered,
-		ListMarker:           observation.Marker,
-		ListHasParent:        observation.HasListParent,
-		ListParentAnchor:     observation.ListParentAnchor,
-		ListContainerAnchor:  observation.ListContainerAnchor,
-		ListHasChildren:      observation.HasListChildren,
-		ListDirectChildCount: observation.ListDirectChildCount,
-		TableHeader:          observation.TableHeader,
-		TableColumn:          observation.TableColumn,
-		TableRowAnchor:       observation.TableRowAnchor,
-		TableAnchor:          observation.TableAnchor,
-		TableColumnCount:     observation.TableColumnCount,
-		TableAlignments:      append([]TableAlignment(nil), observation.TableAlignments...),
-		Anchor:               observation.Anchor,
-		Destination:          observation.Destination,
-		Label:                observation.Label,
-		Title:                observation.Title,
-		HasTitle:             observation.HasTitle,
-		Value:                observation.Value,
-		AutoLinkEmail:        observation.AutoLinkEmail,
-		TopLevel:             observation.TopLevel,
+		Kind:                   kind,
+		Range:                  contentRange,
+		ContentRange:           contentRange,
+		Level:                  observation.Level,
+		Checked:                observation.Checked,
+		ListOrdered:            observation.Ordered,
+		ListMarker:             observation.Marker,
+		ListHasParent:          observation.HasListParent,
+		ListParentAnchor:       observation.ListParentAnchor,
+		ListContainerAnchor:    observation.ListContainerAnchor,
+		ListHasChildren:        observation.HasListChildren,
+		ListDirectChildCount:   observation.ListDirectChildCount,
+		TableHeader:            observation.TableHeader,
+		TableColumn:            observation.TableColumn,
+		TableRowAnchor:         observation.TableRowAnchor,
+		TableAnchor:            observation.TableAnchor,
+		TableColumnCount:       observation.TableColumnCount,
+		TableAlignments:        append([]TableAlignment(nil), observation.TableAlignments...),
+		TableBodyRowCount:      observation.TableBodyRowCount,
+		TableLastBodyRowAnchor: observation.TableLastBodyRowAnchor,
+		Anchor:                 observation.Anchor,
+		Destination:            observation.Destination,
+		Label:                  observation.Label,
+		Title:                  observation.Title,
+		HasTitle:               observation.HasTitle,
+		Value:                  observation.Value,
+		AutoLinkEmail:          observation.AutoLinkEmail,
+		TopLevel:               observation.TopLevel,
 	}
 	if kind == KindParagraph && observation.TopLevel {
 		node.Editable = true
@@ -85,8 +87,12 @@ func mapBlockNodeSource(snapshot []byte, observation parser.Node, contentRange R
 		return mapTableCellNodeSource(snapshot, observation, contentRange, tableRows, node)
 	case KindTableRow:
 		return mapTableRowNodeSource(snapshot, observation, tableRows, node)
+	case KindTable:
+		return mapTableNodeSource(snapshot, observation, node)
 	case KindFencedCode:
 		return mapFencedCodeNodeSource(snapshot, contentRange, node)
+	case KindThematicBreak:
+		return mapThematicBreakNodeSource(snapshot, observation, contentRange, node)
 	case KindBlockquote:
 		return mapBlockquoteNodeSource(snapshot, observation, node)
 	default:
@@ -185,12 +191,37 @@ func mapTableCellNodeSource(snapshot []byte, observation parser.Node, contentRan
 	return nil
 }
 
+func mapThematicBreakNodeSource(snapshot []byte, observation parser.Node, contentRange Range, node *Node) error {
+	if !observation.TopLevel {
+		return nil
+	}
+	mapping, err := source.MapTopLevelThematicBreak(snapshot, contentRange)
+	if err != nil {
+		if errors.Is(err, source.ErrUnsupportedThematicBreakShape) {
+			return nil
+		}
+		return fmt.Errorf("map thematic break source: %w", err)
+	}
+	node.ThematicBreakSource = mapping
+	node.Editable = true
+	return nil
+}
+
 func mapBlockquoteNodeSource(snapshot []byte, observation parser.Node, node *Node) error {
 	contentRange := Range{Start: observation.BlockquoteContentRange.Start, End: observation.BlockquoteContentRange.End}
 	if !contentRange.Valid(len(snapshot)) || contentRange.Start <= node.Range.Start || contentRange.End != node.Range.End {
 		return fmt.Errorf("map blockquote source: invalid content range [%d,%d) for source range [%d,%d)", contentRange.Start, contentRange.End, node.Range.Start, node.Range.End)
 	}
 	node.ContentRange = contentRange
+	mapping, err := source.MapSimpleTopLevelBlockquote(snapshot, node.Range, contentRange)
+	if err != nil {
+		if errors.Is(err, source.ErrUnsupportedBlockquoteShape) {
+			return nil
+		}
+		return fmt.Errorf("map blockquote source: %w", err)
+	}
+	node.BlockquoteSource = mapping
+	node.Editable = true
 	return nil
 }
 

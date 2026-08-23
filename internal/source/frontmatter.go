@@ -269,6 +269,18 @@ func scanMetadataQuotedValue(line []byte, start int, quote byte, format FrontMat
 }
 
 func safeYAMLPlainScalar(value []byte) bool {
+	if !safeYAMLPlainScalarStart(value) {
+		return false
+	}
+	for index, b := range value {
+		if !safeYAMLPlainScalarByte(value, index, b) {
+			return false
+		}
+	}
+	return true
+}
+
+func safeYAMLPlainScalarStart(value []byte) bool {
 	if len(value) == 0 {
 		return false
 	}
@@ -276,19 +288,17 @@ func safeYAMLPlainScalar(value []byte) bool {
 	case ',', '[', ']', '{', '}', '#', '&', '*', '!', '|', '>', '\'', '"', '%', '@', '`':
 		return false
 	case '-', '?', ':':
-		if len(value) == 1 || isHorizontalSpace(value[1]) {
-			return false
-		}
+		return len(value) > 1 && !isHorizontalSpace(value[1])
+	default:
+		return true
 	}
-	for i, b := range value {
-		if b < 0x20 && b != '\t' || b == '[' || b == ']' || b == '{' || b == '}' {
-			return false
-		}
-		if b == ':' && i+1 < len(value) && isHorizontalSpace(value[i+1]) {
-			return false
-		}
+}
+
+func safeYAMLPlainScalarByte(value []byte, index int, b byte) bool {
+	if b < 0x20 && b != '\t' || b == '[' || b == ']' || b == '{' || b == '}' {
+		return false
 	}
-	return true
+	return b != ':' || index+1 >= len(value) || !isHorizontalSpace(value[index+1])
 }
 
 func safeTOMLBareScalar(value []byte) bool {

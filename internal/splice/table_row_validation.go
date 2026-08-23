@@ -16,16 +16,21 @@ type tableMutationIndex struct {
 	rowCount            int
 }
 
-func parseTableRowMutationCandidate(candidate []byte) (tableMutationIndex, error) {
+func parseTableMutationCandidate(candidate []byte) (*Document, tableMutationIndex, error) {
 	candidateDocument, err := Parse(candidate)
 	if err != nil {
-		return tableMutationIndex{}, fmt.Errorf("%w: table row candidate parse: %v", ErrInvalidReplacement, err)
+		return nil, tableMutationIndex{}, fmt.Errorf("%w: table mutation candidate parse: %v", ErrInvalidReplacement, err)
 	}
 	index, ok := indexTableMutationModel(candidateDocument)
 	if !ok {
-		return tableMutationIndex{}, ErrInvalidReplacement
+		return nil, tableMutationIndex{}, ErrInvalidReplacement
 	}
-	return index, nil
+	return candidateDocument, index, nil
+}
+
+func parseTableRowMutationCandidate(candidate []byte) (tableMutationIndex, error) {
+	_, index, err := parseTableMutationCandidate(candidate)
+	return index, err
 }
 
 func (d *Document) promotedTableRowCount() int {
@@ -85,7 +90,7 @@ func anchorAfterOrderedPatches(anchor int, ordered []patchTransform) (int, bool)
 	return transformed.Start, ok
 }
 
-func sameTableRowMapping(candidate []byte, originalSource []byte, original, mapped Node, expectedLine, expectedRange Range, expectedTableAnchor int) bool {
+func sameTableRowMapping(candidate []byte, originalSource []byte, original, mapped Node, expectedLine, expectedRange Range, expectedTableAnchor int, expectedAlignments []TableAlignment) bool {
 	if !expectedLine.Valid(len(candidate)) || !expectedRange.Valid(len(candidate)) || !original.TableRowSource.LineRange.Valid(len(originalSource)) {
 		return false
 	}
@@ -93,15 +98,33 @@ func sameTableRowMapping(candidate []byte, originalSource []byte, original, mapp
 		mapped.TableRowSource.Range == expectedRange &&
 		mapped.TableAnchor == expectedTableAnchor &&
 		mapped.TableColumnCount == original.TableColumnCount &&
-		slices.Equal(mapped.TableAlignments, original.TableAlignments) &&
+		slices.Equal(mapped.TableAlignments, expectedAlignments) &&
 		bytes.Equal(originalSource[original.TableRowSource.LineRange.Start:original.TableRowSource.LineRange.End], candidate[expectedLine.Start:expectedLine.End])
 }
 
+type tableSurvivorPolicy struct {
+	tableAnchor int
+	alignments  []TableAlignment
+	skipRows    bool
+	skipCells   bool
+}
+
 func (d *Document) validateOriginalTableModelAfterPatches(candidate []byte, candidateIndex tableMutationIndex, patches []patchTransform, skipRow *Node) error {
+	return d.validateOriginalTableModelAfterPatchesWithPolicy(candidate, candidateIndex, patches, skipRow, nil)
+}
+
+func (d *Document) validateOriginalTableModelAfterPatchesWithPolicy(candidate []byte, candidateIndex tableMutationIndex, patches []patchTransform, skipRow *Node, policy *tableSurvivorPolicy) error {
 	ordered, ok := orderedPatchTransforms(patches)
 	if !ok {
 		return ErrInvalidReplacement
 	}
+	if err := d.validateOriginalTableRowsAfterPatches(candidate, candidateIndex, ordered, skipRow, policy); err != nil {
+		return err
+	}
+	return d.validateOriginalTableCellsAfterPatches(candidate, candidateIndex, ordered, skipRow, policy)
+}
+
+func (d *Document) validateOriginalTableRowsAfterPatches(candidate []byte, candidateIndex tableMutationIndex, ordered []patchTransform, skipRow *Node, policy *tableSurvivorPolicy) error {
 	for _, nodeIndex := range d.tableRowIndexes {
 		original, ok := d.indexedEditableNode(nodeIndex, KindTableRow)
 		if !ok {
@@ -110,16 +133,40 @@ func (d *Document) validateOriginalTableModelAfterPatches(candidate []byte, cand
 		if skipRow != nil && original.ID == skipRow.ID {
 			continue
 		}
-		if !d.originalTableRowSurvives(candidate, candidateIndex, original, ordered) {
+		expectedAlignments, skip := tableRowSurvivorPolicy(original, policy)
+		if skip {
+			continue
+		}
+		if !d.originalTableRowSurvives(candidate, candidateIndex, original, ordered, expectedAlignments) {
 			return ErrInvalidReplacement
 		}
 	}
+	return nil
+}
+
+func tableRowSurvivorPolicy(original Node, policy *tableSurvivorPolicy) ([]TableAlignment, bool) {
+	if policy == nil || original.TableAnchor != policy.tableAnchor {
+		return original.TableAlignments, false
+	}
+	if policy.skipRows {
+		return nil, true
+	}
+	if policy.alignments != nil {
+		return policy.alignments, false
+	}
+	return original.TableAlignments, false
+}
+
+func (d *Document) validateOriginalTableCellsAfterPatches(candidate []byte, candidateIndex tableMutationIndex, ordered []patchTransform, skipRow *Node, policy *tableSurvivorPolicy) error {
 	for _, nodeIndex := range d.tableCellIndexes {
 		original, ok := d.indexedEditableNode(nodeIndex, KindTableCell)
 		if !ok {
 			return ErrInvalidReplacement
 		}
 		if skipRow != nil && tableCellInsideRow(original, *skipRow) {
+			continue
+		}
+		if policy != nil && policy.skipCells && original.TableAnchor == policy.tableAnchor {
 			continue
 		}
 		if !d.originalTableCellSurvives(candidate, candidateIndex, original, ordered) {
@@ -129,7 +176,7 @@ func (d *Document) validateOriginalTableModelAfterPatches(candidate []byte, cand
 	return nil
 }
 
-func (d *Document) originalTableRowSurvives(candidate []byte, candidateIndex tableMutationIndex, original Node, ordered []patchTransform) bool {
+func (d *Document) originalTableRowSurvives(candidate []byte, candidateIndex tableMutationIndex, original Node, ordered []patchTransform, expectedAlignments []TableAlignment) bool {
 	expectedLine, ok := rangeAfterOrderedPatches(original.TableRowSource.LineRange, ordered)
 	if !ok {
 		return false
@@ -143,7 +190,7 @@ func (d *Document) originalTableRowSurvives(candidate []byte, candidateIndex tab
 		return false
 	}
 	mapped, ok := candidateIndex.rowsByLineStart[expectedLine.Start]
-	return ok && sameTableRowMapping(candidate, d.source, original, mapped, expectedLine, expectedRange, expectedTableAnchor)
+	return ok && sameTableRowMapping(candidate, d.source, original, mapped, expectedLine, expectedRange, expectedTableAnchor, expectedAlignments)
 }
 
 func tableCellInsideRow(cell, row Node) bool {
