@@ -85,25 +85,52 @@ func constructionReferencePrefixLength(source []byte, want parser.ConstructionRe
 }
 
 func validateConstructionReferenceInlineRanges(source []byte, want parser.ConstructionReferenceInlineExpectation, prefixLength int) error {
-	if !constructionReferenceRangesValid(source, want) {
+	if !constructionReferenceRangesValid(source, want) || want.LabelRange.Start != want.SyntaxRange.Start+prefixLength {
 		return fmt.Errorf("invalid reference inline ranges")
 	}
-	if want.LabelRange.Start != want.SyntaxRange.Start+prefixLength || want.ReferenceRange.Start != want.LabelRange.End+2 || want.SyntaxRange.End != want.ReferenceRange.End+1 {
-		return fmt.Errorf("reference inline boundary changed")
+	switch want.Form {
+	case parser.ConstructionReferenceInlineFull:
+		if want.ReferenceRange.Start != want.LabelRange.End+2 || want.ReferenceRange.Start == want.ReferenceRange.End || want.SyntaxRange.End != want.ReferenceRange.End+1 {
+			return fmt.Errorf("full reference inline boundary changed")
+		}
+	case parser.ConstructionReferenceInlineCollapsed:
+		if want.ReferenceRange.Start != want.LabelRange.End+2 || want.ReferenceRange.Start != want.ReferenceRange.End || want.SyntaxRange.End != want.LabelRange.End+3 {
+			return fmt.Errorf("collapsed reference inline boundary changed")
+		}
+	case parser.ConstructionReferenceInlineShortcut:
+		if want.ReferenceRange.Start != want.SyntaxRange.End || want.ReferenceRange.Start != want.ReferenceRange.End || want.SyntaxRange.End != want.LabelRange.End+1 {
+			return fmt.Errorf("shortcut reference inline boundary changed")
+		}
+	default:
+		return fmt.Errorf("unsupported reference inline form %d", want.Form)
 	}
 	return nil
 }
 
 func constructionReferenceRangesValid(source []byte, want parser.ConstructionReferenceInlineExpectation) bool {
 	return want.SyntaxRange.Valid(len(source)) && want.LabelRange.Valid(len(source)) && want.ReferenceRange.Valid(len(source)) &&
-		want.SyntaxRange.Start != want.SyntaxRange.End && want.LabelRange.Start != want.LabelRange.End &&
-		want.ReferenceRange.Start != want.ReferenceRange.End && want.Reference != ""
+		want.SyntaxRange.Start != want.SyntaxRange.End && want.LabelRange.Start != want.LabelRange.End && want.Reference != ""
 }
 
 func validateConstructionReferenceInlineSyntax(source []byte, want parser.ConstructionReferenceInlineExpectation) error {
-	if source[want.LabelRange.End] != ']' || source[want.LabelRange.End+1] != '[' || source[want.ReferenceRange.End] != ']' ||
-		string(source[want.ReferenceRange.Start:want.ReferenceRange.End]) != want.Reference {
-		return fmt.Errorf("reference inline syntax changed")
+	if source[want.LabelRange.End] != ']' {
+		return fmt.Errorf("reference inline label closing changed")
+	}
+	switch want.Form {
+	case parser.ConstructionReferenceInlineFull:
+		if source[want.LabelRange.End+1] != '[' || source[want.ReferenceRange.End] != ']' || string(source[want.ReferenceRange.Start:want.ReferenceRange.End]) != want.Reference {
+			return fmt.Errorf("full reference inline syntax changed")
+		}
+	case parser.ConstructionReferenceInlineCollapsed:
+		if source[want.LabelRange.End+1] != '[' || source[want.LabelRange.End+2] != ']' || string(source[want.LabelRange.Start:want.LabelRange.End]) != want.Reference {
+			return fmt.Errorf("collapsed reference inline syntax changed")
+		}
+	case parser.ConstructionReferenceInlineShortcut:
+		if string(source[want.LabelRange.Start:want.LabelRange.End]) != want.Reference {
+			return fmt.Errorf("shortcut reference inline syntax changed")
+		}
+	default:
+		return fmt.Errorf("unsupported reference inline form %d", want.Form)
 	}
 	return nil
 }
@@ -181,33 +208,43 @@ func findConstructionReferenceInline(actual []ast.Node, want parser.Construction
 	return nil
 }
 
-func validateConstructionReferenceInlineNode(source []byte, want parser.ConstructionReferenceInlineExpectation, node ast.Node) error {
-	var reference *ast.ReferenceLink
-	var destination, title []byte
-	switch typed := node.(type) {
-	case *ast.Link:
-		reference = typed.Reference
-		destination = typed.Destination
-		title = typed.Title
-	case *ast.Image:
-		reference = typed.Reference
-		destination = typed.Destination
-		title = typed.Title
+func constructionReferenceASTType(form parser.ConstructionReferenceInlineForm) (ast.ReferenceLinkType, bool) {
+	switch form {
+	case parser.ConstructionReferenceInlineFull:
+		return ast.ReferenceLinkFull, true
+	case parser.ConstructionReferenceInlineCollapsed:
+		return ast.ReferenceLinkCollapsed, true
+	case parser.ConstructionReferenceInlineShortcut:
+		return ast.ReferenceLinkShortcut, true
 	default:
+		return 0, false
+	}
+}
+
+func validateConstructionReferenceInlineNode(source []byte, want parser.ConstructionReferenceInlineExpectation, node ast.Node) error {
+	destination, title, reference, ok := constructionLinkImageNodeSemantics(node)
+	if !ok {
 		return fmt.Errorf("reference inline kind changed")
 	}
-	if reference == nil || reference.Type != ast.ReferenceLinkFull || string(reference.Value) != want.Reference {
+	referenceType, ok := constructionReferenceASTType(want.Form)
+	if !ok || reference == nil || reference.Type != referenceType || string(reference.Value) != want.Reference {
 		return fmt.Errorf("reference type or value changed")
 	}
 	if string(destination) != want.Destination || string(title) != want.Title || (title != nil) != want.HasTitle {
 		return fmt.Errorf("resolved reference semantics changed")
 	}
+	if want.Form == parser.ConstructionReferenceInlineFull && !bytes.Equal(source[want.ReferenceRange.Start:want.ReferenceRange.End], []byte(want.Reference)) {
+		return fmt.Errorf("reference source value changed")
+	}
+	if want.StructuredLabel {
+		if node.ChildCount() == 0 {
+			return fmt.Errorf("structured reference label is empty")
+		}
+		return nil
+	}
 	label, ok := simplePlainTextInlineRange(source, node)
 	if !ok || label != want.LabelRange {
 		return fmt.Errorf("reference label range changed")
-	}
-	if !bytes.Equal(source[want.ReferenceRange.Start:want.ReferenceRange.End], []byte(want.Reference)) {
-		return fmt.Errorf("reference source value changed")
 	}
 	return nil
 }

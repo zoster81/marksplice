@@ -39,10 +39,22 @@ func TestPublicDocumentBuilderWritesCanonicalNestedBlockquoteParagraph(t *testin
 	if err != nil {
 		t.Fatalf("Parse(generated) error = %v", err)
 	}
+	var blockquotes []marksplice.Node
 	for _, node := range doc.Nodes() {
 		if node.Kind() == marksplice.KindBlockquote {
-			t.Fatal("nested constructed blockquote unexpectedly entered the existing-source public blockquote subset")
+			blockquotes = append(blockquotes, node)
 		}
+	}
+	if len(blockquotes) != 1 {
+		t.Fatalf("generated nested source promoted %d blockquotes, want only the top-level outer container", len(blockquotes))
+	}
+	ranges, ok := doc.BlockquoteContentRanges(blockquotes[0].ID())
+	if !ok || len(ranges) != 2 {
+		t.Fatalf("BlockquoteContentRanges() = %v/%v, want two outer-container segments", ranges, ok)
+	}
+	first, ok := doc.SourceRange(ranges[0])
+	if !ok || !bytes.Equal(first, []byte("> first *line*")) {
+		t.Fatalf("first outer content segment = %q/%v, want nested marker preserved as inner source", first, ok)
 	}
 }
 

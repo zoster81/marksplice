@@ -204,6 +204,7 @@ func TestMapSingleLineReferenceDefinitionPreservesDestinationBoundaries(t *testi
 		title     string
 		hasTitle  bool
 		wantRange Range
+		wantLine  Range
 		wantDest  Range
 		wantTitle Range
 		wantAngle bool
@@ -217,6 +218,7 @@ func TestMapSingleLineReferenceDefinitionPreservesDestinationBoundaries(t *testi
 			title:     "Title",
 			hasTitle:  true,
 			wantRange: Range{Start: 0, End: 27},
+			wantLine:  Range{Start: 0, End: 29},
 			wantDest:  Range{Start: 7, End: 15},
 			wantTitle: Range{Start: 19, End: 24},
 			wantAngle: true,
@@ -230,6 +232,7 @@ func TestMapSingleLineReferenceDefinitionPreservesDestinationBoundaries(t *testi
 			title:     "title",
 			hasTitle:  true,
 			wantRange: Range{Start: 0, End: 27},
+			wantLine:  Range{Start: 0, End: 28},
 			wantDest:  Range{Start: 8, End: 16},
 			wantTitle: Range{Start: 18, End: 23},
 		},
@@ -243,8 +246,8 @@ func TestMapSingleLineReferenceDefinitionPreservesDestinationBoundaries(t *testi
 			if err != nil {
 				t.Fatalf("MapSingleLineReferenceDefinition() error = %v", err)
 			}
-			if got.Range != tt.wantRange || got.DestinationRange != tt.wantDest || got.TitleRange != tt.wantTitle || got.AngleDestination != tt.wantAngle || got.HasTitle != tt.hasTitle {
-				t.Fatalf("mapping = %+v, want range %v destination %v title %v angle %v", got, tt.wantRange, tt.wantDest, tt.wantTitle, tt.wantAngle)
+			if got.Range != tt.wantRange || got.LineRange != tt.wantLine || got.DestinationRange != tt.wantDest || got.TitleRange != tt.wantTitle || got.AngleDestination != tt.wantAngle || got.HasTitle != tt.hasTitle {
+				t.Fatalf("mapping = %+v, want range %v line %v destination %v title %v angle %v", got, tt.wantRange, tt.wantLine, tt.wantDest, tt.wantTitle, tt.wantAngle)
 			}
 		})
 	}

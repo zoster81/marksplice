@@ -56,15 +56,19 @@ type constructionBlock struct {
 }
 
 func (b *DocumentBuilder) appendConstructionBlock(block constructionBlock) error {
-	if err := validateConstructionBlock(block); err != nil {
-		return err
-	}
-	source, expected := writeConstructionBlocks([]constructionBlock{block})
-	if err := validateConstructionDocument(source, expected); err != nil {
+	if err := validateConstructionBlockStandalone(block); err != nil {
 		return err
 	}
 	b.blocks = append(b.blocks, block)
 	return nil
+}
+
+func validateConstructionBlockStandalone(block constructionBlock) error {
+	if err := validateConstructionBlock(block); err != nil {
+		return err
+	}
+	source, expected := writeConstructionBlocks([]constructionBlock{block})
+	return validateConstructionDocument(source, expected)
 }
 
 func validateConstructionBlock(block constructionBlock) error {
@@ -355,8 +359,8 @@ func defaultConstructionTableAlignments(count int) []TableAlignment {
 }
 
 func validateConstructionTable(table constructionTable) error {
-	if len(table.header) == 0 || len(table.rows) == 0 {
-		return fmt.Errorf("%w: table requires header columns and a body row", ErrInvalidConstruction)
+	if len(table.header) == 0 {
+		return fmt.Errorf("%w: table requires header columns", ErrInvalidConstruction)
 	}
 	if len(table.alignments) != len(table.header) {
 		return fmt.Errorf("%w: table alignment width changed", ErrInvalidConstruction)

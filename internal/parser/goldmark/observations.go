@@ -152,30 +152,72 @@ func observeThematicBreak(source []byte, thematic *ast.ThematicBreak) (parser.No
 }
 
 func observeBlockquote(source []byte, block *ast.Blockquote) (parser.Node, bool, error) {
-	if block.Parent() == nil || block.Parent().Kind() != ast.KindDocument || block.ChildCount() != 1 {
+	if block.Parent() == nil || block.Parent().Kind() != ast.KindDocument {
 		return parser.Node{}, false, nil
 	}
-	paragraph, ok := block.FirstChild().(*ast.Paragraph)
-	if !ok {
-		return parser.Node{}, false, nil
-	}
-	lines := paragraph.Lines()
-	if lines.Len() != 1 {
-		return parser.Node{}, false, nil
-	}
-	segment := lines.At(0)
-	contentRange := parser.Range{Start: segment.Start, End: paragraphContentEnd(source, segment.Stop)}
 	start := block.Pos()
-	range_ := parser.Range{Start: start, End: contentRange.End}
-	if start < 0 || !range_.Valid(len(source)) || !contentRange.Valid(len(source)) || range_.Start >= contentRange.Start || contentRange.Start == contentRange.End {
+	if start < 0 || start >= len(source) {
 		return parser.Node{}, false, nil
+	}
+	range_ := parser.Range{Start: start, End: paragraphContentEnd(source, start)}
+	if !range_.Valid(len(source)) || range_.Start == range_.End {
+		return parser.Node{}, false, nil
+	}
+	semanticRanges, err := blockquoteSemanticRanges(source, block)
+	if err != nil {
+		return parser.Node{}, false, err
 	}
 	return parser.Node{
-		Kind:                   parser.KindBlockquote,
-		Range:                  range_,
-		BlockquoteContentRange: contentRange,
-		TopLevel:               true,
+		Kind:                     parser.KindBlockquote,
+		Range:                    range_,
+		BlockquoteContentRange:   simpleBlockquoteContentRange(source, block),
+		BlockquoteSemanticRanges: semanticRanges,
+		TopLevel:                 true,
 	}, true, nil
+}
+
+func simpleBlockquoteContentRange(source []byte, block *ast.Blockquote) parser.Range {
+	if block.ChildCount() != 1 {
+		return parser.Range{}
+	}
+	paragraph, ok := block.FirstChild().(*ast.Paragraph)
+	if !ok || paragraph.Lines().Len() != 1 {
+		return parser.Range{}
+	}
+	segment := paragraph.Lines().At(0)
+	range_ := parser.Range{Start: segment.Start, End: paragraphContentEnd(source, segment.Stop)}
+	if !range_.Valid(len(source)) || range_.Start == range_.End {
+		return parser.Range{}
+	}
+	return range_
+}
+
+func blockquoteSemanticRanges(source []byte, block *ast.Blockquote) ([]parser.Range, error) {
+	ranges := make([]parser.Range, 0)
+	err := ast.Walk(block, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering || node == block || node.Type() != ast.TypeBlock {
+			return ast.WalkContinue, nil
+		}
+		lines := node.Lines()
+		if lines == nil {
+			return ast.WalkContinue, nil
+		}
+		for index := 0; index < lines.Len(); index++ {
+			segment := lines.At(index)
+			range_ := parser.Range{Start: segment.Start, End: paragraphContentEnd(source, segment.Stop)}
+			if !range_.Valid(len(source)) {
+				return ast.WalkStop, fmt.Errorf("goldmark blockquote semantic range [%d,%d) is outside source length %d", range_.Start, range_.End, len(source))
+			}
+			if range_.Start != range_.End {
+				ranges = append(ranges, range_)
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ranges, nil
 }
 
 func observeHTMLBlock(source []byte, block *ast.HTMLBlock) (parser.Node, bool, error) {

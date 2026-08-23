@@ -205,7 +205,7 @@ func (d *Document) ThematicBreak(id NodeID) (ThematicBreak, bool) {
 	}, true
 }
 
-// Blockquote returns typed detail for one promoted simple top-level blockquote.
+// Blockquote returns typed detail for one promoted complete top-level blockquote container.
 func (d *Document) Blockquote(id NodeID) (Blockquote, bool) {
 	node, err := d.promotedNode(id, splice.KindBlockquote, true)
 	if err != nil {
@@ -216,6 +216,25 @@ func (d *Document) Blockquote(id NodeID) (Blockquote, bool) {
 		sourceRange:  Range{Start: node.BlockquoteSource.LineRange.Start, End: node.BlockquoteSource.LineRange.End},
 		contentRange: Range{Start: node.BlockquoteSource.ContentRange.Start, End: node.BlockquoteSource.ContentRange.End},
 	}, true
+}
+
+// BlockquoteContentRanges returns caller-owned inner source segments for every
+// physical line owned by one promoted top-level blockquote, in source order.
+// Marker-only lines are represented by valid empty ranges. Lazy continuation
+// lines have no synthetic marker removal: their complete physical content is returned.
+func (d *Document) BlockquoteContentRanges(id NodeID) ([]Range, bool) {
+	if d == nil || d.document == nil {
+		return nil, false
+	}
+	internalRanges, ok := d.document.BlockquoteContentRanges(internalNodeID(id))
+	if !ok {
+		return nil, false
+	}
+	ranges := make([]Range, len(internalRanges))
+	for index, range_ := range internalRanges {
+		ranges[index] = Range{Start: range_.Start, End: range_.End}
+	}
+	return ranges, true
 }
 
 // FencedCode returns typed detail for one promoted supported fenced code block.
@@ -272,7 +291,13 @@ func (d *Document) InlineLink(id NodeID) (InlineLink, bool) {
 	if err != nil {
 		return InlineLink{}, false
 	}
-	return InlineLink{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
+	return InlineLink{
+		id:          publicNodeID(node.ID),
+		sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End},
+		destination: node.Destination,
+		title:       node.Title,
+		hasTitle:    node.HasTitle,
+	}, true
 }
 
 // Image returns typed detail for one promoted simple inline image.
@@ -290,7 +315,14 @@ func (d *Document) ReferenceDefinition(id NodeID) (ReferenceDefinition, bool) {
 	if err != nil {
 		return ReferenceDefinition{}, false
 	}
-	return ReferenceDefinition{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
+	return ReferenceDefinition{
+		id:          publicNodeID(node.ID),
+		sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End},
+		label:       node.Label,
+		destination: node.Destination,
+		title:       node.Title,
+		hasTitle:    node.HasTitle,
+	}, true
 }
 
 // AutoLink returns typed detail for one promoted single-line GFM autolink.
@@ -299,7 +331,12 @@ func (d *Document) AutoLink(id NodeID) (AutoLink, bool) {
 	if err != nil {
 		return AutoLink{}, false
 	}
-	return AutoLink{id: publicNodeID(node.ID), sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End}}, true
+	return AutoLink{
+		id:          publicNodeID(node.ID),
+		sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End},
+		value:       node.Value,
+		email:       node.AutoLinkEmail,
+	}, true
 }
 
 // FrontMatterField returns typed detail for one promoted simple leading YAML/TOML scalar field.

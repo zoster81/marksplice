@@ -3,6 +3,7 @@ package source
 import (
 	"bytes"
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -33,6 +34,33 @@ func TestMapSimpleTopLevelBlockquoteSupportsNoMarkerSpace(t *testing.T) {
 	}
 	if mapping.MarkerRange != (Range{Start: 0, End: 1}) || mapping.ContentRange != (Range{Start: 1, End: 7}) || mapping.LineRange != (Range{Start: 0, End: 8}) {
 		t.Fatalf("mapping = %+v", mapping)
+	}
+}
+
+func TestMapTopLevelBlockquoteOwnsMarkerAndParserProvenLazyLines(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("> one\nsecond\n> third\n\noutside\n")
+	mapping, err := MapTopLevelBlockquote(input, Range{Start: 0, End: 5}, []Range{{Start: 6, End: 12}})
+	if err != nil {
+		t.Fatalf("MapTopLevelBlockquote() error = %v", err)
+	}
+	wantContents := []Range{{Start: 2, End: 5}, {Start: 6, End: 12}, {Start: 15, End: 20}}
+	if mapping.LineRange != (Range{Start: 0, End: 21}) || !slices.Equal(mapping.ContentRanges, wantContents) || mapping.ContentRange != (Range{}) {
+		t.Fatalf("mapping = %+v, want complete three-line ownership", mapping)
+	}
+}
+
+func TestMapTopLevelBlockquoteDoesNotTrustUnprovenMarkerlessLine(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("> one\noutside\n")
+	mapping, err := MapTopLevelBlockquote(input, Range{Start: 0, End: 5}, nil)
+	if err != nil {
+		t.Fatalf("MapTopLevelBlockquote() error = %v", err)
+	}
+	if mapping.LineRange != (Range{Start: 0, End: 6}) || len(mapping.ContentRanges) != 1 || mapping.ContentRange != (Range{Start: 2, End: 5}) {
+		t.Fatalf("mapping = %+v, want first physical line only", mapping)
 	}
 }
 

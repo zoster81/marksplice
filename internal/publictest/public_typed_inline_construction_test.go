@@ -168,11 +168,19 @@ func TestPublicTypedStructuredInlineNestingBoundsAndRejectsUnsupportedShapes(t *
 	if err := accepted.AppendParagraphContent(inline); err != nil {
 		t.Fatalf("AppendParagraphContent(depth=64) error = %v", err)
 	}
+	var linkAccepted marksplice.DocumentBuilder
+	if err := linkAccepted.AppendParagraphContent(marksplice.LinkInline("target", inline)); err != nil {
+		t.Fatalf("AppendParagraphContent(link label depth=64) error = %v", err)
+	}
 
 	tooDeep := marksplice.EmphasisInline(inline)
 	var rejected marksplice.DocumentBuilder
 	if err := rejected.AppendParagraphContent(tooDeep); !errors.Is(err, marksplice.ErrInvalidConstruction) {
 		t.Fatalf("AppendParagraphContent(depth=65) error = %v, want ErrInvalidConstruction", err)
+	}
+	var linkRejected marksplice.DocumentBuilder
+	if err := linkRejected.AppendParagraphContent(marksplice.LinkInline("target", tooDeep)); !errors.Is(err, marksplice.ErrInvalidConstruction) {
+		t.Fatalf("AppendParagraphContent(link label depth=65) error = %v, want ErrInvalidConstruction", err)
 	}
 
 	invalid := []marksplice.Inline{
@@ -256,6 +264,49 @@ func TestPublicDocumentBuilderTypedLinkAndImageTitleConstruction(t *testing.T) {
 	want := []byte("[docs](<https://example.test/docs> \"Guide v1\") and ![logo](<images/logo.png> \"Project logo\")\n")
 	if !bytes.Equal(got, want) {
 		t.Fatalf("Markdown() = %q, want %q", got, want)
+	}
+}
+
+func TestPublicTypedLinkAndImageStructuredLabelAndAltConstruction(t *testing.T) {
+	t.Parallel()
+
+	var builder marksplice.DocumentBuilder
+	if err := builder.AppendParagraphContent(
+		marksplice.LinkInline(
+			"https://example.test/docs",
+			marksplice.TextInline("read "),
+			marksplice.StrongInline(marksplice.TextInline("docs")),
+			marksplice.TextInline(" "),
+			marksplice.CodeInline("v1"),
+		),
+		marksplice.TextInline(" and "),
+		marksplice.ImageInlineWithTitle(
+			"images/logo.png",
+			"Project logo",
+			marksplice.EmphasisInline(marksplice.TextInline("project")),
+			marksplice.TextInline(" "),
+			marksplice.StrikethroughInline(marksplice.TextInline("old")),
+		),
+	); err != nil {
+		t.Fatalf("AppendParagraphContent() error = %v", err)
+	}
+	got, err := builder.Markdown()
+	if err != nil {
+		t.Fatalf("Markdown() error = %v", err)
+	}
+	want := []byte("[read **docs** `v1`](<https://example.test/docs>) and ![*project* ~~old~~](<images/logo.png> \"Project logo\")\n")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("Markdown() = %q, want %q", got, want)
+	}
+
+	doc, err := marksplice.Parse(got)
+	if err != nil {
+		t.Fatalf("Parse(generated) error = %v", err)
+	}
+	for _, node := range doc.Nodes() {
+		if node.Kind() == marksplice.KindInlineLink || node.Kind() == marksplice.KindImage {
+			t.Fatalf("structured generated link/image was unexpectedly promoted by ordinary Parse: %v", node.Kind())
+		}
 	}
 }
 
@@ -367,6 +418,48 @@ func TestPublicDocumentBuilderTypedAutoLinkConstruction(t *testing.T) {
 	}
 }
 
+func TestPublicTypedBareAutoLinkConstruction(t *testing.T) {
+	t.Parallel()
+
+	var builder marksplice.DocumentBuilder
+	values := []string{
+		"https://example.test/path?q=1",
+		"www.example.test/path",
+		"user@example.test",
+		"mailto:foo@bar.baz",
+		"xmpp:foo@bar.baz/resource",
+	}
+	for index, value := range values {
+		if index != 0 {
+			if err := builder.AppendParagraphContent(marksplice.TextInline("separator")); err != nil {
+				t.Fatalf("AppendParagraphContent(separator) error = %v", err)
+			}
+		}
+		if err := builder.AppendParagraphContent(marksplice.BareAutoLinkInline(value)); err != nil {
+			t.Fatalf("AppendParagraphContent(BareAutoLinkInline(%q)) error = %v", value, err)
+		}
+	}
+	got, err := builder.Markdown()
+	if err != nil {
+		t.Fatalf("Markdown() error = %v", err)
+	}
+	want := []byte("https://example.test/path?q=1\n\nseparator\n\nwww.example.test/path\n\nseparator\n\nuser@example.test\n\nseparator\n\nmailto:foo@bar.baz\n\nseparator\n\nxmpp:foo@bar.baz/resource\n")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("Markdown() = %q, want %q", got, want)
+	}
+}
+
+func TestPublicTypedBareAutoLinkConstructionRejectsNonExactTokens(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"", "not a link", "ftp://example.test", "https://example.test/path).", "line\nbreak@example.test"} {
+		var builder marksplice.DocumentBuilder
+		if err := builder.AppendParagraphContent(marksplice.BareAutoLinkInline(value)); !errors.Is(err, marksplice.ErrInvalidConstruction) {
+			t.Fatalf("AppendParagraphContent(BareAutoLinkInline(%q)) error = %v, want ErrInvalidConstruction", value, err)
+		}
+	}
+}
+
 func TestPublicTypedAutoLinkConstructionRejectsUnsafeShapes(t *testing.T) {
 	t.Parallel()
 
@@ -429,9 +522,11 @@ func TestPublicTypedLinkAndImageConstructionCopyChildrenAndRejectUnsafeShapes(t 
 		marksplice.LinkInline(`escape\\path`, marksplice.TextInline("label")),
 		marksplice.LinkInline("entity&value", marksplice.TextInline("label")),
 		marksplice.LinkInline("target"),
-		marksplice.LinkInline("target", marksplice.CodeInline("label")),
 		marksplice.ImageInline("target"),
-		marksplice.ImageInline("target", marksplice.EmphasisInline(marksplice.TextInline("alt"))),
+		marksplice.LinkInline("target", marksplice.LinkInline("nested", marksplice.TextInline("label"))),
+		marksplice.LinkInline("target", marksplice.ImageInline("nested", marksplice.TextInline("alt"))),
+		marksplice.ImageInline("target", marksplice.AutoLinkInline("user@example.test")),
+		marksplice.LinkInline("target", marksplice.ReferenceLinkInline("doc", marksplice.TextInline("reference"))),
 	}
 	for _, inline := range invalid {
 		var builder marksplice.DocumentBuilder

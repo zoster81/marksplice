@@ -38,10 +38,18 @@ func TestPublicDocumentBuilderWritesCanonicalMultilineBlockquoteParagraph(t *tes
 	if err != nil {
 		t.Fatalf("Parse(generated) error = %v", err)
 	}
-	for _, node := range doc.Nodes() {
-		if node.Kind() == marksplice.KindBlockquote {
-			t.Fatal("multiline constructed blockquote unexpectedly entered the existing-source public blockquote subset")
-		}
+	blockquote := findNodeOfKind(t, doc, marksplice.KindBlockquote)
+	detail, ok := doc.Blockquote(blockquote.ID())
+	if !ok {
+		t.Fatal("Blockquote() ok = false for generated multiline blockquote")
+	}
+	quoted, ok := doc.SourceRange(detail.Range())
+	if !ok || !bytes.Equal(quoted, []byte("> first *line*\n> second [link](https://example.test) with Unicode π\n")) {
+		t.Fatalf("generated blockquote source = %q/%v", quoted, ok)
+	}
+	ranges, ok := doc.BlockquoteContentRanges(blockquote.ID())
+	if !ok || len(ranges) != 2 {
+		t.Fatalf("BlockquoteContentRanges() = %v/%v, want two physical content segments", ranges, ok)
 	}
 }
 

@@ -1,6 +1,6 @@
 package splice
 
-// PrepareRemoveBlockquote prepares exact removal of one promoted simple top-level blockquote physical line.
+// PrepareRemoveBlockquote prepares exact removal of one complete promoted top-level blockquote container.
 func (d *Document) PrepareRemoveBlockquote(id NodeID) (ChangeSet, error) {
 	target, err := d.editableTargetNode(id, KindBlockquote, "blockquote")
 	if err != nil {

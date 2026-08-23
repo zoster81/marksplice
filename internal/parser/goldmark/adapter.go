@@ -61,15 +61,26 @@ func hasGFMExtendedAutolinks(extenders []goldmark.Extender) bool {
 
 // Parse returns parser-independent semantic observations tied to source byte ranges.
 func (a *Adapter) Parse(source []byte) ([]parser.Node, error) {
+	nodes, _, err := a.ParseWithReferenceUsages(source)
+	return nodes, err
+}
+
+// ParseWithReferenceUsages returns ordinary observations plus non-promoted
+// parser-resolved reference relationships used by mutation safety proof.
+func (a *Adapter) ParseWithReferenceUsages(source []byte) ([]parser.Node, []parser.ReferenceUsage, error) {
 	parseSource := normalizeIsolatedCR(source)
 	root := a.markdown.Parser().Parse(text.NewReader(parseSource))
 	nodes := make([]parser.Node, 0)
+	references := make([]parser.ReferenceUsage, 0)
 	currentTableRowAnchor := -1
 	nextTableColumn := 0
 
 	err := ast.Walk(root, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
+		}
+		if usage, ok := referenceUsage(node); ok {
+			references = append(references, usage)
 		}
 		var observation parser.Node
 		var ok bool
@@ -99,9 +110,54 @@ func (a *Adapter) Parse(source []byte) ([]parser.Node, error) {
 		return ast.WalkContinue, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("walk goldmark AST: %w", err)
+		return nil, nil, fmt.Errorf("walk goldmark AST: %w", err)
 	}
-	return nodes, nil
+	return nodes, references, nil
+}
+
+func referenceUsage(node ast.Node) (parser.ReferenceUsage, bool) {
+	var kind parser.Kind
+	var destination, title []byte
+	var reference *ast.ReferenceLink
+	switch typed := node.(type) {
+	case *ast.Link:
+		kind = parser.KindInlineLink
+		destination, title, reference = typed.Destination, typed.Title, typed.Reference
+	case *ast.Image:
+		kind = parser.KindImage
+		destination, title, reference = typed.Destination, typed.Title, typed.Reference
+	default:
+		return parser.ReferenceUsage{}, false
+	}
+	if reference == nil {
+		return parser.ReferenceUsage{}, false
+	}
+	form, ok := referenceUsageForm(reference.Type)
+	if !ok {
+		return parser.ReferenceUsage{}, false
+	}
+	return parser.ReferenceUsage{
+		Kind:        kind,
+		Form:        form,
+		Anchor:      node.Pos(),
+		Reference:   string(reference.Value),
+		Destination: string(destination),
+		Title:       string(title),
+		HasTitle:    title != nil,
+	}, true
+}
+
+func referenceUsageForm(form ast.ReferenceLinkType) (parser.ReferenceUsageForm, bool) {
+	switch form {
+	case ast.ReferenceLinkFull:
+		return parser.ReferenceUsageFull, true
+	case ast.ReferenceLinkCollapsed:
+		return parser.ReferenceUsageCollapsed, true
+	case ast.ReferenceLinkShortcut:
+		return parser.ReferenceUsageShortcut, true
+	default:
+		return parser.ReferenceUsageUnknown, false
+	}
 }
 func fencedCodeContentEnd(source []byte, start int) int {
 	end := start

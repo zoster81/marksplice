@@ -3,14 +3,16 @@ package source
 import (
 	"bytes"
 	"fmt"
+	"sort"
 )
 
-// BlockquoteMapping binds one reviewed simple top-level blockquote to its exact source line.
+// BlockquoteMapping binds one source-proven top-level blockquote container to exact physical source.
 type BlockquoteMapping struct {
-	Range        Range
-	LineRange    Range
-	ContentRange Range
-	MarkerRange  Range
+	Range         Range
+	LineRange     Range
+	ContentRange  Range
+	ContentRanges []Range
+	MarkerRange   Range
 }
 
 // MapSimpleTopLevelBlockquote maps one source-proven single-line, single-paragraph top-level blockquote.
@@ -38,11 +40,134 @@ func MapSimpleTopLevelBlockquote(input []byte, observed, content Range) (Blockqu
 		lineRangeEnd = next
 	}
 	return BlockquoteMapping{
-		Range:        observed,
-		LineRange:    Range{Start: lineStart, End: lineRangeEnd},
-		ContentRange: content,
-		MarkerRange:  Range{Start: markerStart, End: markerStart + 1},
+		Range:         observed,
+		LineRange:     Range{Start: lineStart, End: lineRangeEnd},
+		ContentRange:  content,
+		ContentRanges: []Range{content},
+		MarkerRange:   Range{Start: markerStart, End: markerStart + 1},
 	}, nil
+}
+
+// MapTopLevelBlockquote proves complete physical ownership for one parser-observed
+// top-level blockquote. Marker-bearing lines are source-proven directly; a line
+// without an outer marker is accepted only when a parser semantic range proves
+// content on that exact physical line.
+func MapTopLevelBlockquote(input []byte, observed Range, semanticRanges []Range) (BlockquoteMapping, error) {
+	lineStart, firstLineEnd, firstMarker, firstContent, err := firstTopLevelBlockquoteLine(input, observed)
+	if err != nil {
+		return BlockquoteMapping{}, err
+	}
+	semantic, err := normalizedBlockquoteSemanticRanges(semanticRanges, len(input))
+	if err != nil {
+		return BlockquoteMapping{}, err
+	}
+	contents := []Range{firstContent}
+	ownedEnd := firstLineEnd
+	if next, ok := nextPhysicalLineStart(input, firstLineEnd); ok {
+		extra, end := blockquoteContinuationLines(input, next, semantic)
+		contents = append(contents, extra...)
+		ownedEnd = end
+	}
+	legacyContent := Range{}
+	if len(contents) == 1 {
+		legacyContent = contents[0]
+	}
+	return BlockquoteMapping{
+		Range:         observed,
+		LineRange:     Range{Start: lineStart, End: ownedEnd},
+		ContentRange:  legacyContent,
+		ContentRanges: contents,
+		MarkerRange:   firstMarker,
+	}, nil
+}
+
+func firstTopLevelBlockquoteLine(input []byte, observed Range) (int, int, Range, Range, error) {
+	if !observed.Valid(len(input)) || observed.Start == observed.End {
+		return 0, 0, Range{}, Range{}, fmt.Errorf("%w: invalid observed range", ErrUnsupportedBlockquoteShape)
+	}
+	lineStart := physicalLineStart(input, observed.Start)
+	lineEnd := physicalLineEnd(input, observed.Start)
+	if observed.End != lineEnd {
+		return 0, 0, Range{}, Range{}, fmt.Errorf("%w: observed range does not own the first physical line", ErrUnsupportedBlockquoteShape)
+	}
+	marker, content, ok := blockquoteLineSource(input, lineStart, lineEnd)
+	if !ok || observed.Start < lineStart || observed.Start > marker.Start {
+		return 0, 0, Range{}, Range{}, fmt.Errorf("%w: unsupported first-line marker prefix", ErrUnsupportedBlockquoteShape)
+	}
+	return lineStart, lineEnd, marker, content, nil
+}
+
+func blockquoteContinuationLines(input []byte, start int, semantic []Range) ([]Range, int) {
+	contents := make([]Range, 0, 3)
+	semanticIndex := 0
+	ownedEnd := start
+	for currentStart := start; ; {
+		lineEnd := physicalLineEnd(input, currentStart)
+		_, content, hasMarker := blockquoteLineSource(input, currentStart, lineEnd)
+		if !hasMarker {
+			if !blockquoteSemanticLineProven(semantic, &semanticIndex, currentStart, lineEnd) {
+				break
+			}
+			content = Range{Start: currentStart, End: lineEnd}
+		}
+		contents = append(contents, content)
+		ownedEnd = lineEnd
+		next, ok := nextPhysicalLineStart(input, lineEnd)
+		if !ok {
+			break
+		}
+		ownedEnd = next
+		currentStart = next
+	}
+	return contents, ownedEnd
+}
+
+func normalizedBlockquoteSemanticRanges(ranges []Range, total int) ([]Range, error) {
+	result := append([]Range(nil), ranges...)
+	for _, range_ := range result {
+		if !range_.Valid(total) || range_.Start == range_.End {
+			return nil, fmt.Errorf("%w: invalid semantic content range", ErrUnsupportedBlockquoteShape)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Start == result[j].Start {
+			return result[i].End < result[j].End
+		}
+		return result[i].Start < result[j].Start
+	})
+	return result, nil
+}
+
+func blockquoteSemanticLineProven(ranges []Range, index *int, lineStart, lineEnd int) bool {
+	for *index < len(ranges) && ranges[*index].End <= lineStart {
+		*index++
+	}
+	for probe := *index; probe < len(ranges) && ranges[probe].Start <= lineEnd; probe++ {
+		range_ := ranges[probe]
+		if range_.Start >= lineStart && range_.End <= lineEnd {
+			return true
+		}
+	}
+	return false
+}
+
+func blockquoteLineSource(input []byte, lineStart, lineEnd int) (Range, Range, bool) {
+	if lineStart < 0 || lineEnd < lineStart || lineEnd > len(input) {
+		return Range{}, Range{}, false
+	}
+	pos := lineStart
+	for pos < lineEnd && pos-lineStart < 3 && input[pos] == ' ' {
+		pos++
+	}
+	if pos >= lineEnd || input[pos] != '>' {
+		return Range{}, Range{}, false
+	}
+	marker := Range{Start: pos, End: pos + 1}
+	pos++
+	if pos < lineEnd && input[pos] == ' ' {
+		pos++
+	}
+	return marker, Range{Start: pos, End: lineEnd}, true
 }
 
 // ValidateCanonicalBlockquoteParagraph proves the exact source emitted for one

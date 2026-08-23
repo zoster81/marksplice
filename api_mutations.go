@@ -2,6 +2,20 @@ package marksplice
 
 import "github.com/zoster81/marksplice/internal/splice"
 
+// ComposeChanges combines already-prepared mutations from this exact document
+// snapshot into one atomic source-bound change. Overlapping or semantically
+// interacting prepared mutations fail closed.
+func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
+	if d == nil || d.document == nil {
+		return ChangeSet{}, ErrSourceConflict
+	}
+	internal := make([]splice.ChangeSet, len(changes))
+	for index, change := range changes {
+		internal[index] = change.change
+	}
+	return publicChangeSet(d.document.ComposeChanges(internal...))
+}
+
 // PrepareReplaceParagraph prepares a source-preserving paragraph replacement.
 func (d *Document) PrepareReplaceParagraph(id NodeID, replacement []byte) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindParagraph, true); err != nil {
@@ -26,7 +40,7 @@ func (d *Document) PrepareRemoveThematicBreak(id NodeID) (ChangeSet, error) {
 	return publicChangeSet(d.document.PrepareRemoveThematicBreak(internalNodeID(id)))
 }
 
-// PrepareRemoveBlockquote prepares source-preserving removal of one complete promoted simple top-level blockquote line.
+// PrepareRemoveBlockquote prepares source-preserving removal of one complete promoted top-level blockquote container.
 func (d *Document) PrepareRemoveBlockquote(id NodeID) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindBlockquote, true); err != nil {
 		return ChangeSet{}, err
@@ -370,6 +384,22 @@ func (d *Document) PrepareReplaceReferenceDefinitionDestination(id NodeID, repla
 		return ChangeSet{}, err
 	}
 	return publicChangeSet(d.document.PrepareReplaceReferenceDefinitionDestination(internalNodeID(id), replacement))
+}
+
+// PrepareReplaceReferenceDefinitionTitle prepares a source-preserving replacement of an existing promoted reference-definition title payload.
+func (d *Document) PrepareReplaceReferenceDefinitionTitle(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindReferenceDefinition, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceReferenceDefinitionTitle(internalNodeID(id), replacement))
+}
+
+// PrepareRemoveReferenceDefinition prepares source-preserving removal of one complete promoted single-line reference-definition line.
+func (d *Document) PrepareRemoveReferenceDefinition(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindReferenceDefinition, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveReferenceDefinition(internalNodeID(id)))
 }
 
 // PrepareReplaceAutoLink prepares a source-preserving replacement of a promoted GFM autolink token.

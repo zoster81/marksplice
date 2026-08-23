@@ -66,6 +66,25 @@ func TestGFM029SpecCompatibilityGuards(t *testing.T) {
 	}
 }
 
+func TestAdapterCollectsNonPromotedReferenceUsages(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("[docs]: <target> \"Guide\"\n\n[full][docs] [docs][] [docs] ![docs]\n")
+	_, got, err := New().ParseWithReferenceUsages(source)
+	if err != nil {
+		t.Fatalf("ParseWithReferenceUsages() error = %v", err)
+	}
+	want := []markparser.ReferenceUsage{
+		{Kind: markparser.KindInlineLink, Form: markparser.ReferenceUsageFull, Anchor: bytes.Index(source, []byte("[full][docs]")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
+		{Kind: markparser.KindInlineLink, Form: markparser.ReferenceUsageCollapsed, Anchor: bytes.Index(source, []byte("[docs][]")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
+		{Kind: markparser.KindInlineLink, Form: markparser.ReferenceUsageShortcut, Anchor: bytes.Index(source, []byte("[docs] !")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
+		{Kind: markparser.KindImage, Form: markparser.ReferenceUsageShortcut, Anchor: bytes.Index(source, []byte("![docs]")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("reference usages = %+v, want %+v", got, want)
+	}
+}
+
 func TestAdapterExposesTopLevelThematicBreakRange(t *testing.T) {
 	t.Parallel()
 
@@ -109,6 +128,32 @@ func TestAdapterExposesSimpleTopLevelBlockquoteRanges(t *testing.T) {
 		return
 	}
 	t.Fatal("simple top-level blockquote observation missing")
+}
+
+func TestAdapterExposesBlockquoteLazyContinuationSemanticProof(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("> first\nsecond\n")
+	nodes, err := New().Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	wantLazy := markparser.Range{Start: bytes.Index(source, []byte("second")), End: len(source) - 1}
+	for _, node := range nodes {
+		if node.Kind != markparser.KindBlockquote {
+			continue
+		}
+		if node.BlockquoteContentRange != (markparser.Range{}) {
+			t.Fatalf("BlockquoteContentRange = %v, want zero range for segmented paragraph", node.BlockquoteContentRange)
+		}
+		for _, range_ := range node.BlockquoteSemanticRanges {
+			if range_ == wantLazy {
+				return
+			}
+		}
+		t.Fatalf("semantic ranges = %v, want lazy physical line proof %v", node.BlockquoteSemanticRanges, wantLazy)
+	}
+	t.Fatal("top-level blockquote observation missing")
 }
 
 func TestAdapterExposesSharedTableRowAnchors(t *testing.T) {

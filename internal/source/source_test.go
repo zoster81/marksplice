@@ -101,6 +101,94 @@ func TestChangeSetCopiesReplacementBytes(t *testing.T) {
 	}
 }
 
+func TestComposeChangeSetsCombinesOnlySameSnapshotNonOverlappingPatches(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("abcdef")
+	left, err := NewChangeSet(source, []Patch{{Range: Range{Start: 1, End: 2}, Replacement: []byte("X")}})
+	if err != nil {
+		t.Fatalf("NewChangeSet(left) error = %v", err)
+	}
+	right, err := NewChangeSet(source, []Patch{{Range: Range{Start: 4, End: 5}, Replacement: []byte("Y")}})
+	if err != nil {
+		t.Fatalf("NewChangeSet(right) error = %v", err)
+	}
+
+	combined, err := ComposeChangeSets(source, left, right)
+	if err != nil {
+		t.Fatalf("ComposeChangeSets() error = %v", err)
+	}
+	got, err := combined.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if !bytes.Equal(got, []byte("aXcdYf")) {
+		t.Fatalf("Apply() = %q, want %q", got, "aXcdYf")
+	}
+}
+
+func TestComposeChangeSetsRejectsDifferentSnapshotAndOverlap(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("abcdef")
+	first, err := NewChangeSet(source, []Patch{{Range: Range{Start: 1, End: 3}, Replacement: []byte("X")}})
+	if err != nil {
+		t.Fatalf("NewChangeSet(first) error = %v", err)
+	}
+	stale, err := NewChangeSet([]byte("ABCDEF"), []Patch{{Range: Range{Start: 4, End: 5}, Replacement: []byte("Y")}})
+	if err != nil {
+		t.Fatalf("NewChangeSet(stale) error = %v", err)
+	}
+	if _, err := ComposeChangeSets(source, first, stale); !errors.Is(err, ErrConflict) {
+		t.Fatalf("ComposeChangeSets(stale) error = %v, want ErrConflict", err)
+	}
+
+	overlap, err := NewChangeSet(source, []Patch{{Range: Range{Start: 2, End: 4}, Replacement: []byte("Z")}})
+	if err != nil {
+		t.Fatalf("NewChangeSet(overlap) error = %v", err)
+	}
+	if _, err := ComposeChangeSets(source, first, overlap); !errors.Is(err, ErrOverlappingPatches) {
+		t.Fatalf("ComposeChangeSets(overlap) error = %v, want ErrOverlappingPatches", err)
+	}
+}
+
+func TestComposeChangeSetsEmptyCompositionRemainsSnapshotBound(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("abc")
+	combined, err := ComposeChangeSets(source)
+	if err != nil {
+		t.Fatalf("ComposeChangeSets() error = %v", err)
+	}
+	got, err := combined.Apply(source)
+	if err != nil || !bytes.Equal(got, source) {
+		t.Fatalf("Apply(source) = %q, %v; want unchanged source", got, err)
+	}
+	if _, err := combined.Apply([]byte("abd")); !errors.Is(err, ErrConflict) {
+		t.Fatalf("Apply(stale) error = %v, want ErrConflict", err)
+	}
+}
+
+func TestChangeSetPatchesAreCallerOwned(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("abc")
+	change, err := NewChangeSet(source, []Patch{{Range: Range{Start: 1, End: 2}, Replacement: []byte("X")}})
+	if err != nil {
+		t.Fatalf("NewChangeSet() error = %v", err)
+	}
+	first := change.Patches()
+	if len(first) != 1 || !bytes.Equal(first[0].Replacement, []byte("X")) {
+		t.Fatalf("Patches() = %+v, want one X replacement", first)
+	}
+	first[0].Range = Range{}
+	first[0].Replacement[0] = 'Y'
+	second := change.Patches()
+	if len(second) != 1 || second[0].Range != (Range{Start: 1, End: 2}) || !bytes.Equal(second[0].Replacement, []byte("X")) {
+		t.Fatalf("second Patches() = %+v, caller mutation leaked", second)
+	}
+}
+
 func TestMapTaskMarkerAcceptsGFMStates(t *testing.T) {
 	t.Parallel()
 

@@ -342,7 +342,7 @@ func writeConstructionTable(output *bytes.Buffer, table constructionTable) []con
 	writeConstructionTableLine(output, delimiters)
 	alignments := constructionSpliceTableAlignments(table.alignments)
 
-	expected := make([]constructionExpectation, 0, len(table.rows))
+	expected := make([]constructionExpectation, 1, len(table.rows)+1)
 	for _, row := range table.rows {
 		lineStart := output.Len()
 		lineRange, cellRanges, contentRanges := writeConstructionTableLine(output, row)
@@ -358,6 +358,17 @@ func writeConstructionTable(output *bytes.Buffer, table constructionTable) []con
 				cellContents: contentRanges,
 			},
 		})
+	}
+	tableRange := splice.Range{Start: tableAnchor, End: output.Len()}
+	expected[0] = constructionExpectation{
+		kind:         splice.KindTable,
+		contentRange: tableRange,
+		sourceRange:  tableRange,
+		table: constructionTableProof{
+			columnCount:  len(table.header),
+			bodyRowCount: len(table.rows),
+			alignments:   append([]splice.TableAlignment(nil), alignments...),
+		},
 	}
 	return expected
 }

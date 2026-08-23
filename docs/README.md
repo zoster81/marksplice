@@ -8,6 +8,7 @@ This directory is the single home for tracked project documentation beyond the r
 - [`architecture.md`](architecture.md): durable architecture, package boundaries, source-preservation model, and repository-layout rationale.
 - [`gfm-conformance.md`](gfm-conformance.md): normative GitHub Flavored Markdown profile and specification-update policy.
 - [`goldmark-capability-matrix.md`](goldmark-capability-matrix.md): Goldmark-versus-Marksplice parser/source responsibility boundary.
+- [`extension-strategy.md`](extension-strategy.md): selection of broadly useful core capabilities from ecosystem ideas, the future third-party extensibility/SPI boundary, and the mandatory M115 Goldmark removal plan.
 - [`releasing.md`](releasing.md): public Go-module versioning, beta-release procedure, and publication verification.
 - [`milestones/`](milestones/): detailed milestone contracts, design records, tests, and historical verification evidence.
 
@@ -42,8 +43,8 @@ moving that package under a top-level `src/` directory would naturally change it
 
 The root package filenames are grouped deliberately:
 
-- `api*.go` owns parsed-document identity, typed views, sections, and mutation preparation;
-- `builder*.go` owns new-document construction and its private validation/writing/proof helpers;
+- `api*.go` owns parsed-document identity, typed views, sections, mutation preparation, and the bounded public query surface in `api_query.go`;
+- `builder*.go` owns new-document construction and its private validation/writing/proof helpers; generic typed-inline writing stays in `builder_inline.go`, while reference-link/reference-image forms, resolution, and proof stay in `builder_inline_reference.go`;
 - `doc.go` and `example_test.go` own package documentation and executable examples.
 
 Do not introduce a second source tree or duplicate documentation tree merely for cosmetic separation. New code should extend the existing package boundaries or justify a new internal package with a concrete responsibility.

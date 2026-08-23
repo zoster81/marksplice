@@ -15,6 +15,7 @@ type constructionExpectation struct {
 	list         constructionListProof
 	fence        constructionFenceProof
 	reference    constructionReferenceProof
+	table        constructionTableProof
 	tableRow     constructionTableRowProof
 	blockquote   constructionBlockquoteProof
 }
@@ -55,6 +56,12 @@ type constructionReferenceProof struct {
 	title       string
 	hasTitle    bool
 	titleRange  splice.Range
+}
+
+type constructionTableProof struct {
+	columnCount  int
+	bodyRowCount int
+	alignments   []splice.TableAlignment
 }
 
 type constructionTableRowProof struct {
@@ -124,14 +131,7 @@ func validateConstructionBlockquoteProofs(source []byte, expected []construction
 }
 
 func constructionNodeExpectations(expected []constructionExpectation) []constructionExpectation {
-	result := make([]constructionExpectation, 0, len(expected))
-	for _, want := range expected {
-		if want.kind == splice.KindBlockquote && (len(want.blockquote.innerSource) != 0 || want.blockquote.depth > 1 || len(want.blockquote.contentRanges) > 1) {
-			continue
-		}
-		result = append(result, want)
-	}
-	return result
+	return append([]constructionExpectation(nil), expected...)
 }
 
 func validateConstructionTaskExpectations(tasks map[int]splice.Node, expected []constructionExpectation) error {
@@ -157,6 +157,9 @@ func isConstructionOnlyBlockquoteObservation(node splice.Node, expected []constr
 		if want.kind != splice.KindBlockquote || len(want.blockquote.innerSource) == 0 {
 			continue
 		}
+		if node.Kind == splice.KindBlockquote && node.TopLevel && node.Editable && node.Range.Start == want.sourceRange.Start {
+			return false
+		}
 		if node.Range.Start >= want.sourceRange.Start && node.Range.End <= want.sourceRange.End {
 			return true
 		}
@@ -175,7 +178,7 @@ func isConstructionProofNode(node splice.Node) bool {
 	switch node.Kind {
 	case splice.KindParagraph, splice.KindHeading:
 		return node.TopLevel
-	case splice.KindListItem, splice.KindFencedCode, splice.KindReferenceDefinition, splice.KindTableRow:
+	case splice.KindListItem, splice.KindFencedCode, splice.KindReferenceDefinition, splice.KindTable, splice.KindTableRow:
 		return true
 	default:
 		return false
@@ -201,6 +204,8 @@ func validateConstructionExpectation(node splice.Node, want constructionExpectat
 		return validateConstructionFencedCodeExpectation(node, want)
 	case splice.KindReferenceDefinition:
 		return validateConstructionReferenceDefinitionExpectation(node, want)
+	case splice.KindTable:
+		return validateConstructionTableExpectation(node, want)
 	case splice.KindTableRow:
 		return validateConstructionTableRowExpectation(node, want)
 	default:
@@ -231,11 +236,16 @@ func validateConstructionThematicBreakExpectation(node splice.Node, want constru
 
 func validateConstructionBlockquoteExpectation(node splice.Node, want constructionExpectation) error {
 	mapping := node.BlockquoteSource
-	if len(want.blockquote.innerSource) != 0 || want.blockquote.depth != 1 || len(want.blockquote.contentRanges) != 1 || want.blockquote.contentRanges[0] != want.contentRange ||
-		node.Range != want.sourceRange || node.ContentRange != want.contentRange || !node.TopLevel || !node.Editable ||
-		mapping.Range != want.sourceRange || mapping.ContentRange != want.contentRange ||
-		mapping.MarkerRange != (splice.Range{Start: want.sourceRange.Start, End: want.sourceRange.Start + 1}) {
+	expectedOwned := splice.Range{Start: want.sourceRange.Start, End: want.sourceRange.End + 1}
+	if !node.TopLevel || !node.Editable || node.Range.Start != want.sourceRange.Start ||
+		mapping.LineRange != expectedOwned || mapping.MarkerRange != (splice.Range{Start: want.sourceRange.Start, End: want.sourceRange.Start + 1}) {
 		return fmt.Errorf("%w: generated blockquote mapping changed", ErrInvalidConstruction)
+	}
+	if len(want.blockquote.innerSource) == 0 && want.blockquote.depth == 1 && len(want.blockquote.contentRanges) == 1 {
+		if want.blockquote.contentRanges[0] != want.contentRange || node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
+			mapping.Range != want.sourceRange || mapping.ContentRange != want.contentRange {
+			return fmt.Errorf("%w: generated simple blockquote mapping changed", ErrInvalidConstruction)
+		}
 	}
 	return nil
 }
@@ -274,6 +284,18 @@ func validateConstructionReferenceDefinitionExpectation(node splice.Node, want c
 		mapping.Range != want.sourceRange || mapping.DestinationRange != want.contentRange || mapping.TitleRange != want.reference.titleRange ||
 		!mapping.AngleDestination || mapping.HasTitle != want.reference.hasTitle {
 		return fmt.Errorf("%w: generated reference-definition mapping changed", ErrInvalidConstruction)
+	}
+	return nil
+}
+
+func validateConstructionTableExpectation(node splice.Node, want constructionExpectation) error {
+	mapping := node.TableSource
+	if !node.Editable || node.Range != want.sourceRange || node.ContentRange != want.sourceRange ||
+		node.TableAnchor != want.sourceRange.Start || node.TableColumnCount != want.table.columnCount ||
+		node.TableBodyRowCount != want.table.bodyRowCount || !slices.Equal(node.TableAlignments, want.table.alignments) ||
+		mapping.Range != want.sourceRange || len(mapping.Header.Cells) != want.table.columnCount ||
+		len(mapping.Delimiter.Cells) != want.table.columnCount || len(mapping.DelimiterAlignments) != want.table.columnCount {
+		return fmt.Errorf("%w: generated table mapping changed", ErrInvalidConstruction)
 	}
 	return nil
 }

@@ -208,18 +208,26 @@ func mapThematicBreakNodeSource(snapshot []byte, observation parser.Node, conten
 }
 
 func mapBlockquoteNodeSource(snapshot []byte, observation parser.Node, node *Node) error {
-	contentRange := Range{Start: observation.BlockquoteContentRange.Start, End: observation.BlockquoteContentRange.End}
-	if !contentRange.Valid(len(snapshot)) || contentRange.Start <= node.Range.Start || contentRange.End != node.Range.End {
-		return fmt.Errorf("map blockquote source: invalid content range [%d,%d) for source range [%d,%d)", contentRange.Start, contentRange.End, node.Range.Start, node.Range.End)
+	if !observation.TopLevel {
+		return nil
 	}
-	node.ContentRange = contentRange
-	mapping, err := source.MapSimpleTopLevelBlockquote(snapshot, node.Range, contentRange)
+	semanticRanges := make([]Range, len(observation.BlockquoteSemanticRanges))
+	for index, range_ := range observation.BlockquoteSemanticRanges {
+		semanticRanges[index] = Range{Start: range_.Start, End: range_.End}
+	}
+	mapping, err := source.MapTopLevelBlockquote(snapshot, node.Range, semanticRanges)
 	if err != nil {
 		if errors.Is(err, source.ErrUnsupportedBlockquoteShape) {
 			return nil
 		}
 		return fmt.Errorf("map blockquote source: %w", err)
 	}
+	legacyContent := Range{Start: observation.BlockquoteContentRange.Start, End: observation.BlockquoteContentRange.End}
+	if !legacyContent.Valid(len(snapshot)) || legacyContent.Start == legacyContent.End || len(mapping.ContentRanges) != 1 || mapping.ContentRanges[0] != legacyContent {
+		legacyContent = Range{}
+	}
+	mapping.ContentRange = legacyContent
+	node.ContentRange = legacyContent
 	node.BlockquoteSource = mapping
 	node.Editable = true
 	return nil

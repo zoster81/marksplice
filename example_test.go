@@ -53,6 +53,72 @@ func ExampleParse() {
 	// level=1 text=Title
 }
 
+func ExampleDocument_QueryNodes() {
+	source := []byte("# One\n\nBody.\n\n## Two\n")
+	document, err := marksplice.Parse(source)
+	if err != nil {
+		panic(err)
+	}
+	matches, err := document.QueryNodes(marksplice.NodeQuery{
+		Kinds: []marksplice.Kind{marksplice.KindHeading},
+		Limit: 10,
+	})
+	if err != nil {
+		panic(err)
+	}
+	for _, match := range matches {
+		content, ok := document.SourceRange(match.Range())
+		if !ok {
+			panic("query range is not readable")
+		}
+		fmt.Println(string(content))
+	}
+
+	// Output:
+	// One
+	// Two
+}
+
+func ExampleDocument_ComposeChanges() {
+	source := []byte("# Old title\n\nOld body.\n")
+	document, err := marksplice.Parse(source)
+	if err != nil {
+		panic(err)
+	}
+
+	var headingID, paragraphID marksplice.NodeID
+	for _, node := range document.Nodes() {
+		switch node.Kind() {
+		case marksplice.KindHeading:
+			headingID = node.ID()
+		case marksplice.KindParagraph:
+			paragraphID = node.ID()
+		}
+	}
+	rename, err := document.PrepareRenameHeading(headingID, []byte("New title"))
+	if err != nil {
+		panic(err)
+	}
+	replace, err := document.PrepareReplaceParagraph(paragraphID, []byte("New body."))
+	if err != nil {
+		panic(err)
+	}
+	combined, err := document.ComposeChanges(rename, replace)
+	if err != nil {
+		panic(err)
+	}
+	updated, err := combined.Apply(source)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(updated))
+
+	// Output:
+	// # New title
+	//
+	// New body.
+}
+
 func ExampleDocument_PrepareRenameHeading() {
 	source := []byte("##  Old title  ##\n\nBody.\n")
 	document, err := marksplice.Parse(source)

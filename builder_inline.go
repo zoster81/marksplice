@@ -19,6 +19,7 @@ const (
 	inlineConstructionLink
 	inlineConstructionImage
 	inlineConstructionAutoLink
+	inlineConstructionBareAutoLink
 	inlineConstructionReferenceLink
 	inlineConstructionReferenceImage
 )
@@ -28,13 +29,15 @@ const (
 // Its zero value is invalid. Use the exported Inline construction functions
 // rather than depending on its private representation.
 type Inline struct {
-	kind        inlineConstructionKind
-	text        string
-	destination string
-	reference   string
-	title       string
-	hasTitle    bool
-	children    []Inline
+	kind           inlineConstructionKind
+	text           string
+	destination    string
+	reference      string
+	title          string
+	hasTitle       bool
+	referenceForm  typedInlineReferenceForm
+	referenceScope typedInlineReferenceScope
+	children       []Inline
 }
 
 // TextInline returns semantic plain text for typed inline construction.
@@ -78,9 +81,8 @@ func StrikethroughInline(content ...Inline) Inline {
 
 // LinkInline returns one conservative inline-link construction value.
 //
-// M77 writes the destination in angle brackets and accepts only TextInline label
-// children. M87 adds the separate WithTitle constructor; broader structured labels
-// remain deferred.
+// M77 writes the destination in angle brackets, M87 adds the separate WithTitle
+// constructor, and M92 permits the reviewed bounded structured-inline children.
 func LinkInline(destination string, label ...Inline) Inline {
 	return newTypedLinkOrImage(inlineConstructionLink, destination, "", false, label)
 }
@@ -94,9 +96,8 @@ func LinkInlineWithTitle(destination, title string, label ...Inline) Inline {
 
 // ImageInline returns one conservative inline-image construction value.
 //
-// M77 writes the destination in angle brackets and accepts only TextInline alt-text
-// children. M87 adds the separate WithTitle constructor; broader structured alt text
-// remains deferred.
+// M77 writes the destination in angle brackets, M87 adds the separate WithTitle
+// constructor, and M92 permits the reviewed bounded structured-inline children.
 func ImageInline(destination string, alt ...Inline) Inline {
 	return newTypedLinkOrImage(inlineConstructionImage, destination, "", false, alt)
 }
@@ -106,23 +107,6 @@ func ImageInline(destination string, alt ...Inline) Inline {
 // policy as LinkInlineWithTitle.
 func ImageInlineWithTitle(destination, title string, alt ...Inline) Inline {
 	return newTypedLinkOrImage(inlineConstructionImage, destination, title, true, alt)
-}
-
-// ReferenceLinkInline returns one conservative full reference-link construction value.
-// The exact reference label must identify one already-appended top-level reference
-// definition in the destination DocumentBuilder when the value is appended.
-func ReferenceLinkInline(reference string, label ...Inline) Inline {
-	return newTypedReferenceLinkOrImage(inlineConstructionReferenceLink, reference, label)
-}
-
-// ReferenceImageInline returns one conservative full reference-image construction value.
-// It follows the same existing exact-definition requirement as ReferenceLinkInline.
-func ReferenceImageInline(reference string, alt ...Inline) Inline {
-	return newTypedReferenceLinkOrImage(inlineConstructionReferenceImage, reference, alt)
-}
-
-func newTypedReferenceLinkOrImage(kind inlineConstructionKind, reference string, content []Inline) Inline {
-	return Inline{kind: kind, reference: reference, children: cloneTypedInlineConstruction(content)}
 }
 
 func newTypedLinkOrImage(kind inlineConstructionKind, destination, title string, hasTitle bool, content []Inline) Inline {
@@ -139,6 +123,13 @@ func newTypedLinkOrImage(kind inlineConstructionKind, destination, title string,
 // Validation succeeds only when reparsing produces the existing source-proven AutoLink capability.
 func AutoLinkInline(value string) Inline {
 	return Inline{kind: inlineConstructionAutoLink, text: value}
+}
+
+// BareAutoLinkInline returns one parser-proven GFM extended autolink token
+// without adding angle brackets. The complete requested token must be owned by
+// one AutoLink observation after reparsing or construction fails closed.
+func BareAutoLinkInline(value string) Inline {
+	return Inline{kind: inlineConstructionBareAutoLink, text: value}
 }
 
 // AppendHeadingContent appends one top-level ATX heading from typed inline content.
@@ -209,26 +200,21 @@ type typedInlineWritePolicy uint8
 
 const (
 	typedInlineTopLevel typedInlineWritePolicy = iota
-	typedInlineTextOnly
 	typedInlineStructuredNested
 )
 
-type typedInlineReferenceDefinition struct {
-	destination string
-	title       string
-	hasTitle    bool
-}
-
 type typedInlineWriteContext struct {
-	expected             *[]typedInlineExpectation
-	hierarchy            *[]splice.ConstructionInlineExpectation
-	referenceExpected    *[]splice.ConstructionReferenceInlineExpectation
-	referenceDefinitions map[string][]typedInlineReferenceDefinition
-	policy               typedInlineWritePolicy
-	parent               int
-	depth                int
-	emphasisMarker       byte
-	parentKind           inlineConstructionKind
+	expected                     *[]typedInlineExpectation
+	hierarchy                    *[]splice.ConstructionInlineExpectation
+	linkImageExpected            *[]splice.ConstructionLinkImageExpectation
+	referenceExpected            *[]splice.ConstructionReferenceInlineExpectation
+	referenceDefinitions         []typedInlineReferenceDefinition
+	deferredReferenceDefinitions []typedInlineReferenceDefinition
+	policy                       typedInlineWritePolicy
+	parent                       int
+	depth                        int
+	emphasisMarker               byte
+	parentKind                   inlineConstructionKind
 }
 
 func (b *DocumentBuilder) renderTypedInlineConstruction(content []Inline) (string, error) {
@@ -238,14 +224,17 @@ func (b *DocumentBuilder) renderTypedInlineConstruction(content []Inline) (strin
 	var output strings.Builder
 	expected := make([]typedInlineExpectation, 0, len(content))
 	hierarchy := make([]splice.ConstructionInlineExpectation, 0, len(content))
+	linkImageExpected := make([]splice.ConstructionLinkImageExpectation, 0, len(content))
 	referenceExpected := make([]splice.ConstructionReferenceInlineExpectation, 0, len(content))
 	context := typedInlineWriteContext{
-		expected:             &expected,
-		hierarchy:            &hierarchy,
-		referenceExpected:    &referenceExpected,
-		referenceDefinitions: typedInlineReferenceDefinitions(b.blocks),
-		policy:               typedInlineTopLevel,
-		parent:               -1,
+		expected:                     &expected,
+		hierarchy:                    &hierarchy,
+		linkImageExpected:            &linkImageExpected,
+		referenceExpected:            &referenceExpected,
+		referenceDefinitions:         typedInlineReferenceDefinitions(b.blocks),
+		deferredReferenceDefinitions: typedInlineReferenceDefinitions(b.deferredReferences),
+		policy:                       typedInlineTopLevel,
+		parent:                       -1,
 	}
 	for index, inline := range content {
 		if err := writeTypedInlineConstruction(&output, inline, context); err != nil {
@@ -256,7 +245,7 @@ func (b *DocumentBuilder) renderTypedInlineConstruction(content []Inline) (strin
 		return "", fmt.Errorf("%w: typed inline content is empty", ErrInvalidConstruction)
 	}
 	source := output.String()
-	if err := validateTypedInlineConstruction(source, expected, hierarchy, referenceExpected); err != nil {
+	if err := validateTypedInlineConstruction(source, expected, hierarchy, linkImageExpected, referenceExpected); err != nil {
 		return "", err
 	}
 	return source, nil
@@ -278,7 +267,9 @@ func writeTypedInlineConstruction(output *strings.Builder, inline Inline, contex
 	case inlineConstructionReferenceLink, inlineConstructionReferenceImage:
 		return writeTypedInlineReferenceLinkOrImage(output, inline, context)
 	case inlineConstructionAutoLink:
-		return writeTypedInlineAutoLink(output, inline.text, context.expected)
+		return writeTypedInlineAutoLink(output, inline.text, true, context.expected)
+	case inlineConstructionBareAutoLink:
+		return writeTypedInlineAutoLink(output, inline.text, false, context.expected)
 	default:
 		return fmt.Errorf("unsupported typed inline kind")
 	}
@@ -288,8 +279,6 @@ func typedInlineKindAllowed(policy typedInlineWritePolicy, kind inlineConstructi
 	switch policy {
 	case typedInlineTopLevel:
 		return true
-	case typedInlineTextOnly:
-		return kind == inlineConstructionText
 	case typedInlineStructuredNested:
 		switch kind {
 		case inlineConstructionText, inlineConstructionCode, inlineConstructionEmphasis, inlineConstructionStrong, inlineConstructionStrikethrough:
@@ -425,18 +414,28 @@ func writeTypedInlineLinkOrImage(output *strings.Builder, inline Inline, context
 	}
 
 	kind := KindInlineLink
+	proofKind := splice.KindInlineLink
+	syntaxStart := output.Len()
 	if inline.kind == inlineConstructionImage {
 		kind = KindImage
+		proofKind = splice.KindImage
 		output.WriteByte('!')
 	}
+	structured := !typedInlineChildrenAreText(inline.children)
+	proofIndex := -1
+	if structured {
+		proofIndex = len(*context.hierarchy)
+		*context.hierarchy = append(*context.hierarchy, splice.ConstructionInlineExpectation{
+			Kind:   proofKind,
+			Parent: context.parent,
+		})
+	}
+
 	output.WriteByte('[')
 	labelStart := output.Len()
-	childContext := typedInlineWriteContext{
-		expected:  context.expected,
-		hierarchy: context.hierarchy,
-		policy:    typedInlineTextOnly,
-		parent:    -1,
-	}
+	childContext := context
+	childContext.policy = typedInlineStructuredNested
+	childContext.parent = proofIndex
 	for _, child := range inline.children {
 		if err := writeTypedInlineConstruction(output, child, childContext); err != nil {
 			return err
@@ -457,6 +456,19 @@ func writeTypedInlineLinkOrImage(output *strings.Builder, inline Inline, context
 		output.WriteByte('"')
 	}
 	output.WriteByte(')')
+	if structured {
+		(*context.hierarchy)[proofIndex].SyntaxRange = splice.Range{Start: syntaxStart, End: output.Len()}
+		(*context.hierarchy)[proofIndex].ContentRange = splice.Range{Start: labelStart, End: labelEnd}
+		*context.linkImageExpected = append(*context.linkImageExpected, splice.ConstructionLinkImageExpectation{
+			Kind:        proofKind,
+			SyntaxRange: splice.Range{Start: syntaxStart, End: output.Len()},
+			LabelRange:  splice.Range{Start: labelStart, End: labelEnd},
+			Destination: inline.destination,
+			Title:       inline.title,
+			HasTitle:    inline.hasTitle,
+		})
+		return nil
+	}
 	*context.expected = append(*context.expected, typedInlineExpectation{
 		kind:             kind,
 		contentRange:     Range{Start: destinationStart, End: destinationEnd},
@@ -470,96 +482,37 @@ func writeTypedInlineLinkOrImage(output *strings.Builder, inline Inline, context
 	return nil
 }
 
-func writeTypedInlineReferenceLinkOrImage(output *strings.Builder, inline Inline, context typedInlineWriteContext) error {
-	if len(inline.children) == 0 {
-		return fmt.Errorf("reference link or image label is empty")
-	}
-	if err := validateTypedInlineReference(inline.reference); err != nil {
-		return err
-	}
-	definitions := context.referenceDefinitions[inline.reference]
-	if len(definitions) != 1 {
-		return fmt.Errorf("reference %q must match exactly one existing top-level definition", inline.reference)
-	}
-	definition := definitions[0]
-	kind := splice.KindInlineLink
-	syntaxStart := output.Len()
-	if inline.kind == inlineConstructionReferenceImage {
-		kind = splice.KindImage
-		output.WriteByte('!')
-	}
-	output.WriteByte('[')
-	labelStart := output.Len()
-	childContext := typedInlineWriteContext{
-		expected:          context.expected,
-		hierarchy:         context.hierarchy,
-		referenceExpected: context.referenceExpected,
-		policy:            typedInlineTextOnly,
-		parent:            -1,
-	}
-	for _, child := range inline.children {
-		if err := writeTypedInlineConstruction(output, child, childContext); err != nil {
-			return err
-		}
-	}
-	labelEnd := output.Len()
-	output.WriteString("][")
-	referenceStart := output.Len()
-	output.WriteString(inline.reference)
-	referenceEnd := output.Len()
-	output.WriteByte(']')
-	*context.referenceExpected = append(*context.referenceExpected, splice.ConstructionReferenceInlineExpectation{
-		Kind:           kind,
-		SyntaxRange:    splice.Range{Start: syntaxStart, End: output.Len()},
-		LabelRange:     splice.Range{Start: labelStart, End: labelEnd},
-		ReferenceRange: splice.Range{Start: referenceStart, End: referenceEnd},
-		Reference:      inline.reference,
-		Destination:    definition.destination,
-		Title:          definition.title,
-		HasTitle:       definition.hasTitle,
-	})
-	return nil
-}
-
-func typedInlineReferenceDefinitions(blocks []constructionBlock) map[string][]typedInlineReferenceDefinition {
-	result := make(map[string][]typedInlineReferenceDefinition)
-	for _, block := range blocks {
-		if block.kind != constructionReferenceDefinition {
-			continue
-		}
-		result[block.label] = append(result[block.label], typedInlineReferenceDefinition{
-			destination: block.destination,
-			title:       block.title,
-			hasTitle:    block.hasTitle,
-		})
-	}
-	return result
-}
-
-func writeTypedInlineAutoLink(output *strings.Builder, value string, expected *[]typedInlineExpectation) error {
+func writeTypedInlineAutoLink(output *strings.Builder, value string, angle bool, expected *[]typedInlineExpectation) error {
 	if err := validateTypedInlineAutoLinkValue(value); err != nil {
 		return err
 	}
-	output.WriteByte('<')
+	if angle {
+		output.WriteByte('<')
+	}
 	contentStart := output.Len()
 	output.WriteString(value)
 	contentEnd := output.Len()
-	output.WriteByte('>')
+	if angle {
+		output.WriteByte('>')
+	}
 	*expected = append(*expected, typedInlineExpectation{
 		kind:             KindAutoLink,
 		contentRange:     Range{Start: contentStart, End: contentEnd},
 		destination:      value,
-		angleDestination: true,
+		angleDestination: angle,
 	})
 	return nil
 }
 
-func validateTypedInlineConstruction(source string, expected []typedInlineExpectation, hierarchy []splice.ConstructionInlineExpectation, references []splice.ConstructionReferenceInlineExpectation) error {
-	if err := splice.ValidateConstructionInlineHierarchy([]byte(source), hierarchy); err != nil {
-		return fmt.Errorf("%w: typed inline hierarchy proof: %v", ErrInvalidConstruction, err)
+func validateTypedInlineConstruction(source string, expected []typedInlineExpectation, hierarchy []splice.ConstructionInlineExpectation, linkImages []splice.ConstructionLinkImageExpectation, references []splice.ConstructionReferenceInlineExpectation) error {
+	if err := splice.ValidateConstructionLinkImages([]byte(source), linkImages); err != nil {
+		return fmt.Errorf("%w: typed link/image semantic proof: %v", ErrInvalidConstruction, err)
 	}
 	if err := splice.ValidateConstructionReferenceInlines([]byte(source), references); err != nil {
 		return fmt.Errorf("%w: typed reference inline proof: %v", ErrInvalidConstruction, err)
+	}
+	if err := splice.ValidateConstructionInlineHierarchy([]byte(source), hierarchy, references); err != nil {
+		return fmt.Errorf("%w: typed inline hierarchy proof: %v", ErrInvalidConstruction, err)
 	}
 	document, err := Parse([]byte(source + "\n"))
 	if err != nil {
@@ -805,16 +758,6 @@ func validateTypedInlineTitle(title string) error {
 	}
 	if strings.ContainsAny(title, "\"\\&") {
 		return fmt.Errorf("link title requires GFM escaping or entity interpretation")
-	}
-	return nil
-}
-
-func validateTypedInlineReference(reference string) error {
-	if err := validateTypedInlineText(reference); err != nil {
-		return fmt.Errorf("reference label %v", err)
-	}
-	if strings.ContainsAny(reference, "[]\\&") {
-		return fmt.Errorf("reference label requires escaping or entity interpretation")
 	}
 	return nil
 }

@@ -106,6 +106,7 @@ func MapSimpleImage(input []byte, anchor int, alt Range) (ImageMapping, error) {
 // ReferenceDefinitionMapping binds one single-line link reference definition to its exact destination.
 type ReferenceDefinitionMapping struct {
 	Range            Range
+	LineRange        Range
 	DestinationRange Range
 	TitleRange       Range
 	AngleDestination bool
@@ -134,8 +135,13 @@ func MapSingleLineReferenceDefinition(input []byte, observation Range, label, de
 	if err != nil {
 		return ReferenceDefinitionMapping{}, err
 	}
+	lineRangeEnd := lineEnd
+	if next, ok := nextPhysicalLineStart(input, lineEnd); ok {
+		lineRangeEnd = next
+	}
 	return ReferenceDefinitionMapping{
 		Range:            Range{Start: lineStart, End: end},
+		LineRange:        Range{Start: lineStart, End: lineRangeEnd},
 		DestinationRange: destinationRange,
 		TitleRange:       titleRange,
 		AngleDestination: angle,

@@ -289,7 +289,7 @@ func (t ThematicBreak) ID() NodeID { return t.id }
 // When present, the line terminator is included.
 func (t ThematicBreak) Range() Range { return t.sourceRange }
 
-// Blockquote is immutable typed detail for one promoted simple top-level blockquote.
+// Blockquote is immutable typed detail for one promoted complete top-level blockquote container.
 type Blockquote struct {
 	id           NodeID
 	sourceRange  Range
@@ -299,12 +299,14 @@ type Blockquote struct {
 // ID returns the blockquote's snapshot-scoped node identity.
 func (b Blockquote) ID() NodeID { return b.id }
 
-// Range returns the exact complete physical blockquote line owned by structural operations.
-// When present, the line terminator is included.
+// Range returns the exact complete physical source owned by the top-level blockquote container.
+// Every owned physical line terminator is included when present.
 func (b Blockquote) Range() Range { return b.sourceRange }
 
-// ContentRange returns the exact inner single-paragraph source span.
-// Leading indentation, the '>' marker, its optional following space, and the line terminator are outside this range.
+// ContentRange returns the historical single-line inner source span when the
+// promoted blockquote owns exactly one physical content segment. It returns the
+// zero Range for segmented multiline, lazy-continuation, or multi-block source;
+// use Document.BlockquoteContentRanges for those containers.
 func (b Blockquote) ContentRange() Range { return b.contentRange }
 
 // FencedCode is immutable typed detail for one promoted supported fenced code block.
@@ -376,6 +378,9 @@ func (s Strong) Range() Range { return s.sourceRange }
 type InlineLink struct {
 	id          NodeID
 	sourceRange Range
+	destination string
+	title       string
+	hasTitle    bool
 }
 
 // ID returns the inline link's snapshot-scoped node identity.
@@ -384,6 +389,17 @@ func (l InlineLink) ID() NodeID { return l.id }
 // Range returns the exact destination span replaced by PrepareReplaceInlineLinkDestination.
 // Label, parentheses, destination wrappers, title syntax, and surrounding source are outside this range.
 func (l InlineLink) Range() Range { return l.sourceRange }
+
+// Destination returns the parser-proven semantic link destination.
+func (l InlineLink) Destination() string { return l.destination }
+
+// Title returns the parser-proven semantic link title when one is present.
+func (l InlineLink) Title() (string, bool) {
+	if !l.hasTitle {
+		return "", false
+	}
+	return l.title, true
+}
 
 // Image is immutable typed detail for one promoted simple inline image.
 type Image struct {
@@ -402,6 +418,10 @@ func (i Image) Range() Range { return i.sourceRange }
 type ReferenceDefinition struct {
 	id          NodeID
 	sourceRange Range
+	label       string
+	destination string
+	title       string
+	hasTitle    bool
 }
 
 // ID returns the reference definition's snapshot-scoped node identity.
@@ -411,10 +431,26 @@ func (r ReferenceDefinition) ID() NodeID { return r.id }
 // Label, colon, destination wrappers, title syntax, indentation, trailing spaces, and line endings are outside this range.
 func (r ReferenceDefinition) Range() Range { return r.sourceRange }
 
+// Label returns the parser-proven reference-definition label as authored.
+func (r ReferenceDefinition) Label() string { return r.label }
+
+// Destination returns the parser-proven semantic reference destination.
+func (r ReferenceDefinition) Destination() string { return r.destination }
+
+// Title returns the parser-proven semantic reference title when one is present.
+func (r ReferenceDefinition) Title() (string, bool) {
+	if !r.hasTitle {
+		return "", false
+	}
+	return r.title, true
+}
+
 // AutoLink is immutable typed detail for one promoted single-line GFM autolink.
 type AutoLink struct {
 	id          NodeID
 	sourceRange Range
+	value       string
+	email       bool
 }
 
 // ID returns the autolink's snapshot-scoped node identity.
@@ -423,6 +459,12 @@ func (a AutoLink) ID() NodeID { return a.id }
 // Range returns the exact autolink token content replaced by PrepareReplaceAutoLink.
 // Angle brackets, when present, and surrounding source are outside this range.
 func (a AutoLink) Range() Range { return a.sourceRange }
+
+// Value returns the parser-proven semantic autolink value.
+func (a AutoLink) Value() string { return a.value }
+
+// IsEmail reports whether the parser classified this as an email autolink.
+func (a AutoLink) IsEmail() bool { return a.email }
 
 // FrontMatterField is immutable typed detail for one promoted simple leading YAML/TOML scalar field.
 type FrontMatterField struct {

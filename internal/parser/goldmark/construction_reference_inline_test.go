@@ -20,6 +20,17 @@ func TestValidateConstructionReferenceInlinesAcceptsExactFullLinkAndImage(t *tes
 	}
 }
 
+func TestValidateConstructionReferenceInlinesAcceptsStructuredFullReferenceLabel(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("[**docs** `v1`][ref]")
+	expected := constructionReferenceInlineExpectation(source, string(source), "**docs** `v1`", "ref", false, "target", "Guide", true)
+	expected.StructuredLabel = true
+	if err := ValidateConstructionReferenceInlines(source, []markparser.ConstructionReferenceInlineExpectation{expected}); err != nil {
+		t.Fatalf("ValidateConstructionReferenceInlines(structured label) error = %v", err)
+	}
+}
+
 func TestValidateConstructionReferenceInlinesRejectsNonFullOrChangedReferenceSource(t *testing.T) {
 	t.Parallel()
 

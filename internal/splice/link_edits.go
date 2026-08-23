@@ -68,6 +68,50 @@ func (d *Document) PrepareReplaceReferenceDefinitionDestination(id NodeID, repla
 	return change, nil
 }
 
+// PrepareReplaceReferenceDefinitionTitle prepares a source-preserving replacement of one existing single-line reference-definition title payload.
+func (d *Document) PrepareReplaceReferenceDefinitionTitle(id NodeID, replacement []byte) (ChangeSet, error) {
+	target, err := d.editableTargetNode(id, KindReferenceDefinition, "reference definition")
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if err := validateNonEmptySingleLine(replacement); err != nil {
+		return ChangeSet{}, err
+	}
+
+	mapping := target.ReferenceDefinitionSource
+	if !mapping.HasTitle || mapping.TitleRange.Start == mapping.TitleRange.End {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	change, candidate, err := d.prepareCandidateChange(mapping.TitleRange, replacement, "reference definition title replacement")
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if err := validateReferenceDefinitionTitleReplacement(candidate, target, mapping, replacement); err != nil {
+		return ChangeSet{}, err
+	}
+	return change, nil
+}
+
+// PrepareRemoveReferenceDefinition prepares removal of one complete source-owned single-line reference definition.
+func (d *Document) PrepareRemoveReferenceDefinition(id NodeID) (ChangeSet, error) {
+	target, err := d.editableTargetNode(id, KindReferenceDefinition, "reference definition")
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	removeRange := target.ReferenceDefinitionSource.LineRange
+	if !removeRange.Valid(len(d.source)) || removeRange.Start >= removeRange.End || !rangesOverlap(target.Range, removeRange) {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	change, candidate, err := d.prepareCandidateChange(removeRange, nil, "reference definition removal")
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if err := d.validateNodeSurvivorsAfterRemoval(candidate, removeRange); err != nil {
+		return ChangeSet{}, err
+	}
+	return change, nil
+}
+
 func validateInlineLinkDestinationReplacement(candidate []byte, target Node, original source.InlineLinkMapping, replacement []byte) error {
 	observations, err := parseCandidate(candidate)
 	if err != nil {
@@ -131,8 +175,31 @@ func validateReferenceDefinitionDestinationReplacement(candidate []byte, target 
 		if err != nil {
 			continue
 		}
-		if mapping.Range == shiftedEnd(original.Range, delta) &&
+		if mapping.Range == shiftedEnd(original.Range, delta) && mapping.LineRange == shiftedEnd(original.LineRange, delta) &&
 			mapping.DestinationRange == rangeWithLength(original.DestinationRange.Start, len(replacement)) &&
+			mapping.AngleDestination == original.AngleDestination && mapping.HasTitle == original.HasTitle {
+			return nil
+		}
+	}
+	return ErrInvalidReplacement
+}
+
+func validateReferenceDefinitionTitleReplacement(candidate []byte, target Node, original source.ReferenceDefinitionMapping, replacement []byte) error {
+	observations, err := parseCandidate(candidate)
+	if err != nil {
+		return err
+	}
+	delta := len(replacement) - (original.TitleRange.End - original.TitleRange.Start)
+	for _, observation := range observations {
+		if observation.Kind != parser.KindReferenceDefinition || observation.Label != target.Label || observation.Destination != target.Destination || observation.Title != string(replacement) || !observation.HasTitle {
+			continue
+		}
+		mapping, err := source.MapSingleLineReferenceDefinition(candidate, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Label, observation.Destination, observation.Title, observation.HasTitle)
+		if err != nil {
+			continue
+		}
+		if mapping.Range == shiftedEnd(original.Range, delta) && mapping.LineRange == shiftedEnd(original.LineRange, delta) &&
+			mapping.DestinationRange == original.DestinationRange && mapping.TitleRange == rangeWithLength(original.TitleRange.Start, len(replacement)) &&
 			mapping.AngleDestination == original.AngleDestination && mapping.HasTitle == original.HasTitle {
 			return nil
 		}

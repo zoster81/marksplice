@@ -4,7 +4,7 @@ import "fmt"
 
 // DocumentBuilder constructs a new GFM document independently from parsed source snapshots.
 //
-// M44-M89 support one optional document-leading YAML/TOML front-matter
+// M44-M93 support one optional document-leading YAML/TOML front-matter
 // envelope, top-level ATX headings, parser-proven paragraphs, thematic breaks,
 // parser-proven single-paragraph and reviewed multi-block blockquotes, flat or
 // homogeneous nested unordered/ordered lists and task lists, supported fenced code,
@@ -16,8 +16,9 @@ import "fmt"
 // one blank line between GFM blocks, one blank line between retained front
 // matter and a non-empty body, and one final line ending.
 type DocumentBuilder struct {
-	frontMatter *constructionFrontMatter
-	blocks      []constructionBlock
+	frontMatter        *constructionFrontMatter
+	blocks             []constructionBlock
+	deferredReferences []constructionBlock
 }
 
 // NewDocumentBuilder returns an empty new-document builder.
@@ -158,6 +159,9 @@ func (b *DocumentBuilder) AppendBlockquoteBlocks(depth int, content *DocumentBui
 	}
 	if content.frontMatter != nil {
 		return fmt.Errorf("%w: blockquote child builder cannot contain front matter", ErrInvalidConstruction)
+	}
+	if len(content.deferredReferences) != 0 {
+		return fmt.Errorf("%w: blockquote child builder cannot contain deferred reference definitions", ErrInvalidConstruction)
 	}
 	children := append([]constructionBlock(nil), content.blocks...)
 	return b.appendConstructionBlock(constructionBlock{
@@ -316,6 +320,9 @@ func (b *DocumentBuilder) AppendReferenceDefinition(label, destination string) e
 	if b == nil {
 		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
 	}
+	if err := b.rejectDeferredReferenceCollision(label); err != nil {
+		return err
+	}
 	return b.appendConstructionBlock(constructionBlock{
 		kind:        constructionReferenceDefinition,
 		label:       label,
@@ -333,6 +340,9 @@ func (b *DocumentBuilder) AppendReferenceDefinitionWithTitle(label, destination,
 	if b == nil {
 		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
 	}
+	if err := b.rejectDeferredReferenceCollision(label); err != nil {
+		return err
+	}
 	return b.appendConstructionBlock(constructionBlock{
 		kind:        constructionReferenceDefinition,
 		label:       label,
@@ -344,11 +354,11 @@ func (b *DocumentBuilder) AppendReferenceDefinitionWithTitle(label, destination,
 
 // AppendTable appends one top-level unaligned GFM table.
 //
-// M51 requires at least one header column and one body row. Every body row must
-// have the same width as header. Cell strings are caller-provided single-line
+// M96 requires at least one header column; body rows are optional. Every body row
+// must have the same width as header. Cell strings are caller-provided single-line
 // GFM source; empty cells are allowed. The builder writes canonical outer pipes
-// and '---' delimiter cells and retains the table only after exact body-row and
-// semantic table-container proof.
+// and '---' delimiter cells and retains the table only after exact table-container
+// proof plus body-row proof for every row that is present.
 func (b *DocumentBuilder) AppendTable(header []string, rows ...[]string) error {
 	if b == nil {
 		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
@@ -361,9 +371,10 @@ func (b *DocumentBuilder) AppendTable(header []string, rows ...[]string) error {
 
 // AppendTableWithAlignments appends one top-level GFM table with explicit semantic column alignments.
 //
-// M62 preserves the M51 canonical outer-pipe/padding policy while writing delimiter
+// M96 preserves the canonical outer-pipe/padding policy while writing delimiter
 // cells as '---', ':---', '---:', or ':---:' for default, left, right, or center
-// alignment. alignments must have exactly one entry per header column.
+// alignment. alignments must have exactly one entry per header column; body rows
+// remain optional.
 func (b *DocumentBuilder) AppendTableWithAlignments(header []string, alignments []TableAlignment, rows ...[]string) error {
 	if b == nil {
 		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
@@ -382,7 +393,7 @@ func (b *DocumentBuilder) Markdown() ([]byte, error) {
 	if b == nil {
 		return nil, fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
 	}
-	source, expected := writeConstructionDocument(b.frontMatter, b.blocks)
+	source, expected := writeConstructionDocument(b.frontMatter, b.constructionDocumentBlocks())
 	if b.frontMatter != nil {
 		if err := validateConstructionFrontMatter(source, *b.frontMatter); err != nil {
 			return nil, err

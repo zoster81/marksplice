@@ -50,10 +50,22 @@ func TestPublicDocumentBuilderWritesCanonicalMultiBlockBlockquote(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Parse(generated) error = %v", err)
 	}
+	var blockquotes []marksplice.Node
 	for _, node := range doc.Nodes() {
 		if node.Kind() == marksplice.KindBlockquote {
-			t.Fatal("multi-block constructed blockquote unexpectedly entered the existing-source public blockquote subset")
+			blockquotes = append(blockquotes, node)
 		}
+	}
+	if len(blockquotes) != 1 {
+		t.Fatalf("generated multi-block source promoted %d blockquotes, want one complete top-level container", len(blockquotes))
+	}
+	ranges, ok := doc.BlockquoteContentRanges(blockquotes[0].ID())
+	if !ok || len(ranges) != 10 {
+		t.Fatalf("BlockquoteContentRanges() = %v/%v, want ten physical source segments", ranges, ok)
+	}
+	blank, ok := doc.SourceRange(ranges[1])
+	if !ok || len(blank) != 0 {
+		t.Fatalf("marker-only content segment = %q/%v, want valid empty range", blank, ok)
 	}
 }
 

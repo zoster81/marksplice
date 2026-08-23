@@ -77,6 +77,30 @@ func NewChangeSet(source []byte, patches []Patch) (ChangeSet, error) {
 	}, nil
 }
 
+// ComposeChangeSets combines already-prepared changes from exactly one source
+// snapshot. The combined change is revalidated as one non-overlapping patch set.
+func ComposeChangeSets(source []byte, changes ...ChangeSet) (ChangeSet, error) {
+	fingerprint := Sum(source)
+	patches := make([]Patch, 0)
+	for _, change := range changes {
+		if change.fingerprint != fingerprint {
+			return ChangeSet{}, ErrConflict
+		}
+		patches = append(patches, change.patches...)
+	}
+	return NewChangeSet(source, patches)
+}
+
+// Patches returns a defensive copy of the prepared source-coordinate patches.
+// This method is internal to Marksplice's implementation boundary.
+func (c ChangeSet) Patches() []Patch {
+	patches := make([]Patch, len(c.patches))
+	for index, patch := range c.patches {
+		patches[index] = Patch{Range: patch.Range, Replacement: append([]byte(nil), patch.Replacement...)}
+	}
+	return patches
+}
+
 // Apply applies the prepared patches only when source matches the prepared snapshot.
 func (c ChangeSet) Apply(source []byte) ([]byte, error) {
 	if c.fingerprint != Sum(source) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/zoster81/marksplice/internal/parser"
 	"github.com/zoster81/marksplice/internal/source"
 )
 
@@ -26,7 +27,7 @@ func (d *Document) validateNodeSurvivorsAfterRemoval(candidate []byte, removed R
 			survivors = append(survivors, original)
 		}
 	}
-	if len(candidateDocument.nodes) != len(survivors) {
+	if len(candidateDocument.nodes) != len(survivors) || !referenceUsagesSurviveRemoval(d.referenceUsages, candidateDocument.referenceUsages, removed) {
 		return ErrInvalidReplacement
 	}
 
@@ -39,6 +40,27 @@ func (d *Document) validateNodeSurvivorsAfterRemoval(candidate []byte, removed R
 		matched[candidateIndex] = true
 	}
 	return nil
+}
+
+func referenceUsagesSurviveRemoval(original, candidate []parser.ReferenceUsage, removed Range) bool {
+	patches := []patchTransform{{Range: removed}}
+	candidateIndex := 0
+	for _, usage := range original {
+		if usage.Anchor >= removed.Start && usage.Anchor < removed.End {
+			continue
+		}
+		expectedAnchor, ok := anchorAfterPatches(usage.Anchor, patches)
+		if !ok || candidateIndex >= len(candidate) {
+			return false
+		}
+		expected := usage
+		expected.Anchor = expectedAnchor
+		if candidate[candidateIndex] != expected {
+			return false
+		}
+		candidateIndex++
+	}
+	return candidateIndex == len(candidate)
 }
 
 func matchingRemovalSurvivor(candidates []Node, matched []bool, original Node, removed Range) int {
@@ -54,7 +76,9 @@ func matchingRemovalSurvivor(candidates []Node, matched []bool, original Node, r
 		if matched[index] || candidate.Kind != original.Kind || candidate.Range != expectedRange || candidate.ContentRange != expectedContent {
 			continue
 		}
-		if sameRemovalSurvivorSemantics(original, candidate) && sameRemovalSurvivorAnchors(original, candidate, removed) {
+		if sameRemovalSurvivorSemantics(original, candidate) &&
+			sameRemovalSurvivorAnchors(original, candidate, removed) &&
+			sameRemovalBlockquoteSource(original, candidate, removed) {
 			return index
 		}
 	}
@@ -130,6 +154,28 @@ func removalSurvivorSemanticSignature(node Node) removalSurvivorSignature {
 		topLevel:                  node.TopLevel,
 		editable:                  node.Editable,
 	}
+}
+
+func sameRemovalBlockquoteSource(original, candidate Node, removed Range) bool {
+	if original.Kind != KindBlockquote {
+		return true
+	}
+	expectedSource, ok := rangeAfterPatch(original.BlockquoteSource.LineRange, removed, 0)
+	if !ok || candidate.BlockquoteSource.LineRange != expectedSource {
+		return false
+	}
+	expectedMarker, ok := rangeAfterPatch(original.BlockquoteSource.MarkerRange, removed, 0)
+	if !ok || candidate.BlockquoteSource.MarkerRange != expectedMarker ||
+		len(candidate.BlockquoteSource.ContentRanges) != len(original.BlockquoteSource.ContentRanges) {
+		return false
+	}
+	for index, content := range original.BlockquoteSource.ContentRanges {
+		expected, ok := rangeAfterPatch(content, removed, 0)
+		if !ok || candidate.BlockquoteSource.ContentRanges[index] != expected {
+			return false
+		}
+	}
+	return true
 }
 
 func sameRemovalSurvivorAnchors(original, candidate Node, removed Range) bool {

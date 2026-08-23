@@ -19,6 +19,8 @@ var (
 	ErrSourceConflict = errors.New("source snapshot conflict")
 	// ErrInvalidConstruction reports new-document content that cannot be proven to produce the requested GFM structure.
 	ErrInvalidConstruction = errors.New("invalid construction")
+	// ErrInvalidQuery reports an unbounded or malformed structural query.
+	ErrInvalidQuery = errors.New("invalid query")
 )
 
 // Kind identifies a structural Markdown node category.

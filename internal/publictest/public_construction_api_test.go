@@ -889,7 +889,6 @@ func TestPublicDocumentBuilderRejectsInvalidTable(t *testing.T) {
 		rows   [][]string
 	}{
 		{header: nil, rows: [][]string{{"one"}}},
-		{header: []string{"A"}},
 		{header: []string{"A", "B"}, rows: [][]string{{"one"}}},
 		{header: []string{"A\nB"}, rows: [][]string{{"one"}}},
 		{header: []string{"A|B"}, rows: [][]string{{"one"}}},

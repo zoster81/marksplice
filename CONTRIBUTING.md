@@ -58,9 +58,9 @@ Do not introduce a top-level `src/` package merely for visual separation: in a G
 
 GitHub Flavored Markdown (GFM) is the repository's single normative Markdown syntax profile. Follow [`docs/gfm-conformance.md`](docs/gfm-conformance.md) for the normative source hierarchy, approved snapshot, CommonMark relationship, advisory-source policy, and specification-update procedure. Do not add separate dialect modes or non-GFM syntax extensions without an explicit architecture decision and corresponding conformance tests.
 
-Keep dependencies minimal. Goldmark is the selected semantic parser, configured for GFM plus narrowly scoped, tested compatibility behavior required by the approved GFM contract. It must remain behind the internal parser adapter. Do not expose third-party parser types through public APIs. Exact dependency versions belong in `go.mod` and `go.sum`.
+Keep dependencies minimal. Goldmark is the current temporary semantic parser, configured for GFM plus narrowly scoped, tested compatibility behavior required by the approved GFM contract. It must remain behind the internal parser adapter until the mandatory M115 native-parser cutover removes it. Do not expose third-party parser types through public APIs. Exact dependency versions belong in `go.mod` and `go.sum`.
 
-When the approved GFM specification snapshot is provisioned separately, set `MARKSPLICE_GFM_SPEC_HTML` to its HTML path and run `go test ./internal/parser/goldmark -run TestGFM029PublishedSpecificationConformance`. The test verifies the approved SHA-256 before evaluating examples; an upstream specification change requires the reviewed update process in `docs/gfm-conformance.md`, not a hash-only update.
+When the approved GFM specification snapshot is provisioned separately, set `MARKSPLICE_GFM_SPEC_HTML` to its HTML path and run `go test ./internal/parser/goldmark -run '^TestGFM029PublishedSpecificationConformance$' -count=1`. Use the anchored exact test name: an incorrect `-run` filter can select zero tests while `go test` still exits successfully. The test verifies the approved SHA-256 before evaluating examples; an upstream specification change requires the reviewed update process in `docs/gfm-conformance.md`, not a hash-only update.
 
 ## Source preservation
 

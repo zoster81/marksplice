@@ -50,34 +50,57 @@ func (r Range) Valid(total int) bool {
 
 // Node is a parser-independent semantic observation used by Marksplice internals.
 type Node struct {
-	Kind                   Kind
-	Range                  Range
-	BlockquoteContentRange Range
-	Level                  int
-	Checked                bool
-	Ordered                bool
-	Marker                 byte
-	HasListParent          bool
-	ListParentAnchor       int
-	ListContainerAnchor    int
-	HasListChildren        bool
-	ListDirectChildCount   int
-	TableHeader            bool
-	TableColumn            int
-	TableRowAnchor         int
-	TableAnchor            int
-	TableColumnCount       int
-	TableAlignments        []TableAlignment
-	TableBodyRowCount      int
-	TableLastBodyRowAnchor int
-	Anchor                 int
-	Destination            string
-	Label                  string
-	Title                  string
-	HasTitle               bool
-	Value                  string
-	AutoLinkEmail          bool
-	TopLevel               bool
+	Kind                     Kind
+	Range                    Range
+	BlockquoteContentRange   Range
+	BlockquoteSemanticRanges []Range
+	Level                    int
+	Checked                  bool
+	Ordered                  bool
+	Marker                   byte
+	HasListParent            bool
+	ListParentAnchor         int
+	ListContainerAnchor      int
+	HasListChildren          bool
+	ListDirectChildCount     int
+	TableHeader              bool
+	TableColumn              int
+	TableRowAnchor           int
+	TableAnchor              int
+	TableColumnCount         int
+	TableAlignments          []TableAlignment
+	TableBodyRowCount        int
+	TableLastBodyRowAnchor   int
+	Anchor                   int
+	Destination              string
+	Label                    string
+	Title                    string
+	HasTitle                 bool
+	Value                    string
+	AutoLinkEmail            bool
+	TopLevel                 bool
+}
+
+// ReferenceUsageForm identifies the parsed source form of one reference link or image.
+type ReferenceUsageForm uint8
+
+const (
+	ReferenceUsageUnknown ReferenceUsageForm = iota
+	ReferenceUsageFull
+	ReferenceUsageCollapsed
+	ReferenceUsageShortcut
+)
+
+// ReferenceUsage records one parser-resolved reference link/image relationship
+// for internal mutation safety without promoting that syntax into the public node model.
+type ReferenceUsage struct {
+	Kind        Kind
+	Form        ReferenceUsageForm
+	Anchor      int
+	Reference   string
+	Destination string
+	Title       string
+	HasTitle    bool
 }
 
 // Adapter parses Markdown into Marksplice-owned semantic observations.

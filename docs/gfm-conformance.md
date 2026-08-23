@@ -10,6 +10,8 @@ The normative language contract is the published GFM 0.29 specification at `http
 
 A future request for a second Markdown dialect or a separately observable CommonMark mode requires an explicit architecture decision. It must not be introduced implicitly through parser configuration.
 
+GitHub's broader authoring surface includes features such as footnotes, alerts, mathematical expressions, and fenced technical/diagram blocks that are not all part of the pinned GFM 0.29 specification. Their product evaluation belongs to [`extension-strategy.md`](extension-strategy.md). Broadly useful capabilities may enter Marksplice core through an explicit reviewed contract without creating separate first-party extension modes. Dialect-specific syntax stays outside core and may later be implemented by independent packages through the M110 opt-in SPI.
+
 ## Source hierarchy
 
 When sources disagree, use this order:
@@ -31,8 +33,10 @@ The conformance test reads an externally provisioned snapshot of the official pu
 To run the gate, set `MARKSPLICE_GFM_SPEC_HTML` to the approved snapshot and run:
 
 ```text
-go test ./internal/parser/goldmark -run TestGFM029PublishedSpecificationConformance
+go test ./internal/parser/goldmark -run '^TestGFM029PublishedSpecificationConformance$' -count=1
 ```
+
+Use the anchored exact test name shown above. `go test -run` can exit successfully after selecting zero tests, so shortened or guessed filters are not acceptable conformance evidence.
 
 The pinned page currently contains 677 examples. Marksplice exercises 676 parser/render examples through the production parser factory. The single `tagfilter` example is excluded because disallowed-raw-HTML filtering is an HTML-rendering responsibility and Marksplice core does not currently provide an HTML renderer.
 
@@ -53,17 +57,17 @@ If the new specification conflicts with current `cmark-gfm` or GitHub authoring 
 
 ## Goldmark boundary
 
-`github.com/yuin/goldmark` is the selected semantic parser implementation. Marksplice's default parser uses GFM semantics and may add narrowly scoped compatibility behavior inside `internal/parser/goldmark` where Goldmark differs from the pinned GFM contract.
+`github.com/yuin/goldmark` is the current temporary semantic parser implementation. While it remains in use, Marksplice's default parser uses GFM semantics and may add narrowly scoped compatibility behavior inside `internal/parser/goldmark` where Goldmark differs from the pinned GFM contract. The approved roadmap replaces this backend with the Marksplice-native parser and removes Goldmark at M115.
 
 Rules:
 
 - no Goldmark AST or parser-specific type may cross the Marksplice public API boundary;
-- no non-GFM Goldmark extension is enabled by default merely because Goldmark provides it;
+- Goldmark's additional syntax packages do not define Marksplice core capabilities merely because Goldmark provides them;
 - parser-library differences are adapter/test problems to resolve, not reasons to expose multiple dialect modes;
 - ordinary existing-document edits must never depend on serializing a Goldmark AST back to Markdown;
 - Marksplice continues to own exact source mapping, lexical trivia, source fingerprints, and minimal byte patches.
 
-The parser decision gate currently retains Goldmark because the production parser configuration matches all 676 applicable examples from the approved published-spec snapshot, with focused regression coverage for known parser-boundary cases such as GFM HTML comments and extended autolinks.
+The current Goldmark-backed production parser matches all 676 applicable examples from the approved published-spec snapshot, with focused regression coverage for known parser-boundary cases such as GFM HTML comments and extended autolinks. This remains transition evidence and later becomes part of the differential/conformance gate for the mandatory Marksplice-native replacement; it is not a long-term dependency decision.
 
 ## Rendering boundary
 

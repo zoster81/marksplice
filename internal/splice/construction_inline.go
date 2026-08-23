@@ -21,7 +21,7 @@ type ConstructionInlineExpectation struct {
 // ValidateConstructionInlineHierarchy proves generated typed inline nesting
 // through the isolated Goldmark construction validator without widening ordinary
 // parsed-source promotion.
-func ValidateConstructionInlineHierarchy(source []byte, expected []ConstructionInlineExpectation) error {
+func ValidateConstructionInlineHierarchy(source []byte, expected []ConstructionInlineExpectation, references []ConstructionReferenceInlineExpectation) error {
 	parserExpected := make([]parser.ConstructionInlineExpectation, len(expected))
 	for index, want := range expected {
 		kind, ok := parserConstructionInlineKind(want.Kind)
@@ -37,7 +37,11 @@ func ValidateConstructionInlineHierarchy(source []byte, expected []ConstructionI
 			Parent:          want.Parent,
 		}
 	}
-	if err := goldmarkparser.ValidateConstructionInlineHierarchy(source, parserExpected); err != nil {
+	parserReferences, err := parserConstructionReferenceInlines(references)
+	if err != nil {
+		return err
+	}
+	if err := goldmarkparser.ValidateConstructionInlineHierarchy(source, parserExpected, parserReferences); err != nil {
 		return fmt.Errorf("validate semantic typed inline hierarchy: %w", err)
 	}
 	return nil
@@ -53,6 +57,10 @@ func parserConstructionInlineKind(kind Kind) (parser.Kind, bool) {
 		return parser.KindStrong, true
 	case KindStrikethrough:
 		return parser.KindStrikethrough, true
+	case KindInlineLink:
+		return parser.KindInlineLink, true
+	case KindImage:
+		return parser.KindImage, true
 	default:
 		return parser.KindUnknown, false
 	}

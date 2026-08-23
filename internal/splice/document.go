@@ -181,6 +181,7 @@ type Document struct {
 	sections                []Section
 	sectionIndex            map[NodeID]int
 	frontMatter             frontMatterEnvelope
+	referenceUsages         []parser.ReferenceUsage
 }
 
 // Parse creates a snapshot-local Marksplice model using the internal Goldmark adapter.
@@ -188,9 +189,12 @@ func Parse(input []byte) (*Document, error) {
 	semanticParser := goldmarkparser.New()
 	snapshot := append([]byte(nil), input...)
 	frontMatter, hasFrontMatter := source.MapLeadingFrontMatter(snapshot)
-	observations, err := semanticParser.Parse(snapshot)
+	observations, referenceUsages, err := semanticParser.ParseWithReferenceUsages(snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("parse markdown: %w", err)
+	}
+	if hasFrontMatter {
+		referenceUsages = referenceUsagesOutsideRange(referenceUsages, frontMatter.Range)
 	}
 
 	fingerprint := source.Sum(snapshot)
@@ -254,6 +258,7 @@ func Parse(input []byte) (*Document, error) {
 		sections:                sections,
 		sectionIndex:            sectionIndex,
 		frontMatter:             storedFrontMatter,
+		referenceUsages:         append([]parser.ReferenceUsage(nil), referenceUsages...),
 	}, nil
 }
 
@@ -277,18 +282,25 @@ type NodeSummary struct {
 	Editable bool
 }
 
+func summarizeNode(node Node) NodeSummary {
+	return NodeSummary{ID: node.ID, Kind: node.Kind, TopLevel: node.TopLevel, Editable: node.Editable}
+}
+
 // NodeCount returns the number of snapshot-local structural nodes.
 func (d *Document) NodeCount() int {
+	if d == nil {
+		return 0
+	}
 	return len(d.nodes)
 }
 
 // NodeSummaryAt returns lightweight structural data at one stable snapshot-local index.
 func (d *Document) NodeSummaryAt(index int) (NodeSummary, bool) {
-	if index < 0 || index >= len(d.nodes) {
+	if d == nil || index < 0 || index >= len(d.nodes) {
 		return NodeSummary{}, false
 	}
 	node := d.nodes[index]
-	return NodeSummary{ID: node.ID, Kind: node.Kind, TopLevel: node.TopLevel, Editable: node.Editable}, true
+	return summarizeNode(node), true
 }
 
 // Node returns one snapshot-local structural node by ID.
@@ -324,12 +336,37 @@ func (d *Document) ListItemChildIDs(id NodeID) ([]NodeID, bool) {
 	return append([]NodeID(nil), ids...), true
 }
 
+// BlockquoteContentRanges returns caller-owned per-physical-line inner source ranges
+// for one promoted top-level blockquote container.
+func (d *Document) BlockquoteContentRanges(id NodeID) ([]Range, bool) {
+	if d == nil {
+		return nil, false
+	}
+	node, ok := d.nodeByID(id)
+	if !ok || node.Kind != KindBlockquote || !node.Editable || !node.TopLevel || len(node.BlockquoteSource.ContentRanges) == 0 {
+		return nil, false
+	}
+	return append([]Range(nil), node.BlockquoteSource.ContentRanges...), true
+}
+
+func referenceUsagesOutsideRange(usages []parser.ReferenceUsage, excluded Range) []parser.ReferenceUsage {
+	result := make([]parser.ReferenceUsage, 0, len(usages))
+	for _, usage := range usages {
+		if usage.Anchor >= excluded.Start && usage.Anchor < excluded.End {
+			continue
+		}
+		result = append(result, usage)
+	}
+	return result
+}
+
 func cloneNode(node Node) Node {
 	node.TableAlignments = append([]TableAlignment(nil), node.TableAlignments...)
 	node.TableRowSource.Cells = append([]source.TableCellMapping(nil), node.TableRowSource.Cells...)
 	node.TableSource.Header.Cells = append([]source.TableCellMapping(nil), node.TableSource.Header.Cells...)
 	node.TableSource.Delimiter.Cells = append([]source.TableCellMapping(nil), node.TableSource.Delimiter.Cells...)
 	node.TableSource.DelimiterAlignments = append([]source.TableDelimiterAlignment(nil), node.TableSource.DelimiterAlignments...)
+	node.BlockquoteSource.ContentRanges = append([]source.Range(nil), node.BlockquoteSource.ContentRanges...)
 	return node
 }
 
