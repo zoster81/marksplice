@@ -9,7 +9,7 @@ Marksplice is an open-source Pure-Go library for understanding, creating, and st
 
 ## Status
 
-Marksplice is currently **beta software under active development**. The first public module release is planned as `v0.1.0-beta.1`; until v1, public APIs and behavior may change incompatibly between releases.
+Marksplice is currently **beta software under active development**. The first public beta version is `v0.1.0-beta.1`; until v1, public APIs and behavior may change incompatibly between releases.
 
 The repository has a green retrospective M0 bootstrap record and completed engineering milestones M1–M91. The current model has two deliberately separate paths:
 

@@ -12,7 +12,7 @@ github.com/zoster81/marksplice
 
 The project follows Go module semantic-version conventions. During public API development, releases remain in the `v0` series and may use explicit alpha/beta/RC pre-release identifiers. A v0 or pre-release version carries no compatibility or stability guarantee.
 
-The planned first public release is:
+The first public beta version is:
 
 ```text
 v0.1.0-beta.1
@@ -87,14 +87,16 @@ Do not execute these commands until the release commit is reviewed and publicati
 
 ## Publishing a beta module version
 
-After the release commit exists on the public `main` branch, create an annotated immutable tag:
+After the release commit exists on the public `main` branch, wait for every GitHub Actions run associated with that exact commit to complete successfully. Do not create the release tag while any run is queued/in progress or if any run concludes unsuccessfully. This commit-level workflow gate is mandatory even when the same tree already passed the stricter local maintainer gate.
+
+Only after all workflows for the exact release commit are green, create and push an annotated immutable tag:
 
 ```text
 git tag -a v0.1.0-beta.1 -m "Marksplice v0.1.0-beta.1"
 git push origin v0.1.0-beta.1
 ```
 
-A GitHub pre-release may then be created from that exact tag using the matching `CHANGELOG.md` notes.
+Because the public CI also runs on tag pushes, wait for every GitHub Actions run associated with the tag's target commit/ref to complete successfully before creating the GitHub pre-release or advertising the module as published. A GitHub pre-release may then be created from that exact tag using the matching `CHANGELOG.md` notes.
 
 Prompt the public Go proxy to discover the version and verify that the exact tag resolves:
 

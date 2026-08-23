@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation complete; final release-candidate gate and GitHub workflow verification are recorded after the exact tree is committed and pushed.
+Complete and green.
 
 ## Objective
 
@@ -56,6 +56,14 @@ Because the black-box suite now lives in a different package directory, `go test
 5. **Moving examples with the tests would degrade pkg.go.dev documentation.** `example_test.go` intentionally remains beside the public package at the module root.
 6. **A cosmetic refactor immediately before release could introduce runtime risk.** M91 does not move runtime declarations across package boundaries; the complete release gate and GitHub workflow cycle must pass again before tagging.
 
+## Verification
+
+The exact M91 tree passed the complete local release gate with `M91_FULL_GATE_OK`: layout assertions, five consecutive `go test ./... -count=1` runs, race detection, explicit cross-package coverage, vet, build, package examples/documentation, the hash-pinned published GFM 0.29 conformance suite, Staticcheck, golangci-lint with zero issues, production complexity <=15, production/test `unparam`, `govulncheck` with no vulnerabilities found, Gitleaks with no leaks, `actionlint`, `go mod tidy -diff`, direct Go 1.27 compatibility, strict text hygiene, private-boundary scanning, `git diff --check`, and `git fsck --no-dangling`.
+
+Cross-package statement coverage on that tree is 86.7% over the explicit production package set; the `internal/publictest` consumer-style suite alone exercises 83.3% of that instrumented set.
+
+M91 was committed as `7c697fc544f80945a6b0ae90983d5d19d179df62` and pushed to public `main`. GitHub Actions run `32634536155` (`CI`) completed successfully for that exact commit. No beta tag existed when this evidence was recorded.
+
 ## Exit decision
 
-M91 is complete when the final tree passes the complete local release gate, is committed and pushed to public `main`, and all GitHub workflows for that exact commit complete successfully. Only then may the first beta tag be created.
+M91 is complete. The repository layout is accepted for the first public beta. The release tag remains a separate publication boundary and may be created only after the final release-documentation commit also completes all GitHub workflows successfully.
