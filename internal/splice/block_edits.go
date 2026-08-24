@@ -153,7 +153,8 @@ func validateFencedCodeReplacement(candidate []byte, target Node, original sourc
 			mapping.FenceLength == original.FenceLength &&
 			mapping.ClosingFenceLength == original.ClosingFenceLength &&
 			mapping.OpeningIndent == original.OpeningIndent &&
-			mapping.ClosingIndent == original.ClosingIndent {
+			mapping.ClosingIndent == original.ClosingIndent &&
+			mapping.Closed == original.Closed {
 			return nil
 		}
 	}

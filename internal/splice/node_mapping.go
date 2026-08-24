@@ -44,6 +44,7 @@ func baseNodeFromObservation(kind Kind, contentRange Range, observation parser.N
 		Range:                  contentRange,
 		ContentRange:           contentRange,
 		Level:                  observation.Level,
+		HeadingText:            observation.HeadingText,
 		Checked:                observation.Checked,
 		ListOrdered:            observation.Ordered,
 		ListMarker:             observation.Marker,
@@ -90,7 +91,7 @@ func mapBlockNodeSource(snapshot []byte, observation parser.Node, contentRange R
 	case KindTable:
 		return mapTableNodeSource(snapshot, observation, node)
 	case KindFencedCode:
-		return mapFencedCodeNodeSource(snapshot, contentRange, node)
+		return mapFencedCodeNodeSource(snapshot, observation, contentRange, node)
 	case KindThematicBreak:
 		return mapThematicBreakNodeSource(snapshot, observation, contentRange, node)
 	case KindBlockquote:
@@ -211,10 +212,7 @@ func mapBlockquoteNodeSource(snapshot []byte, observation parser.Node, node *Nod
 	if !observation.TopLevel {
 		return nil
 	}
-	semanticRanges := make([]Range, len(observation.BlockquoteSemanticRanges))
-	for index, range_ := range observation.BlockquoteSemanticRanges {
-		semanticRanges[index] = Range{Start: range_.Start, End: range_.End}
-	}
+	semanticRanges := rangesFromParser(observation.BlockquoteSemanticRanges)
 	mapping, err := source.MapTopLevelBlockquote(snapshot, node.Range, semanticRanges)
 	if err != nil {
 		if errors.Is(err, source.ErrUnsupportedBlockquoteShape) {
@@ -233,7 +231,19 @@ func mapBlockquoteNodeSource(snapshot []byte, observation parser.Node, node *Nod
 	return nil
 }
 
-func mapFencedCodeNodeSource(snapshot []byte, contentRange Range, node *Node) error {
+func mapFencedCodeNodeSource(snapshot []byte, observation parser.Node, contentRange Range, node *Node) error {
+	if observation.TopLevel {
+		contentRanges := rangesFromParser(observation.FencedCodeContentRanges)
+		mapping, err := source.MapFencedBlock(snapshot, observation.Anchor, contentRanges, observation.FencedCodeInfo)
+		if err == nil {
+			node.FencedBlockSource = mapping
+			node.FencedBlockInfo = observation.FencedCodeInfo
+			node.FencedBlockLanguage = observation.FencedCodeLanguage
+		} else if !errors.Is(err, source.ErrUnsupportedFencedCodeShape) {
+			return fmt.Errorf("map fenced block source: %w", err)
+		}
+	}
+
 	mapping, err := source.MapFencedCode(snapshot, contentRange)
 	if err == nil {
 		node.FencedCodeSource = mapping
@@ -339,6 +349,14 @@ func mapEmphasisNodeSource(snapshot []byte, observation parser.Node, contentRang
 		return nil
 	}
 	return fmt.Errorf("map emphasis source: %w", err)
+}
+
+func rangesFromParser(values []parser.Range) []Range {
+	result := make([]Range, len(values))
+	for index, value := range values {
+		result[index] = Range{Start: value.Start, End: value.End}
+	}
+	return result
 }
 
 func mapTableRowSource(snapshot []byte, anchor int, cache map[int]tableRowSourceResult) (source.TableRowMapping, bool, error) {

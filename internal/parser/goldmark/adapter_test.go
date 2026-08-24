@@ -70,18 +70,39 @@ func TestAdapterCollectsNonPromotedReferenceUsages(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("[docs]: <target> \"Guide\"\n\n[full][docs] [docs][] [docs] ![docs]\n")
-	_, got, err := New().ParseWithReferenceUsages(source)
+	_, got, unresolved, err := New().ParseWithLinkUsages(source)
 	if err != nil {
-		t.Fatalf("ParseWithReferenceUsages() error = %v", err)
+		t.Fatalf("ParseWithLinkUsages() error = %v", err)
 	}
-	want := []markparser.ReferenceUsage{
-		{Kind: markparser.KindInlineLink, Form: markparser.ReferenceUsageFull, Anchor: bytes.Index(source, []byte("[full][docs]")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
-		{Kind: markparser.KindInlineLink, Form: markparser.ReferenceUsageCollapsed, Anchor: bytes.Index(source, []byte("[docs][]")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
-		{Kind: markparser.KindInlineLink, Form: markparser.ReferenceUsageShortcut, Anchor: bytes.Index(source, []byte("[docs] !")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
-		{Kind: markparser.KindImage, Form: markparser.ReferenceUsageShortcut, Anchor: bytes.Index(source, []byte("![docs]")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
+	if len(unresolved) != 0 {
+		t.Fatalf("resolved references unexpectedly reported unresolved: %+v", unresolved)
+	}
+	want := []markparser.LinkUsage{
+		{Kind: markparser.KindInlineLink, Form: markparser.LinkUsageFull, Anchor: bytes.Index(source, []byte("[full][docs]")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
+		{Kind: markparser.KindInlineLink, Form: markparser.LinkUsageCollapsed, Anchor: bytes.Index(source, []byte("[docs][]")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
+		{Kind: markparser.KindInlineLink, Form: markparser.LinkUsageShortcut, Anchor: bytes.Index(source, []byte("[docs] !")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
+		{Kind: markparser.KindImage, Form: markparser.LinkUsageShortcut, Anchor: bytes.Index(source, []byte("![docs]")), Reference: "docs", Destination: "target", Title: "Guide", HasTitle: true},
 	}
 	if !slices.Equal(got, want) {
-		t.Fatalf("reference usages = %+v, want %+v", got, want)
+		t.Fatalf("reference link usages = %+v, want %+v", got, want)
+	}
+}
+
+func TestAdapterCollectsConservativeUnresolvedExplicitReferences(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("[full][missing] [collapsed][] ![image][missing-image] [shortcut] \\[escaped][missing] !\\[escaped-image][missing] `[code][missing]` [resolved][ok]\n\n[ok]: /target\n")
+	_, _, got, err := New().ParseWithLinkUsages(source)
+	if err != nil {
+		t.Fatalf("ParseWithLinkUsages() error = %v", err)
+	}
+	want := []markparser.UnresolvedReferenceUsage{
+		{Kind: markparser.KindInlineLink, Form: markparser.LinkUsageFull, Anchor: bytes.Index(source, []byte("[full][missing]")), Reference: "missing"},
+		{Kind: markparser.KindInlineLink, Form: markparser.LinkUsageCollapsed, Anchor: bytes.Index(source, []byte("[collapsed][]")), Reference: "collapsed"},
+		{Kind: markparser.KindImage, Form: markparser.LinkUsageFull, Anchor: bytes.Index(source, []byte("![image][missing-image]")), Reference: "missing-image"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("unresolved references = %+v, want %+v", got, want)
 	}
 }
 
@@ -246,6 +267,62 @@ func TestAdapterTableColumnsCountUnobservedEmptyCells(t *testing.T) {
 		}
 	}
 	t.Fatal("non-empty second body cell was not observed")
+}
+
+func TestAdapterExposesFencedBlockAnchorInfoLanguageAndPayloadRanges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		source       []byte
+		wantAnchor   int
+		wantRange    markparser.Range
+		wantInfo     string
+		wantLanguage string
+		wantContent  []markparser.Range
+	}{
+		{
+			name:         "empty body keeps opening anchor",
+			source:       []byte("before\n\n```math\n```\n"),
+			wantAnchor:   len("before\n\n"),
+			wantRange:    markparser.Range{Start: len("before\n\n"), End: len("before\n\n")},
+			wantInfo:     "math",
+			wantLanguage: "math",
+		},
+		{
+			name:         "indented multiline body keeps source-backed ranges",
+			source:       []byte("  ~~~~  mermaid diagram  \n  graph TD\n  A-->B\n ~~~~~~   \n"),
+			wantAnchor:   2,
+			wantRange:    markparser.Range{Start: len("  ~~~~  mermaid diagram  \n  "), End: len("  ~~~~  mermaid diagram  \n  graph TD\n  A-->B")},
+			wantInfo:     "mermaid diagram",
+			wantLanguage: "mermaid",
+			wantContent: []markparser.Range{
+				{Start: len("  ~~~~  mermaid diagram  \n  "), End: len("  ~~~~  mermaid diagram  \n  graph TD")},
+				{Start: len("  ~~~~  mermaid diagram  \n  graph TD\n  "), End: len("  ~~~~  mermaid diagram  \n  graph TD\n  A-->B")},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			nodes, err := New().Parse(tt.source)
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			for _, node := range nodes {
+				if node.Kind != markparser.KindFencedCode {
+					continue
+				}
+				if node.Anchor != tt.wantAnchor || node.Range != tt.wantRange || node.FencedCodeInfo != tt.wantInfo ||
+					node.FencedCodeLanguage != tt.wantLanguage || !node.TopLevel || !slices.Equal(node.FencedCodeContentRanges, tt.wantContent) {
+					t.Fatalf("fenced observation = anchor %d range %v info %q language %q top-level %v content %v", node.Anchor, node.Range, node.FencedCodeInfo, node.FencedCodeLanguage, node.TopLevel, node.FencedCodeContentRanges)
+				}
+				return
+			}
+			t.Fatal("fenced-code observation missing")
+		})
+	}
 }
 
 func TestAdapterExposesRawHTMLAndHTMLBlockSourceRanges(t *testing.T) {

@@ -230,11 +230,7 @@ func (d *Document) BlockquoteContentRanges(id NodeID) ([]Range, bool) {
 	if !ok {
 		return nil, false
 	}
-	ranges := make([]Range, len(internalRanges))
-	for index, range_ := range internalRanges {
-		ranges[index] = Range{Start: range_.Start, End: range_.End}
-	}
-	return ranges, true
+	return publicRanges(internalRanges), true
 }
 
 // FencedCode returns typed detail for one promoted supported fenced code block.

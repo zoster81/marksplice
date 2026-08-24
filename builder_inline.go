@@ -677,10 +677,6 @@ func typedInlineAutoLinkExpectation(document *Document, node Node) (typedInlineE
 	}, true, nil
 }
 
-func publicRange(value splice.Range) Range {
-	return Range{Start: value.Start, End: value.End}
-}
-
 func sameTypedInlineExpectations(actual, expected []typedInlineExpectation) bool {
 	if len(actual) != len(expected) {
 		return false

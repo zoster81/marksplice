@@ -590,16 +590,6 @@ func TestPublicMultilineFencedCodeDetailAndReplacementPreserveSource(t *testing.
 func TestPublicFencedCodeFiltersUnsupportedShapeAndRejectsInvalidTargets(t *testing.T) {
 	t.Parallel()
 
-	unsupported, err := marksplice.Parse([]byte("```go\nold\n"))
-	if err != nil {
-		t.Fatalf("Parse(unsupported) error = %v", err)
-	}
-	for _, node := range unsupported.Nodes() {
-		if node.Kind() == marksplice.KindFencedCode {
-			t.Fatal("unsupported fenced-code shape was promoted publicly")
-		}
-	}
-
 	indentedMultiline, err := marksplice.Parse([]byte("  ```go\n  one\n  two\n  ```\n"))
 	if err != nil {
 		t.Fatalf("Parse(indented multiline) error = %v", err)

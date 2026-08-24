@@ -5,7 +5,25 @@ import (
 	"fmt"
 )
 
-// FencedCodeMapping binds one supported fenced code block to its exact source fences and content.
+// FencedBlockMapping binds one parser-proven top-level fenced block to its exact
+// source container, delimiter runs, info string, and per-line payload ranges.
+type FencedBlockMapping struct {
+	Range              Range
+	OpeningFenceRange  Range
+	InfoRange          Range
+	ContentRanges      []Range
+	ClosingFenceRange  Range
+	FenceChar          byte
+	OpeningFenceLength int
+	ClosingFenceLength int
+	OpeningIndent      int
+	ClosingIndent      int
+	Closed             bool
+}
+
+// FencedCodeMapping binds one supported contiguous fenced-code payload to its
+// exact source fences and content. Range retains the historical M5/M52 meaning:
+// it excludes the closing fence line terminator when a closing fence exists.
 type FencedCodeMapping struct {
 	Range              Range
 	ContentRange       Range
@@ -15,16 +33,101 @@ type FencedCodeMapping struct {
 	ClosingFenceLength int
 	OpeningIndent      int
 	ClosingIndent      int
+	Closed             bool
 }
 
-// MapFencedCode maps one supported non-empty semantic fenced-code body to top-level source syntax.
-// Multiline bodies are supported only for an unindented opening fence so the semantic body remains one exact contiguous source span.
+// MapFencedBlock maps one parser-proven top-level fenced block from its opening
+// fence anchor and source-backed semantic payload-line ranges. Embedded payload
+// bytes remain opaque; this function proves only Markdown/source ownership.
+func MapFencedBlock(input []byte, anchor int, contentRanges []Range, info string) (FencedBlockMapping, error) {
+	if anchor < 0 || anchor >= len(input) {
+		return FencedBlockMapping{}, fmt.Errorf("%w: opening fence anchor is outside source", ErrUnsupportedFencedCodeShape)
+	}
+	openingStart := physicalLineStart(input, anchor)
+	openingEnd := physicalLineEnd(input, anchor)
+	opening, ok := parseTopLevelFenceOpening(input, openingStart, openingEnd)
+	if !ok || openingStart+opening.indent != anchor {
+		return FencedBlockMapping{}, fmt.Errorf("%w: opening fence is not source-proven", ErrUnsupportedFencedCodeShape)
+	}
+	if string(input[opening.infoRange.Start:opening.infoRange.End]) != info {
+		return FencedBlockMapping{}, fmt.Errorf("%w: semantic info string disagrees with source", ErrUnsupportedFencedCodeShape)
+	}
+	return mapFencedBlockFromOpening(input, anchor, openingStart, openingEnd, opening, contentRanges)
+}
+
+func mapFencedBlockFromOpening(input []byte, anchor, openingStart, openingEnd int, opening fenceOpening, contentRanges []Range) (FencedBlockMapping, error) {
+	mapping := FencedBlockMapping{
+		Range:              Range{Start: openingStart, End: len(input)},
+		OpeningFenceRange:  Range{Start: anchor, End: anchor + opening.length},
+		InfoRange:          opening.infoRange,
+		ContentRanges:      append([]Range(nil), contentRanges...),
+		FenceChar:          opening.char,
+		OpeningFenceLength: opening.length,
+		OpeningIndent:      opening.indent,
+	}
+	bodyStart, ok := nextPhysicalLineStart(input, openingEnd)
+	if !ok || bodyStart == len(input) {
+		if len(contentRanges) != 0 {
+			return FencedBlockMapping{}, fmt.Errorf("%w: semantic payload exists without a physical body line", ErrUnsupportedFencedCodeShape)
+		}
+		return mapping, nil
+	}
+	return mapFencedBlockBody(input, bodyStart, contentRanges, mapping)
+}
+
+func mapFencedBlockBody(input []byte, bodyStart int, contentRanges []Range, mapping FencedBlockMapping) (FencedBlockMapping, error) {
+	contentIndex := 0
+	for lineStart := bodyStart; lineStart < len(input); {
+		lineEnd := physicalLineEnd(input, lineStart)
+		closingLength, closingIndent, closed := parseTopLevelFenceClosing(input, lineStart, lineEnd, mapping.FenceChar, mapping.OpeningFenceLength)
+		if closed {
+			if contentIndex != len(contentRanges) {
+				return FencedBlockMapping{}, fmt.Errorf("%w: closing fence precedes parser-proven payload", ErrUnsupportedFencedCodeShape)
+			}
+			mapping.Closed = true
+			mapping.ClosingFenceLength = closingLength
+			mapping.ClosingIndent = closingIndent
+			mapping.ClosingFenceRange = Range{Start: lineStart + closingIndent, End: lineStart + closingIndent + closingLength}
+			mapping.Range.End = ownedPhysicalLineEnd(input, lineEnd)
+			return mapping, nil
+		}
+		if contentIndex >= len(contentRanges) || !fencedContentRangeMatchesLine(input, contentRanges[contentIndex], lineStart, lineEnd) {
+			return FencedBlockMapping{}, fmt.Errorf("%w: parser-proven payload line disagrees with source", ErrUnsupportedFencedCodeShape)
+		}
+		contentIndex++
+		next, ok := nextPhysicalLineStart(input, lineEnd)
+		if !ok {
+			break
+		}
+		lineStart = next
+	}
+	if contentIndex != len(contentRanges) {
+		return FencedBlockMapping{}, fmt.Errorf("%w: parser-proven payload extends beyond source", ErrUnsupportedFencedCodeShape)
+	}
+	return mapping, nil
+}
+
+func fencedContentRangeMatchesLine(input []byte, content Range, lineStart, lineEnd int) bool {
+	return content.Valid(len(input)) && content.Start >= lineStart && content.Start <= lineEnd &&
+		physicalLineStart(input, content.Start) == lineStart && content.End == lineEnd
+}
+
+func ownedPhysicalLineEnd(input []byte, lineEnd int) int {
+	if next, ok := nextPhysicalLineStart(input, lineEnd); ok {
+		return next
+	}
+	return lineEnd
+}
+
+// MapFencedCode maps one supported non-empty semantic fenced-code body to the
+// historical contiguous replacement contract. Multiline bodies remain editable
+// only for an unindented opening fence. M103 also permits an unclosed block when
+// the complete semantic body is still one exact contiguous source span.
 func MapFencedCode(input []byte, content Range) (FencedCodeMapping, error) {
 	if !content.Valid(len(input)) || content.Start == content.End {
 		return FencedCodeMapping{}, fmt.Errorf("%w: invalid or empty content range", ErrUnsupportedFencedCodeShape)
 	}
 	multiline := containsLineBreak(input[content.Start:content.End])
-
 	contentLineStart := physicalLineStart(input, content.Start)
 	contentLineEnd := physicalLineEnd(input, content.End)
 	if content.End != contentLineEnd {
@@ -48,26 +151,49 @@ func MapFencedCode(input []byte, content Range) (FencedCodeMapping, error) {
 		return FencedCodeMapping{}, fmt.Errorf("%w: multiline content requires an unindented contiguous body", ErrUnsupportedFencedCodeShape)
 	}
 
-	closingStart, ok := nextPhysicalLineStart(input, contentLineEnd)
+	contentRanges, ok := contiguousFencedContentRanges(input, content)
 	if !ok {
-		return FencedCodeMapping{}, fmt.Errorf("%w: missing closing fence line", ErrUnsupportedFencedCodeShape)
+		return FencedCodeMapping{}, fmt.Errorf("%w: semantic content is not one contiguous physical body", ErrUnsupportedFencedCodeShape)
 	}
-	closingEnd := physicalLineEnd(input, closingStart)
-	closingLength, closingIndent, ok := parseTopLevelFenceClosing(input, closingStart, closingEnd, opening.char, opening.length)
-	if !ok {
-		return FencedCodeMapping{}, fmt.Errorf("%w: closing fence does not match opening fence", ErrUnsupportedFencedCodeShape)
+	block, err := mapFencedBlockFromOpening(input, openingStart+opening.indent, openingStart, openingEnd, opening, contentRanges)
+	if err != nil {
+		return FencedCodeMapping{}, err
 	}
 
+	legacyRange := Range{Start: openingStart, End: len(input)}
+	if block.Closed {
+		legacyRange.End = physicalLineEnd(input, block.ClosingFenceRange.Start)
+	}
 	return FencedCodeMapping{
-		Range:              Range{Start: openingStart, End: closingEnd},
+		Range:              legacyRange,
 		ContentRange:       content,
-		InfoRange:          opening.infoRange,
-		FenceChar:          opening.char,
-		FenceLength:        opening.length,
-		ClosingFenceLength: closingLength,
-		OpeningIndent:      opening.indent,
-		ClosingIndent:      closingIndent,
+		InfoRange:          block.InfoRange,
+		FenceChar:          block.FenceChar,
+		FenceLength:        block.OpeningFenceLength,
+		ClosingFenceLength: block.ClosingFenceLength,
+		OpeningIndent:      block.OpeningIndent,
+		ClosingIndent:      block.ClosingIndent,
+		Closed:             block.Closed,
 	}, nil
+}
+
+func contiguousFencedContentRanges(input []byte, content Range) ([]Range, bool) {
+	ranges := make([]Range, 0, 1)
+	for lineStart := content.Start; ; {
+		lineEnd := physicalLineEnd(input, lineStart)
+		if lineEnd > content.End {
+			return nil, false
+		}
+		ranges = append(ranges, Range{Start: lineStart, End: lineEnd})
+		if lineEnd == content.End {
+			return ranges, true
+		}
+		next, ok := nextPhysicalLineStart(input, lineEnd)
+		if !ok || next > content.End {
+			return nil, false
+		}
+		lineStart = next
+	}
 }
 
 type fenceOpening struct {

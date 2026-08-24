@@ -572,7 +572,6 @@ func TestPublicDocumentBuilderRejectsInvalidFencedCode(t *testing.T) {
 		content string
 		info    string
 	}{
-		{content: ""},
 		{content: "line one\r\nline two"},
 		{content: "line one\rline two"},
 		{content: "contains\x00nul"},

@@ -27,7 +27,7 @@ func (d *Document) validateNodeSurvivorsAfterRemoval(candidate []byte, removed R
 			survivors = append(survivors, original)
 		}
 	}
-	if len(candidateDocument.nodes) != len(survivors) || !referenceUsagesSurviveRemoval(d.referenceUsages, candidateDocument.referenceUsages, removed) {
+	if len(candidateDocument.nodes) != len(survivors) || !linkUsagesSurviveRemoval(d.linkUsages, candidateDocument.linkUsages, removed) {
 		return ErrInvalidReplacement
 	}
 
@@ -42,7 +42,7 @@ func (d *Document) validateNodeSurvivorsAfterRemoval(candidate []byte, removed R
 	return nil
 }
 
-func referenceUsagesSurviveRemoval(original, candidate []parser.ReferenceUsage, removed Range) bool {
+func linkUsagesSurviveRemoval(original, candidate []parser.LinkUsage, removed Range) bool {
 	patches := []patchTransform{{Range: removed}}
 	candidateIndex := 0
 	for _, usage := range original {

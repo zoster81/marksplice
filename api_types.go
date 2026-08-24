@@ -309,7 +309,10 @@ func (b Blockquote) Range() Range { return b.sourceRange }
 // use Document.BlockquoteContentRanges for those containers.
 func (b Blockquote) ContentRange() Range { return b.contentRange }
 
-// FencedCode is immutable typed detail for one promoted supported fenced code block.
+// FencedCode is immutable typed detail for one fenced code block whose payload
+// is proven to be one exact contiguous source span suitable for the historical
+// source-preserving replacement API. Use Document.FencedBlocks for broader
+// read-only fenced-container ownership.
 type FencedCode struct {
 	id          NodeID
 	sourceRange Range
@@ -321,7 +324,10 @@ func (f FencedCode) ID() NodeID {
 }
 
 // Range returns the exact fenced-code content span replaced by PrepareReplaceFencedCode.
-// Internal body line endings are part of this span. Fence lines, info-string source, and the final line ending immediately before the closing fence are outside it.
+// Internal body line endings are part of this span. Fence lines, info-string source,
+// and the final line ending immediately before a closing fence are outside it.
+// For an unclosed block the payload still excludes the preserved trailing source
+// line ending when one is present.
 func (f FencedCode) Range() Range {
 	return f.sourceRange
 }

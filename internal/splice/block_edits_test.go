@@ -600,7 +600,7 @@ func TestPrepareReplaceFencedCodeRejectsUnsafeReplacementAndWrongTarget(t *testi
 	}
 }
 
-func TestUnsupportedSingleLineFencedCodeShapeDoesNotBreakParse(t *testing.T) {
+func TestUnclosedSingleLineFencedCodeKeepsContiguousReplacement(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("```go\nold\n")
@@ -612,13 +612,22 @@ func TestUnsupportedSingleLineFencedCodeShapeDoesNotBreakParse(t *testing.T) {
 	if len(blocks) != 1 {
 		t.Fatalf("fenced code count = %d, want 1 semantic observation", len(blocks))
 	}
-	if blocks[0].Editable {
-		t.Fatal("unsupported fenced code Editable = true, want false")
+	block := blocks[0]
+	if !block.Editable || block.FencedCodeSource == (sourcepkg.FencedCodeMapping{}) || block.FencedCodeSource.Closed {
+		t.Fatalf("unclosed fenced code = editable %v mapping %+v", block.Editable, block.FencedCodeSource)
 	}
-	if blocks[0].FencedCodeSource != (sourcepkg.FencedCodeMapping{}) {
-		t.Fatalf("unsupported fenced code stored mapping = %+v, want zero", blocks[0].FencedCodeSource)
+	if block.FencedBlockSource.Closed || block.FencedBlockSource.Range != (Range{Start: 0, End: len(source)}) {
+		t.Fatalf("unclosed fenced block mapping = %+v", block.FencedBlockSource)
 	}
-	if _, err := doc.PrepareReplaceFencedCode(blocks[0].ID, []byte("new")); err == nil {
-		t.Fatal("PrepareReplaceFencedCode() error = nil, want fail-closed unsupported source shape")
+	change, err := doc.PrepareReplaceFencedCode(block.ID, []byte("new"))
+	if err != nil {
+		t.Fatalf("PrepareReplaceFencedCode() error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if want := []byte("```go\nnew\n"); !bytes.Equal(got, want) {
+		t.Fatalf("Apply() = %q, want %q", got, want)
 	}
 }

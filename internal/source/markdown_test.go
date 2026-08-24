@@ -271,6 +271,21 @@ func TestMapFencedCodePreservesMultilineBoundaries(t *testing.T) {
 	}
 }
 
+func TestMapFencedCodePreservesUnclosedContiguousBody(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("~~~ geojson\n{\"type\":\"Point\"}")
+	content := Range{Start: len("~~~ geojson\n"), End: len(source)}
+	got, err := MapFencedCode(source, content)
+	if err != nil {
+		t.Fatalf("MapFencedCode(unclosed) error = %v", err)
+	}
+	if got.Range != (Range{Start: 0, End: len(source)}) || got.ContentRange != content || got.InfoRange != (Range{Start: 4, End: 11}) ||
+		got.FenceChar != '~' || got.FenceLength != 3 || got.Closed || got.ClosingFenceLength != 0 || got.ClosingIndent != 0 {
+		t.Fatalf("unclosed mapping = %+v", got)
+	}
+}
+
 func TestMapFencedCodeRejectsUnprovenShape(t *testing.T) {
 	t.Parallel()
 
@@ -279,11 +294,6 @@ func TestMapFencedCodeRejectsUnprovenShape(t *testing.T) {
 		source  []byte
 		content Range
 	}{
-		{
-			name:    "unclosed fence",
-			source:  []byte("```\nold\n"),
-			content: Range{Start: 4, End: 7},
-		},
 		{
 			name:    "indented multiline fence has non-contiguous semantic indentation",
 			source:  []byte("  ```\n  one\n  two\n  ```\n"),

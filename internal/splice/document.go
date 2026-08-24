@@ -92,6 +92,7 @@ type Node struct {
 	Range                     Range
 	ContentRange              Range
 	Level                     int
+	HeadingText               string
 	HeadingStyle              HeadingStyle
 	Checked                   bool
 	ListOrdered               bool
@@ -131,7 +132,10 @@ type Node struct {
 	TableCellSource           source.TableCellMapping
 	TableRowSource            source.TableRowMapping
 	TableSource               source.TableMapping
+	FencedBlockSource         source.FencedBlockMapping
 	FencedCodeSource          source.FencedCodeMapping
+	FencedBlockInfo           string
+	FencedBlockLanguage       string
 	StrikethroughSource       source.StrikethroughMapping
 	InlineLinkSource          source.InlineLinkMapping
 	ImageSource               source.ImageMapping
@@ -167,21 +171,22 @@ type frontMatterEnvelope struct {
 
 // Document is an immutable parsed source snapshot used by the feasibility slice.
 type Document struct {
-	source                  []byte
-	nodes                   []Node
-	nodeIndex               map[NodeID]int
-	listChildIDs            []NodeID
-	listItemIndexes         []int
-	tableCellIDs            []NodeID
-	tableHeaderCellIDs      []NodeID
-	tableRowIndexes         []int
-	tableCellIndexes        []int
-	tableRowIDs             []NodeID
-	tableOwnedHeaderCellIDs []NodeID
-	sections                []Section
-	sectionIndex            map[NodeID]int
-	frontMatter             frontMatterEnvelope
-	referenceUsages         []parser.ReferenceUsage
+	source                    []byte
+	nodes                     []Node
+	nodeIndex                 map[NodeID]int
+	listChildIDs              []NodeID
+	listItemIndexes           []int
+	tableCellIDs              []NodeID
+	tableHeaderCellIDs        []NodeID
+	tableRowIndexes           []int
+	tableCellIndexes          []int
+	tableRowIDs               []NodeID
+	tableOwnedHeaderCellIDs   []NodeID
+	sections                  []Section
+	sectionIndex              map[NodeID]int
+	frontMatter               frontMatterEnvelope
+	linkUsages                []parser.LinkUsage
+	unresolvedReferenceUsages []parser.UnresolvedReferenceUsage
 }
 
 // Parse creates a snapshot-local Marksplice model using the internal Goldmark adapter.
@@ -189,12 +194,13 @@ func Parse(input []byte) (*Document, error) {
 	semanticParser := goldmarkparser.New()
 	snapshot := append([]byte(nil), input...)
 	frontMatter, hasFrontMatter := source.MapLeadingFrontMatter(snapshot)
-	observations, referenceUsages, err := semanticParser.ParseWithReferenceUsages(snapshot)
+	observations, linkUsages, unresolvedReferenceUsages, err := semanticParser.ParseWithLinkUsages(snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("parse markdown: %w", err)
 	}
 	if hasFrontMatter {
-		referenceUsages = referenceUsagesOutsideRange(referenceUsages, frontMatter.Range)
+		linkUsages = linkUsagesOutsideRange(linkUsages, frontMatter.Range)
+		unresolvedReferenceUsages = unresolvedReferenceUsagesOutsideRange(unresolvedReferenceUsages, frontMatter.Range)
 	}
 
 	fingerprint := source.Sum(snapshot)
@@ -244,21 +250,22 @@ func Parse(input []byte) (*Document, error) {
 		}
 	}
 	return &Document{
-		source:                  snapshot,
-		nodes:                   nodes,
-		nodeIndex:               nodeIndex,
-		listChildIDs:            listModel.childIDs,
-		listItemIndexes:         listModel.itemIndexes,
-		tableCellIDs:            tableModel.cellIDs,
-		tableHeaderCellIDs:      tableModel.headerCellIDs,
-		tableRowIndexes:         tableModel.rowIndexes,
-		tableCellIndexes:        tableModel.cellIndexes,
-		tableRowIDs:             tableOwnerModel.rowIDs,
-		tableOwnedHeaderCellIDs: tableOwnerModel.headerCellIDs,
-		sections:                sections,
-		sectionIndex:            sectionIndex,
-		frontMatter:             storedFrontMatter,
-		referenceUsages:         append([]parser.ReferenceUsage(nil), referenceUsages...),
+		source:                    snapshot,
+		nodes:                     nodes,
+		nodeIndex:                 nodeIndex,
+		listChildIDs:              listModel.childIDs,
+		listItemIndexes:           listModel.itemIndexes,
+		tableCellIDs:              tableModel.cellIDs,
+		tableHeaderCellIDs:        tableModel.headerCellIDs,
+		tableRowIndexes:           tableModel.rowIndexes,
+		tableCellIndexes:          tableModel.cellIndexes,
+		tableRowIDs:               tableOwnerModel.rowIDs,
+		tableOwnedHeaderCellIDs:   tableOwnerModel.headerCellIDs,
+		sections:                  sections,
+		sectionIndex:              sectionIndex,
+		frontMatter:               storedFrontMatter,
+		linkUsages:                append([]parser.LinkUsage(nil), linkUsages...),
+		unresolvedReferenceUsages: append([]parser.UnresolvedReferenceUsage(nil), unresolvedReferenceUsages...),
 	}, nil
 }
 
@@ -349,8 +356,19 @@ func (d *Document) BlockquoteContentRanges(id NodeID) ([]Range, bool) {
 	return append([]Range(nil), node.BlockquoteSource.ContentRanges...), true
 }
 
-func referenceUsagesOutsideRange(usages []parser.ReferenceUsage, excluded Range) []parser.ReferenceUsage {
-	result := make([]parser.ReferenceUsage, 0, len(usages))
+func linkUsagesOutsideRange(usages []parser.LinkUsage, excluded Range) []parser.LinkUsage {
+	result := make([]parser.LinkUsage, 0, len(usages))
+	for _, usage := range usages {
+		if usage.Anchor >= excluded.Start && usage.Anchor < excluded.End {
+			continue
+		}
+		result = append(result, usage)
+	}
+	return result
+}
+
+func unresolvedReferenceUsagesOutsideRange(usages []parser.UnresolvedReferenceUsage, excluded Range) []parser.UnresolvedReferenceUsage {
+	result := make([]parser.UnresolvedReferenceUsage, 0, len(usages))
 	for _, usage := range usages {
 		if usage.Anchor >= excluded.Start && usage.Anchor < excluded.End {
 			continue
@@ -367,6 +385,7 @@ func cloneNode(node Node) Node {
 	node.TableSource.Delimiter.Cells = append([]source.TableCellMapping(nil), node.TableSource.Delimiter.Cells...)
 	node.TableSource.DelimiterAlignments = append([]source.TableDelimiterAlignment(nil), node.TableSource.DelimiterAlignments...)
 	node.BlockquoteSource.ContentRanges = append([]source.Range(nil), node.BlockquoteSource.ContentRanges...)
+	node.FencedBlockSource.ContentRanges = append([]source.Range(nil), node.FencedBlockSource.ContentRanges...)
 	return node
 }
 

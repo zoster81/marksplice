@@ -4,20 +4,23 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/zoster81/marksplice/internal/source"
 	"github.com/zoster81/marksplice/internal/splice"
 )
 
 type constructionExpectation struct {
-	kind         splice.Kind
-	level        int
-	contentRange splice.Range
-	sourceRange  splice.Range
-	list         constructionListProof
-	fence        constructionFenceProof
-	reference    constructionReferenceProof
-	table        constructionTableProof
-	tableRow     constructionTableRowProof
-	blockquote   constructionBlockquoteProof
+	kind             splice.Kind
+	alertKind        AlertKind
+	alertMarkerRange splice.Range
+	level            int
+	contentRange     splice.Range
+	sourceRange      splice.Range
+	list             constructionListProof
+	fence            constructionFenceProof
+	reference        constructionReferenceProof
+	table            constructionTableProof
+	tableRow         constructionTableRowProof
+	blockquote       constructionBlockquoteProof
 }
 
 type constructionBlockquoteProof struct {
@@ -46,8 +49,9 @@ type constructionTaskProof struct {
 }
 
 type constructionFenceProof struct {
-	infoRange splice.Range
-	length    int
+	infoRange      splice.Range
+	containerRange splice.Range
+	length         int
 }
 
 type constructionReferenceProof struct {
@@ -74,6 +78,9 @@ type constructionTableRowProof struct {
 
 func validateConstructionDocument(source []byte, expected []constructionExpectation) error {
 	if err := validateConstructionBlockquoteProofs(source, expected); err != nil {
+		return err
+	}
+	if err := validateConstructionAlertProofs(source, expected); err != nil {
 		return err
 	}
 	nodeExpected := constructionNodeExpectations(expected)
@@ -130,6 +137,20 @@ func validateConstructionBlockquoteProofs(source []byte, expected []construction
 	return nil
 }
 
+func validateConstructionAlertProofs(source []byte, expected []constructionExpectation) error {
+	for _, want := range expected {
+		if want.alertKind == AlertKindUnknown {
+			continue
+		}
+		marker, ok := alertMarker(want.alertKind)
+		if !ok || !want.alertMarkerRange.Valid(len(source)) ||
+			string(source[want.alertMarkerRange.Start:want.alertMarkerRange.End]) != marker {
+			return fmt.Errorf("%w: generated alert marker changed", ErrInvalidConstruction)
+		}
+	}
+	return nil
+}
+
 func constructionNodeExpectations(expected []constructionExpectation) []constructionExpectation {
 	return append([]constructionExpectation(nil), expected...)
 }
@@ -171,6 +192,8 @@ func isConstructionProofNode(node splice.Node) bool {
 	switch node.Kind {
 	case splice.KindThematicBreak, splice.KindBlockquote:
 		return node.TopLevel
+	case splice.KindFencedCode:
+		return node.TopLevel && node.FencedBlockSource.OpeningFenceLength >= 3
 	}
 	if !node.Editable {
 		return false
@@ -178,7 +201,7 @@ func isConstructionProofNode(node splice.Node) bool {
 	switch node.Kind {
 	case splice.KindParagraph, splice.KindHeading:
 		return node.TopLevel
-	case splice.KindListItem, splice.KindFencedCode, splice.KindReferenceDefinition, splice.KindTable, splice.KindTableRow:
+	case splice.KindListItem, splice.KindReferenceDefinition, splice.KindTable, splice.KindTableRow:
 		return true
 	default:
 		return false
@@ -236,18 +259,43 @@ func validateConstructionThematicBreakExpectation(node splice.Node, want constru
 
 func validateConstructionBlockquoteExpectation(node splice.Node, want constructionExpectation) error {
 	mapping := node.BlockquoteSource
-	expectedOwned := splice.Range{Start: want.sourceRange.Start, End: want.sourceRange.End + 1}
-	if !node.TopLevel || !node.Editable || node.Range.Start != want.sourceRange.Start ||
-		mapping.LineRange != expectedOwned || mapping.MarkerRange != (splice.Range{Start: want.sourceRange.Start, End: want.sourceRange.Start + 1}) {
+	if !validConstructionBlockquoteBaseMapping(node, want, mapping) {
 		return fmt.Errorf("%w: generated blockquote mapping changed", ErrInvalidConstruction)
 	}
-	if len(want.blockquote.innerSource) == 0 && want.blockquote.depth == 1 && len(want.blockquote.contentRanges) == 1 {
-		if want.blockquote.contentRanges[0] != want.contentRange || node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
-			mapping.Range != want.sourceRange || mapping.ContentRange != want.contentRange {
-			return fmt.Errorf("%w: generated simple blockquote mapping changed", ErrInvalidConstruction)
-		}
+	if isSimpleConstructionBlockquote(want) && !validSimpleConstructionBlockquote(node, want, mapping) {
+		return fmt.Errorf("%w: generated simple blockquote mapping changed", ErrInvalidConstruction)
+	}
+	if want.alertKind != AlertKindUnknown && !validConstructionAlertMapping(mapping.ContentRanges, want.alertMarkerRange) {
+		return fmt.Errorf("%w: generated alert mapping changed", ErrInvalidConstruction)
 	}
 	return nil
+}
+
+func validConstructionBlockquoteBaseMapping(node splice.Node, want constructionExpectation, mapping source.BlockquoteMapping) bool {
+	expectedOwned := splice.Range{Start: want.sourceRange.Start, End: want.sourceRange.End + 1}
+	return node.TopLevel && node.Editable && node.Range.Start == want.sourceRange.Start &&
+		mapping.LineRange == expectedOwned && mapping.MarkerRange == (splice.Range{Start: want.sourceRange.Start, End: want.sourceRange.Start + 1})
+}
+
+func isSimpleConstructionBlockquote(want constructionExpectation) bool {
+	return len(want.blockquote.innerSource) == 0 && want.blockquote.depth == 1 && len(want.blockquote.contentRanges) == 1
+}
+
+func validSimpleConstructionBlockquote(node splice.Node, want constructionExpectation, mapping source.BlockquoteMapping) bool {
+	return want.blockquote.contentRanges[0] == want.contentRange && node.Range == want.sourceRange && node.ContentRange == want.contentRange &&
+		mapping.Range == want.sourceRange && mapping.ContentRange == want.contentRange
+}
+
+func validConstructionAlertMapping(ranges []splice.Range, marker splice.Range) bool {
+	if len(ranges) < 2 || ranges[0] != marker {
+		return false
+	}
+	for _, range_ := range ranges[1:] {
+		if range_.Start < range_.End {
+			return true
+		}
+	}
+	return false
 }
 
 func validateConstructionListItemExpectation(node splice.Node, want constructionExpectation) error {
@@ -266,11 +314,92 @@ func validateConstructionListItemExpectation(node splice.Node, want construction
 }
 
 func validateConstructionFencedCodeExpectation(node splice.Node, want constructionExpectation) error {
+	block := node.FencedBlockSource
+	blockFacts := struct {
+		topLevel           bool
+		closed             bool
+		range_             splice.Range
+		infoRange          splice.Range
+		fenceChar          byte
+		openingFenceLength int
+		closingFenceLength int
+		openingIndent      int
+		closingIndent      int
+	}{
+		node.TopLevel,
+		block.Closed,
+		block.Range,
+		block.InfoRange,
+		block.FenceChar,
+		block.OpeningFenceLength,
+		block.ClosingFenceLength,
+		block.OpeningIndent,
+		block.ClosingIndent,
+	}
+	wantBlockFacts := struct {
+		topLevel           bool
+		closed             bool
+		range_             splice.Range
+		infoRange          splice.Range
+		fenceChar          byte
+		openingFenceLength int
+		closingFenceLength int
+		openingIndent      int
+		closingIndent      int
+	}{true, true, want.fence.containerRange, want.fence.infoRange, '`', want.fence.length, want.fence.length, 0, 0}
+	if blockFacts != wantBlockFacts {
+		return fmt.Errorf("%w: generated fenced-block mapping changed", ErrInvalidConstruction)
+	}
+	if want.contentRange.Start == want.contentRange.End {
+		if len(block.ContentRanges) != 0 {
+			return fmt.Errorf("%w: generated empty fenced block gained payload", ErrInvalidConstruction)
+		}
+		return nil
+	}
+
 	mapping := node.FencedCodeSource
-	if node.Range != want.contentRange || node.ContentRange != want.contentRange ||
-		mapping.Range != want.sourceRange || mapping.ContentRange != want.contentRange || mapping.InfoRange != want.fence.infoRange ||
-		mapping.FenceChar != '`' || mapping.FenceLength != want.fence.length || mapping.ClosingFenceLength != want.fence.length ||
-		mapping.OpeningIndent != 0 || mapping.ClosingIndent != 0 {
+	mappingFacts := struct {
+		editable            bool
+		range_              splice.Range
+		contentRange        splice.Range
+		mappingRange        splice.Range
+		mappingContentRange splice.Range
+		infoRange           splice.Range
+		fenceChar           byte
+		fenceLength         int
+		closingFenceLength  int
+		openingIndent       int
+		closingIndent       int
+		closed              bool
+	}{
+		node.Editable,
+		node.Range,
+		node.ContentRange,
+		mapping.Range,
+		mapping.ContentRange,
+		mapping.InfoRange,
+		mapping.FenceChar,
+		mapping.FenceLength,
+		mapping.ClosingFenceLength,
+		mapping.OpeningIndent,
+		mapping.ClosingIndent,
+		mapping.Closed,
+	}
+	wantMappingFacts := struct {
+		editable            bool
+		range_              splice.Range
+		contentRange        splice.Range
+		mappingRange        splice.Range
+		mappingContentRange splice.Range
+		infoRange           splice.Range
+		fenceChar           byte
+		fenceLength         int
+		closingFenceLength  int
+		openingIndent       int
+		closingIndent       int
+		closed              bool
+	}{true, want.contentRange, want.contentRange, want.sourceRange, want.contentRange, want.fence.infoRange, '`', want.fence.length, want.fence.length, 0, 0, true}
+	if mappingFacts != wantMappingFacts {
 		return fmt.Errorf("%w: generated fenced-code mapping changed", ErrInvalidConstruction)
 	}
 	return nil

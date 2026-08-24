@@ -73,6 +73,10 @@ func writeConstructionBlock(output *bytes.Buffer, block constructionBlock) []con
 		return []constructionExpectation{writeConstructionBlockquote(output, block.depth, block.inlineGFM)}
 	case constructionBlockquoteBlocks:
 		return []constructionExpectation{writeConstructionBlockquoteBlocks(output, block.depth, block.children)}
+	case constructionAlert:
+		return []constructionExpectation{writeConstructionAlert(output, block.alertKind, block.inlineGFM)}
+	case constructionAlertBlocks:
+		return []constructionExpectation{writeConstructionAlertBlocks(output, block.alertKind, block.children)}
 	case constructionUnorderedList, constructionOrderedList, constructionUnorderedTaskList, constructionOrderedTaskList,
 		constructionNestedUnorderedList, constructionNestedOrderedList:
 		ordered := block.kind == constructionOrderedList || block.kind == constructionOrderedTaskList || block.kind == constructionNestedOrderedList
@@ -90,6 +94,31 @@ func writeConstructionBlock(output *bytes.Buffer, block constructionBlock) []con
 
 func writeConstructionBlockquoteBlocks(output *bytes.Buffer, depth int, blocks []constructionBlock) constructionExpectation {
 	innerSource, _ := writeConstructionBlocks(blocks)
+	return writeConstructionBlockquoteInnerSource(output, depth, innerSource)
+}
+
+func writeConstructionAlert(output *bytes.Buffer, kind AlertKind, content string) constructionExpectation {
+	marker, _ := alertMarker(kind)
+	expectation := writeConstructionBlockquote(output, 1, marker+"\n"+content)
+	expectation.alertKind = kind
+	expectation.alertMarkerRange = expectation.blockquote.contentRanges[0]
+	return expectation
+}
+
+func writeConstructionAlertBlocks(output *bytes.Buffer, kind AlertKind, blocks []constructionBlock) constructionExpectation {
+	bodySource, _ := writeConstructionBlocks(blocks)
+	marker, _ := alertMarker(kind)
+	innerSource := make([]byte, 0, len(marker)+1+len(bodySource))
+	innerSource = append(innerSource, marker...)
+	innerSource = append(innerSource, '\n')
+	innerSource = append(innerSource, bodySource...)
+	expectation := writeConstructionBlockquoteInnerSource(output, 1, innerSource)
+	expectation.alertKind = kind
+	expectation.alertMarkerRange = splice.Range{Start: expectation.sourceRange.Start + 2, End: expectation.sourceRange.Start + 2 + len(marker)}
+	return expectation
+}
+
+func writeConstructionBlockquoteInnerSource(output *bytes.Buffer, depth int, innerSource []byte) constructionExpectation {
 	start := output.Len()
 	prefix := strings.Repeat("> ", depth)
 	lineStart := 0
@@ -284,7 +313,9 @@ func writeConstructionFencedCode(output *bytes.Buffer, content, info string) con
 	contentStart := output.Len()
 	output.WriteString(content)
 	contentRange := splice.Range{Start: contentStart, End: output.Len()}
-	output.WriteByte('\n')
+	if content != "" {
+		output.WriteByte('\n')
+	}
 	output.WriteString(fence)
 	mappingEnd := output.Len()
 	output.WriteByte('\n')
@@ -293,8 +324,9 @@ func writeConstructionFencedCode(output *bytes.Buffer, content, info string) con
 		contentRange: contentRange,
 		sourceRange:  splice.Range{Start: start, End: mappingEnd},
 		fence: constructionFenceProof{
-			infoRange: infoRange,
-			length:    fenceLength,
+			infoRange:      infoRange,
+			containerRange: splice.Range{Start: start, End: output.Len()},
+			length:         fenceLength,
 		},
 	}
 }

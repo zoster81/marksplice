@@ -21,6 +21,10 @@ var (
 	ErrInvalidConstruction = errors.New("invalid construction")
 	// ErrInvalidQuery reports an unbounded or malformed structural query.
 	ErrInvalidQuery = errors.New("invalid query")
+	// ErrInvalidGraph reports malformed explicit document-graph input or resolution.
+	ErrInvalidGraph = errors.New("invalid document graph")
+	// ErrInvalidWorkspace reports malformed workspace validation authority or targets.
+	ErrInvalidWorkspace = errors.New("invalid workspace validation")
 )
 
 // Kind identifies a structural Markdown node category.
@@ -214,6 +218,18 @@ func publicNodeIDs(ids []splice.NodeID) []NodeID {
 	result := make([]NodeID, len(ids))
 	for index, id := range ids {
 		result[index] = publicNodeID(id)
+	}
+	return result
+}
+
+func publicRange(value splice.Range) Range {
+	return Range{Start: value.Start, End: value.End}
+}
+
+func publicRanges(values []splice.Range) []Range {
+	result := make([]Range, len(values))
+	for index, value := range values {
+		result[index] = publicRange(value)
 	}
 	return result
 }

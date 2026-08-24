@@ -54,7 +54,11 @@ type Node struct {
 	Range                    Range
 	BlockquoteContentRange   Range
 	BlockquoteSemanticRanges []Range
+	FencedCodeContentRanges  []Range
+	FencedCodeInfo           string
+	FencedCodeLanguage       string
 	Level                    int
+	HeadingText              string
 	Checked                  bool
 	Ordered                  bool
 	Marker                   byte
@@ -81,26 +85,39 @@ type Node struct {
 	TopLevel                 bool
 }
 
-// ReferenceUsageForm identifies the parsed source form of one reference link or image.
-type ReferenceUsageForm uint8
+// LinkUsageForm identifies the parsed source form of one semantic link/image usage.
+type LinkUsageForm uint8
 
 const (
-	ReferenceUsageUnknown ReferenceUsageForm = iota
-	ReferenceUsageFull
-	ReferenceUsageCollapsed
-	ReferenceUsageShortcut
+	LinkUsageUnknown LinkUsageForm = iota
+	LinkUsageFull
+	LinkUsageCollapsed
+	LinkUsageShortcut
+	LinkUsageDirect
 )
 
-// ReferenceUsage records one parser-resolved reference link/image relationship
-// for internal mutation safety without promoting that syntax into the public node model.
-type ReferenceUsage struct {
-	Kind        Kind
-	Form        ReferenceUsageForm
-	Anchor      int
-	Reference   string
-	Destination string
-	Title       string
-	HasTitle    bool
+// LinkUsage records one parser-resolved link, image, or autolink relationship
+// independently from ordinary public node promotion/source-editability.
+type LinkUsage struct {
+	Kind          Kind
+	Form          LinkUsageForm
+	Anchor        int
+	Reference     string
+	Destination   string
+	Title         string
+	HasTitle      bool
+	AutoLinkEmail bool
+}
+
+// UnresolvedReferenceUsage records one conservative explicit full/collapsed
+// reference-looking source form for which the parser context has no definition.
+// Shortcut bracket text is intentionally excluded because it is ambiguous with
+// ordinary Markdown text when no reference definition exists.
+type UnresolvedReferenceUsage struct {
+	Kind      Kind
+	Form      LinkUsageForm
+	Anchor    int
+	Reference string
 }
 
 // Adapter parses Markdown into Marksplice-owned semantic observations.

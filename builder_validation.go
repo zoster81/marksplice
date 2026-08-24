@@ -21,6 +21,8 @@ const (
 	constructionThematicBreak
 	constructionBlockquote
 	constructionBlockquoteBlocks
+	constructionAlert
+	constructionAlertBlocks
 	constructionNestedUnorderedList
 	constructionNestedOrderedList
 
@@ -42,6 +44,7 @@ type constructionTable struct {
 
 type constructionBlock struct {
 	kind        constructionBlockKind
+	alertKind   AlertKind
 	level       int
 	depth       int
 	inlineGFM   string
@@ -74,24 +77,13 @@ func validateConstructionBlockStandalone(block constructionBlock) error {
 func validateConstructionBlock(block constructionBlock) error {
 	switch block.kind {
 	case constructionHeading:
-		if block.level < 1 || block.level > 6 {
-			return fmt.Errorf("%w: heading level must be between 1 and 6", ErrInvalidConstruction)
-		}
-		return validateConstructionInlineGFM(block.inlineGFM)
+		return validateConstructionHeading(block.level, block.inlineGFM)
 	case constructionParagraph:
 		return validateConstructionParagraphGFM(block.inlineGFM)
 	case constructionThematicBreak:
 		return nil
-	case constructionBlockquote:
-		if err := validateConstructionBlockquoteDepth(block.depth); err != nil {
-			return err
-		}
-		return validateConstructionBlockquoteGFM(block.inlineGFM)
-	case constructionBlockquoteBlocks:
-		if err := validateConstructionBlockquoteDepth(block.depth); err != nil {
-			return err
-		}
-		return validateConstructionBlockquoteChildren(block.children, block.depth)
+	case constructionBlockquote, constructionBlockquoteBlocks, constructionAlert, constructionAlertBlocks:
+		return validateConstructionQuotedBlock(block)
 	case constructionUnorderedList, constructionOrderedList, constructionUnorderedTaskList, constructionOrderedTaskList,
 		constructionNestedUnorderedList, constructionNestedOrderedList:
 		return validateConstructionListItems(block.items)
@@ -109,9 +101,50 @@ func validateConstructionBlock(block constructionBlock) error {
 	}
 }
 
+func validateConstructionHeading(level int, inlineGFM string) error {
+	if level < 1 || level > 6 {
+		return fmt.Errorf("%w: heading level must be between 1 and 6", ErrInvalidConstruction)
+	}
+	return validateConstructionInlineGFM(inlineGFM)
+}
+
+func validateConstructionQuotedBlock(block constructionBlock) error {
+	switch block.kind {
+	case constructionBlockquote:
+		if err := validateConstructionBlockquoteDepth(block.depth); err != nil {
+			return err
+		}
+		return validateConstructionBlockquoteGFM(block.inlineGFM)
+	case constructionBlockquoteBlocks:
+		if err := validateConstructionBlockquoteDepth(block.depth); err != nil {
+			return err
+		}
+		return validateConstructionBlockquoteChildren(block.children, block.depth)
+	case constructionAlert:
+		if err := validateConstructionAlertKind(block.alertKind); err != nil {
+			return err
+		}
+		return validateConstructionBlockquoteGFM(block.inlineGFM)
+	case constructionAlertBlocks:
+		if err := validateConstructionAlertKind(block.alertKind); err != nil {
+			return err
+		}
+		return validateConstructionBlockquoteChildren(block.children, 1)
+	default:
+		return fmt.Errorf("%w: unsupported quoted construction block", ErrInvalidConstruction)
+	}
+}
+
 func validateConstructionBlockquoteDepth(depth int) error {
 	if depth < 1 || depth > maxConstructionBlockquoteDepth {
 		return fmt.Errorf("%w: blockquote depth must be between 1 and %d", ErrInvalidConstruction, maxConstructionBlockquoteDepth)
+	}
+	return nil
+}
+
+func validateConstructionAlertKind(kind AlertKind) error {
+	if _, ok := alertMarker(kind); !ok {
+		return fmt.Errorf("%w: unsupported alert kind", ErrInvalidConstruction)
 	}
 	return nil
 }
@@ -288,8 +321,8 @@ func validateConstructionBlockquoteGFM(content string) error {
 }
 
 func validateConstructionFenceContent(content string) error {
-	if err := validateConstructionNonEmptyUTF8(content, "fenced-code content"); err != nil {
-		return err
+	if !utf8.ValidString(content) {
+		return fmt.Errorf("%w: fenced-code content is not valid UTF-8", ErrInvalidConstruction)
 	}
 	switch {
 	case strings.IndexByte(content, 0) >= 0:

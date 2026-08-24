@@ -4,9 +4,10 @@ import "fmt"
 
 // DocumentBuilder constructs a new GFM document independently from parsed source snapshots.
 //
-// M44-M93 support one optional document-leading YAML/TOML front-matter
+// M44-M103 support one optional document-leading YAML/TOML front-matter
 // envelope, top-level ATX headings, parser-proven paragraphs, thematic breaks,
-// parser-proven single-paragraph and reviewed multi-block blockquotes, flat or
+// parser-proven single-paragraph and reviewed multi-block blockquotes, exact
+// non-nested GitHub alerts layered over canonical top-level blockquotes, flat or
 // homogeneous nested unordered/ordered lists and task lists, supported fenced code,
 // simple reference definitions,
 // canonical unaligned/aligned tables, and typed inline construction for
@@ -297,9 +298,11 @@ func (b *DocumentBuilder) AppendOrderedTaskList(items ...TaskListItem) error {
 // AppendFencedCode appends one top-level fenced code block.
 //
 // M49 introduced the canonical unindented backtick form; M53 extends content to
-// non-empty LF-separated multiline text. The fence is at least three bytes and
-// grows beyond every potentially closing backtick run in the body. info is an
-// optional single-line raw GFM info string and must not contain backticks.
+// LF-separated multiline text, and M103 permits an empty payload. The fence is at
+// least three bytes and grows beyond every potentially closing backtick run in a
+// non-empty body. info is an optional single-line raw GFM info string and must not
+// contain backticks. Empty content produces adjacent opening/closing fence lines
+// without inventing a payload line.
 func (b *DocumentBuilder) AppendFencedCode(content, info string) error {
 	if b == nil {
 		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)

@@ -39,6 +39,10 @@ func ResolveConstructionReference(label string, definitions []ConstructionRefere
 	}, nil
 }
 
+func referenceLabelKey(label string) string {
+	return goldmarkparser.ReferenceLabelKey(label)
+}
+
 // ConstructionReferenceLabelsEquivalent reports whether two labels share one
 // parser-defined GFM reference normalization key.
 func ConstructionReferenceLabelsEquivalent(left, right string) bool {

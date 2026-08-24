@@ -2,9 +2,11 @@ package goldmark
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/yuin/goldmark/ast"
 	extensionast "github.com/yuin/goldmark/extension/ast"
+	"github.com/yuin/goldmark/util"
 
 	"github.com/zoster81/marksplice/internal/parser"
 )
@@ -98,7 +100,42 @@ func observeHeading(source []byte, heading *ast.Heading) (parser.Node, bool, err
 	if !range_.Valid(len(source)) {
 		return parser.Node{}, false, fmt.Errorf("goldmark heading content range [%d,%d) is outside source length %d", range_.Start, range_.End, len(source))
 	}
-	return parser.Node{Kind: parser.KindHeading, Range: range_, Level: heading.Level, TopLevel: true}, true, nil
+	text, err := headingSemanticText(source, heading)
+	if err != nil {
+		return parser.Node{}, false, fmt.Errorf("goldmark heading semantic text: %w", err)
+	}
+	return parser.Node{Kind: parser.KindHeading, Range: range_, Level: heading.Level, HeadingText: text, TopLevel: true}, true, nil
+}
+
+func headingSemanticText(source []byte, heading *ast.Heading) (string, error) {
+	var text strings.Builder
+	err := ast.Walk(heading, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering || node == heading {
+			return ast.WalkContinue, nil
+		}
+		switch typed := node.(type) {
+		case *ast.Text:
+			value := typed.Value(source)
+			if !typed.IsRaw() && (typed.Parent() == nil || typed.Parent().Kind() != ast.KindCodeSpan) {
+				value = resolveHeadingText(value)
+			}
+			_, _ = text.Write(value)
+		case *ast.String:
+			value := typed.Value
+			if !typed.IsRaw() && !typed.IsCode() {
+				value = resolveHeadingText(value)
+			}
+			_, _ = text.Write(value)
+		}
+		return ast.WalkContinue, nil
+	})
+	return text.String(), err
+}
+
+func resolveHeadingText(value []byte) []byte {
+	value = util.UnescapePunctuations(value)
+	value = util.ResolveNumericReferences(value)
+	return util.ResolveEntityNames(value)
 }
 
 func observeReferenceDefinition(source []byte, definition *ast.LinkReferenceDefinition) (parser.Node, bool, error) {
@@ -122,17 +159,37 @@ func observeReferenceDefinition(source []byte, definition *ast.LinkReferenceDefi
 }
 
 func observeFencedCode(source []byte, block *ast.FencedCodeBlock) (parser.Node, bool, error) {
+	anchor := block.Pos()
+	if anchor < 0 || anchor >= len(source) {
+		return parser.Node{}, false, nil
+	}
 	lines := block.Lines()
-	if lines.Len() == 0 {
-		return parser.Node{}, false, nil
+	contentRanges := make([]parser.Range, lines.Len())
+	for index := 0; index < lines.Len(); index++ {
+		segment := lines.At(index)
+		range_ := parser.Range{Start: segment.Start, End: fencedCodeContentEnd(source, segment.Start)}
+		if !range_.Valid(len(source)) {
+			return parser.Node{}, false, fmt.Errorf("goldmark fenced-code content range [%d,%d) is outside source length %d", range_.Start, range_.End, len(source))
+		}
+		contentRanges[index] = range_
 	}
-	first := lines.At(0)
-	last := lines.At(lines.Len() - 1)
-	range_ := parser.Range{Start: first.Start, End: fencedCodeContentEnd(source, last.Start)}
-	if !range_.Valid(len(source)) || range_.Start == range_.End {
-		return parser.Node{}, false, nil
+	range_ := parser.Range{Start: anchor, End: anchor}
+	if len(contentRanges) != 0 {
+		range_ = parser.Range{Start: contentRanges[0].Start, End: contentRanges[len(contentRanges)-1].End}
 	}
-	return parser.Node{Kind: parser.KindFencedCode, Range: range_}, true, nil
+	info := ""
+	if block.Info != nil {
+		info = string(block.Info.Segment.Value(source))
+	}
+	return parser.Node{
+		Kind:                    parser.KindFencedCode,
+		Range:                   range_,
+		Anchor:                  anchor,
+		FencedCodeContentRanges: contentRanges,
+		FencedCodeInfo:          info,
+		FencedCodeLanguage:      string(block.Language(source)),
+		TopLevel:                block.Parent() != nil && block.Parent().Kind() == ast.KindDocument,
+	}, true, nil
 }
 
 func observeThematicBreak(source []byte, thematic *ast.ThematicBreak) (parser.Node, bool, error) {

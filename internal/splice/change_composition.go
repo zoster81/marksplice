@@ -28,9 +28,9 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 	}
 
 	nodeDeltas := make([]compositionDelta[compositionNodeView], 0, len(changes))
-	referenceDeltas := make([]compositionDelta[string], 0, len(changes))
+	linkDeltas := make([]compositionDelta[string], 0, len(changes))
 	originalNodes := compositionNodeViews(d)
-	originalReferences := compositionReferenceViews(d.referenceUsages)
+	originalLinks := compositionLinkViews(d.linkUsages)
 	for _, change := range changes {
 		candidate, err := change.Apply(d.source)
 		if err != nil {
@@ -42,16 +42,16 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 		}
 		sourceStart := compositionPatchStart(change.Patches())
 		nodeDeltas = append(nodeDeltas, newCompositionDelta(originalNodes, compositionNodeViews(candidateDocument), sourceStart))
-		referenceDeltas = append(referenceDeltas, newCompositionDelta(originalReferences, compositionReferenceViews(candidateDocument.referenceUsages), sourceStart))
+		linkDeltas = append(linkDeltas, newCompositionDelta(originalLinks, compositionLinkViews(candidateDocument.linkUsages), sourceStart))
 	}
 
 	expectedNodes, ok := applyCompositionDeltas(originalNodes, nodeDeltas)
 	if !ok {
 		return ChangeSet{}, fmt.Errorf("%w: prepared mutations affect overlapping structural model regions", ErrInvalidReplacement)
 	}
-	expectedReferences, ok := applyCompositionDeltas(originalReferences, referenceDeltas)
+	expectedLinks, ok := applyCompositionDeltas(originalLinks, linkDeltas)
 	if !ok {
-		return ChangeSet{}, fmt.Errorf("%w: prepared mutations affect overlapping reference relationships", ErrInvalidReplacement)
+		return ChangeSet{}, fmt.Errorf("%w: prepared mutations affect overlapping link relationships", ErrInvalidReplacement)
 	}
 	candidate, err := combined.Apply(d.source)
 	if err != nil {
@@ -62,7 +62,7 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 		return ChangeSet{}, fmt.Errorf("%w: parse combined composition candidate: %v", ErrInvalidReplacement, err)
 	}
 	if !slices.Equal(compositionNodeViews(candidateDocument), expectedNodes) ||
-		!slices.Equal(compositionReferenceViews(candidateDocument.referenceUsages), expectedReferences) {
+		!slices.Equal(compositionLinkViews(candidateDocument.linkUsages), expectedLinks) {
 		return ChangeSet{}, fmt.Errorf("%w: combined candidate does not match independently validated model deltas", ErrInvalidReplacement)
 	}
 	return combined, nil
@@ -178,10 +178,10 @@ func compositionRelativeRanges(ranges []source.Range, base Range) string {
 	return builder.String()
 }
 
-func compositionReferenceViews(usages []parser.ReferenceUsage) []string {
+func compositionLinkViews(usages []parser.LinkUsage) []string {
 	views := make([]string, len(usages))
 	for index, usage := range usages {
-		views[index] = fmt.Sprintf("%d|%d|%s|%s|%s|%t", usage.Kind, usage.Form, usage.Reference, usage.Destination, usage.Title, usage.HasTitle)
+		views[index] = fmt.Sprintf("%d|%d|%s|%s|%s|%t|%t", usage.Kind, usage.Form, usage.Reference, usage.Destination, usage.Title, usage.HasTitle, usage.AutoLinkEmail)
 	}
 	return views
 }

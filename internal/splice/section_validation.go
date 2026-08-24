@@ -65,6 +65,58 @@ func parseSectionMutationCandidate(candidate []byte) (*Document, error) {
 	return candidateDocument, nil
 }
 
+type sectionPatchCursor struct {
+	patches []patchTransform
+	index   int
+	delta   int
+}
+
+func (c *sectionPatchCursor) deltaBefore(range_ Range) (int, bool) {
+	for c.index < len(c.patches) && c.patches[c.index].Range.End <= range_.Start {
+		patch := c.patches[c.index]
+		c.delta += patch.ReplacementLength - (patch.Range.End - patch.Range.Start)
+		c.index++
+	}
+	if c.index < len(c.patches) && c.patches[c.index].Range.Start < range_.End {
+		return 0, false
+	}
+	return c.delta, true
+}
+
+func (d *Document) validateSectionHeadingsAfterPatches(candidate []byte, candidateDocument *Document, patches []patchTransform) error {
+	ordered, ok := orderedPatchTransforms(patches)
+	if !ok || candidateDocument.SectionCount() != len(d.sections) {
+		return ErrInvalidReplacement
+	}
+	cursor := sectionPatchCursor{patches: ordered}
+	for index, section := range d.sections {
+		originalHeading, ok := d.nodeByID(section.HeadingID)
+		if !ok {
+			return ErrInvalidReplacement
+		}
+		delta, ok := cursor.deltaBefore(originalHeading.Range)
+		if !ok || !d.sectionHeadingMatchesAfterShift(candidate, candidateDocument, index, section, originalHeading, delta) {
+			return ErrInvalidReplacement
+		}
+	}
+	return nil
+}
+
+func (d *Document) sectionHeadingMatchesAfterShift(candidate []byte, candidateDocument *Document, index int, section Section, originalHeading Node, delta int) bool {
+	candidateSection, ok := candidateDocument.SectionAt(index)
+	if !ok || candidateSection.Level != section.Level {
+		return false
+	}
+	candidateHeading, ok := candidateDocument.nodeByID(candidateSection.HeadingID)
+	if !ok || candidateHeading.Level != originalHeading.Level || candidateHeading.HeadingStyle != originalHeading.HeadingStyle {
+		return false
+	}
+	if candidateHeading.Range != shiftedRange(originalHeading.Range, delta) || candidateHeading.ContentRange != shiftedRange(originalHeading.ContentRange, delta) {
+		return false
+	}
+	return bytes.Equal(d.source[originalHeading.Range.Start:originalHeading.Range.End], candidate[candidateHeading.Range.Start:candidateHeading.Range.End])
+}
+
 func (d *Document) validateOriginalSectionHeadings(candidate []byte, candidateDocument *Document, candidateStart int, sections []Section, patch Range, replacementLength int) error {
 	for offset, section := range sections {
 		originalHeading, ok := d.nodeByID(section.HeadingID)

@@ -38,17 +38,17 @@ Useful concepts should be implemented through Marksplice-owned semantic/source c
 
 ### Anchors and table of contents
 
-Heading-anchor derivation, duplicate-anchor handling, fragment resolution, TOC generation, stale-TOC detection, and source-preserving synchronization are natural consequences of Marksplice headings, sections, links, and document intelligence. They belong in core and require no external extension model.
+Heading-anchor derivation, duplicate-anchor handling, fragment resolution, TOC generation, stale-TOC detection, and source-preserving synchronization are natural consequences of Marksplice headings, sections, links, and document intelligence. They belong in core and require no external extension model. M98 implements immutable single-document navigation with no persistent anchor index; M99 completes source-ordered single-document link/reference/image/autolink intelligence while reusing the same fragment targets; M100 implements deterministic outgoing edges, backlinks, reachability, and direct related-document relationships across an explicit caller-provided document set under a build-only caller resolver, with no hidden filesystem/network discovery. M101 implements diagnostics and conservative repair planning over that same authority boundary: caller resolution explicitly distinguishes ignored/resolved/missing non-local relationships, root-relative reachability uses the resolved graph, unresolved references are reported only for conservative explicit full/collapsed forms, and automatic repair is limited to caller-designated M98-recognized stale TOCs.
 
 ### Semantic block patterns
 
-Patterns that are already valid baseline Markdown may receive higher-level semantics without changing the grammar. GitHub alerts are the first concrete case: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, and `CAUTION` are represented over blockquote source and can be recognized/constructed while preserving ordinary blockquote ownership.
+Patterns that are already valid baseline Markdown may receive higher-level semantics without changing the grammar. M102 implements the first concrete case: GitHub alerts `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, and `CAUTION` are recognized only as an exact Marksplice-owned overlay over already-promoted top-level blockquote source and can be constructed canonically from single-paragraph, typed-inline, or reviewed multi-block bodies. Alerts reuse the underlying blockquote identity/ownership, retain no semantic index, and cannot be nested through the builder. No Goldmark alert extension or new Markdown grammar mode is involved.
 
 ### Fenced-block semantics
 
-Marksplice should model fenced blocks generically: exact fence, info string/language, content, and source ranges. Names such as `mermaid`, `geojson`, `topojson`, `stl`, `math`, `d2`, `pikchr`, or other technical languages remain data values.
+M103 completes the generic core capability. `FencedBlock` exposes a source-proven top-level fenced container with exact opening/optional closing fence metadata, info string/language, complete container range, and caller-owned per-physical-line payload ranges, including empty and unclosed forms. The historical contiguous `FencedCode` payload-replacement contract remains separate and narrower, and canonical construction now supports empty payloads without inventing a blank body line.
 
-Marksplice does not parse, execute, render, syntax-highlight, or validate the embedded language merely because it recognizes the fenced block.
+Names such as `mermaid`, `geojson`, `topojson`, `stl`, `math`, `d2`, `pikchr`, or other technical languages remain opaque data values. Marksplice does not parse, execute, render, syntax-highlight, or validate the embedded language merely because it recognizes the fenced block.
 
 ### Footnotes
 

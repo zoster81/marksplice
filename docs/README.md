@@ -43,8 +43,8 @@ moving that package under a top-level `src/` directory would naturally change it
 
 The root package filenames are grouped deliberately:
 
-- `api*.go` owns parsed-document identity, typed views, sections, mutation preparation, and the bounded public query surface in `api_query.go`;
-- `builder*.go` owns new-document construction and its private validation/writing/proof helpers; generic typed-inline writing stays in `builder_inline.go`, while reference-link/reference-image forms, resolution, and proof stay in `builder_inline_reference.go`;
+- `api*.go` owns parsed-document identity, typed views, sections, mutation preparation, the bounded public query surface in `api_query.go`, native anchor/fragment/TOC navigation in `api_navigation.go`, immutable single-document link intelligence in `api_relationships.go`, the explicit caller-provided multi-document graph in `api_graph.go`, bounded workspace validation/repair planning in `api_workspace.go`, Marksplice-owned semantic block overlays such as GitHub alerts in `api_alerts.go`, and the complete read-only fenced-container model in `api_fenced_blocks.go`;
+- `builder*.go` owns new-document construction and its private validation/writing/proof helpers; generic typed-inline writing stays in `builder_inline.go`, reference-link/reference-image forms, resolution, and proof stay in `builder_inline_reference.go`, and alert construction entrypoints stay in `builder_alerts.go` while reusing the shared blockquote writer/proof machinery;
 - `doc.go` and `example_test.go` own package documentation and executable examples.
 
 Do not introduce a second source tree or duplicate documentation tree merely for cosmetic separation. New code should extend the existing package boundaries or justify a new internal package with a concrete responsibility.
