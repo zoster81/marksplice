@@ -33,6 +33,50 @@ func TestIndexNodesRejectsDuplicateIDs(t *testing.T) {
 	}
 }
 
+func TestMergeSourceOrderedNodesReusesCapacityAndPreservesTieOrder(t *testing.T) {
+	t.Parallel()
+
+	nodes := make([]Node, 2, 5)
+	nodes[0] = Node{ID: "base-10", Range: Range{Start: 10, End: 11}}
+	nodes[1] = Node{ID: "base-30", Range: Range{Start: 30, End: 31}}
+	first := &nodes[0]
+	additions := []Node{
+		{ID: "addition-10", Range: Range{Start: 10, End: 12}},
+		{ID: "addition-20", Range: Range{Start: 20, End: 21}},
+		{ID: "addition-40", Range: Range{Start: 40, End: 41}},
+	}
+
+	got := mergeSourceOrderedNodes(nodes, additions)
+	if &got[0] != first {
+		t.Fatal("mergeSourceOrderedNodes() replaced reusable backing storage")
+	}
+	want := []NodeID{"base-10", "addition-10", "addition-20", "base-30", "addition-40"}
+	if len(got) != len(want) {
+		t.Fatalf("merged node count = %d, want %d", len(got), len(want))
+	}
+	for index, id := range want {
+		if got[index].ID != id {
+			t.Fatalf("merged node %d ID = %q, want %q", index, got[index].ID, id)
+		}
+	}
+}
+
+func TestMergeSourceOrderedNodesGrowsWhenCapacityIsInsufficient(t *testing.T) {
+	t.Parallel()
+
+	nodes := []Node{{ID: "base-20", Range: Range{Start: 20, End: 21}}}
+	got := mergeSourceOrderedNodes(nodes, []Node{
+		{ID: "addition-10", Range: Range{Start: 10, End: 11}},
+		{ID: "addition-30", Range: Range{Start: 30, End: 31}},
+	})
+	want := []NodeID{"addition-10", "base-20", "addition-30"}
+	for index, id := range want {
+		if got[index].ID != id {
+			t.Fatalf("merged node %d ID = %q, want %q", index, got[index].ID, id)
+		}
+	}
+}
+
 func TestListItemHierarchyAccessFailsClosedOnCorruptAdjacency(t *testing.T) {
 	t.Parallel()
 

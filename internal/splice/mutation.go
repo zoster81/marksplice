@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/zoster81/marksplice/internal/parser"
-	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
 	"github.com/zoster81/marksplice/internal/source"
 )
 
@@ -88,11 +87,11 @@ func (d *Document) prepareMoveCandidate(moved Range, insertAt int, fragment []by
 }
 
 func parseCandidate(candidate []byte) ([]parser.Node, error) {
-	observations, err := goldmarkparser.New().Parse(candidate)
+	observed, err := newParserBackend().ParseDocument(candidate)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidReplacement, err)
 	}
-	return observations, nil
+	return observed.Nodes, nil
 }
 
 func shiftedEnd(range_ Range, delta int) Range {

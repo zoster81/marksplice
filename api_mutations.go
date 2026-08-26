@@ -378,6 +378,24 @@ func (d *Document) PrepareReplaceImageDestination(id NodeID, replacement []byte)
 	return publicChangeSet(d.document.PrepareReplaceImageDestination(internalNodeID(id), replacement))
 }
 
+// PrepareReplaceFootnoteDefinitionBody prepares a source-preserving replacement
+// of the conservative simple editable body of one promoted footnote definition.
+func (d *Document) PrepareReplaceFootnoteDefinitionBody(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindFootnoteDefinition, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceFootnoteDefinitionBody(internalNodeID(id), replacement))
+}
+
+// PrepareRenameFootnote atomically renames one promoted footnote definition and
+// every parser-proven reference occurrence bound to that definition.
+func (d *Document) PrepareRenameFootnote(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindFootnoteDefinition, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRenameFootnote(internalNodeID(id), replacement))
+}
+
 // PrepareReplaceReferenceDefinitionDestination prepares a source-preserving replacement of a promoted reference-definition destination.
 func (d *Document) PrepareReplaceReferenceDefinitionDestination(id NodeID, replacement []byte) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindReferenceDefinition, false); err != nil {

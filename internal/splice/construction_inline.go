@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/zoster81/marksplice/internal/parser"
-	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
 )
 
 // ConstructionInlineExpectation is one construction-only semantic inline proof
@@ -41,7 +40,7 @@ func ValidateConstructionInlineHierarchy(source []byte, expected []ConstructionI
 	if err != nil {
 		return err
 	}
-	if err := goldmarkparser.ValidateConstructionInlineHierarchy(source, parserExpected, parserReferences); err != nil {
+	if err := newParserBackend().ValidateConstructionInlineHierarchy(source, parserExpected, parserReferences); err != nil {
 		return fmt.Errorf("validate semantic typed inline hierarchy: %w", err)
 	}
 	return nil

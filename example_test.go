@@ -2,6 +2,7 @@ package marksplice_test
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/zoster81/marksplice"
 )
@@ -51,6 +52,50 @@ func ExampleParse() {
 
 	// Output:
 	// level=1 text=Title
+}
+
+func ExampleParseWithOptions() {
+	source := []byte("See [[guide]].\n")
+	wiki := marksplice.Extension{
+		ID: "example.org/wiki",
+		Recognize: func(input marksplice.ExtensionSource) ([]marksplice.ExtensionMatch, error) {
+			text := input.Text()
+			start := strings.Index(text, "[[")
+			if start < 0 {
+				return nil, nil
+			}
+			close := strings.Index(text[start+2:], "]]")
+			if close < 0 {
+				return nil, nil
+			}
+			end := start + 2 + close + 2
+			return []marksplice.ExtensionMatch{{
+				Kind:  "wikilink",
+				Range: marksplice.Range{Start: start, End: end},
+				Attributes: []marksplice.ExtensionAttribute{{
+					Name:  "target",
+					Value: text[start+2 : end-2],
+				}},
+			}}, nil
+		},
+	}
+	document, err := marksplice.ParseWithOptions(source, marksplice.ParseOptions{
+		Extensions: []marksplice.Extension{wiki},
+		ExtensionLimits: marksplice.ExtensionLimits{
+			MaxNodes:         8,
+			MaxMetadataBytes: 256,
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	node := document.ExtensionNodes()[0]
+	raw, _ := document.SourceRange(node.Range())
+	target, _ := node.Attribute("target")
+	fmt.Printf("%s -> %s\n", raw, target)
+
+	// Output:
+	// [[guide]] -> guide
 }
 
 func ExampleDocument_QueryNodes() {
@@ -139,6 +184,42 @@ func ExampleBuildDocumentGraph() {
 	// index -> guide fragment=true
 }
 
+func ExampleBuildKnowledgeIndex() {
+	a, err := marksplice.Parse([]byte("# A\n\n[to-b](b.md)\n"))
+	if err != nil {
+		panic(err)
+	}
+	b, err := marksplice.Parse([]byte("# B\n"))
+	if err != nil {
+		panic(err)
+	}
+	graph, err := marksplice.BuildDocumentGraph([]marksplice.GraphDocument{
+		{Key: "a", Document: a},
+		{Key: "b", Document: b},
+	}, func(_ marksplice.DocumentKey, relationship marksplice.LinkRelationship) (marksplice.DocumentResolution, bool) {
+		if relationship.Destination() == "b.md" {
+			return marksplice.DocumentResolution{Target: "b"}, true
+		}
+		return marksplice.DocumentResolution{}, false
+	})
+	if err != nil {
+		panic(err)
+	}
+	knowledge, err := marksplice.BuildKnowledgeIndex(graph, []marksplice.KnowledgeDocument{
+		{Document: "a", Aliases: []marksplice.KnowledgeAlias{"start"}, Tags: []marksplice.KnowledgeTag{"guide"}},
+		{Document: "b", Tags: []marksplice.KnowledgeTag{"guide"}, References: []marksplice.DocumentKey{"a"}},
+	})
+	if err != nil {
+		panic(err)
+	}
+	alias, _ := knowledge.ResolveAlias("start")
+	related, _ := knowledge.RelatedDocuments("a")
+	fmt.Printf("alias=%s tagged=%d related=%v\n", alias, len(knowledge.DocumentsWithTag("guide")), related)
+
+	// Output:
+	// alias=a tagged=2 related=[b]
+}
+
 func ExampleValidateWorkspace() {
 	document, err := marksplice.Parse([]byte("# Guide\n\n[missing](#missing)\n"))
 	if err != nil {
@@ -206,6 +287,113 @@ func ExampleDocument_FencedBlocks() {
 
 	// Output:
 	// language=mermaid closed=true body=graph TD
+}
+
+func ExampleDocument_FootnoteDefinitions() {
+	source := []byte("Text[^note].\n\n[^note]: Original body.\n")
+	document, err := marksplice.Parse(source)
+	if err != nil {
+		panic(err)
+	}
+	definition := document.FootnoteDefinitions()[0]
+	references := document.FootnoteReferences()
+	fmt.Printf("label=%s references=%d occurrence=%d\n", definition.Label(), len(references), references[0].Occurrence())
+
+	change, err := document.PrepareRenameFootnote(definition.ID(), []byte("renamed"))
+	if err != nil {
+		panic(err)
+	}
+	updated, err := change.Apply(source)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(updated))
+
+	// Output:
+	// label=note references=1 occurrence=0
+	// Text[^renamed].
+	//
+	// [^renamed]: Original body.
+}
+
+func ExampleDocumentBuilder_DeferFootnoteDefinition() {
+	builder := marksplice.NewDocumentBuilder()
+	if err := builder.DeferFootnoteDefinition("note", "Built body."); err != nil {
+		panic(err)
+	}
+	if err := builder.AppendParagraphContent(marksplice.TextInline("Text"), marksplice.FootnoteReferenceInline("note")); err != nil {
+		panic(err)
+	}
+	markdown, err := builder.Markdown()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(markdown))
+
+	// Output:
+	// Text[^note]
+	//
+	// [^note]: Built body.
+}
+
+func ExampleDocument_FrontMatter() {
+	source := []byte("---\ntags:\n  - source-preserving\n---\n\n# Marksplice\n")
+	document, err := marksplice.Parse(source)
+	if err != nil {
+		panic(err)
+	}
+	frontMatter, ok := document.FrontMatter()
+	if !ok {
+		panic("front matter is not available")
+	}
+	metadata, ok := document.SourceRange(frontMatter.Range())
+	if !ok {
+		panic("front matter range is not readable")
+	}
+	fmt.Printf("format=%d bytes=%d\n", frontMatter.Format(), len(metadata))
+
+	// Output:
+	// format=1 bytes=35
+}
+
+func ExampleDocument_MathExpressions() {
+	source := []byte("Inline $x+1$.\n\n$$x^2$$\n")
+	document, err := marksplice.Parse(source)
+	if err != nil {
+		panic(err)
+	}
+	for _, expression := range document.MathExpressions() {
+		payload, ok := expression.PayloadRange()
+		if !ok {
+			continue
+		}
+		value, _ := document.SourceRange(payload)
+		fmt.Printf("style=%d payload=%s\n", expression.Style(), value)
+	}
+
+	// Output:
+	// style=1 payload=x+1
+	// style=3 payload=x^2
+}
+
+func ExampleDocumentBuilder_AppendMathBlock() {
+	builder := marksplice.NewDocumentBuilder()
+	if err := builder.AppendParagraphContent(marksplice.TextInline("Value "), marksplice.MathInline("x+1")); err != nil {
+		panic(err)
+	}
+	if err := builder.AppendMathBlock("x^2+y^2"); err != nil {
+		panic(err)
+	}
+	markdown, err := builder.Markdown()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(markdown))
+
+	// Output:
+	// Value $x+1$
+	//
+	// $$x^2+y^2$$
 }
 
 func ExampleDocument_ComposeChanges() {

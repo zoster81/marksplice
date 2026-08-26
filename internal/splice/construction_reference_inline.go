@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/zoster81/marksplice/internal/parser"
-	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
 )
 
 // ConstructionReferenceInlineForm identifies one construction-only reference source form.
@@ -38,7 +37,7 @@ func ValidateConstructionReferenceInlines(source []byte, expected []Construction
 	if err != nil {
 		return err
 	}
-	return goldmarkparser.ValidateConstructionReferenceInlines(source, converted)
+	return newParserBackend().ValidateConstructionReferenceInlines(source, converted)
 }
 
 func parserConstructionReferenceInlines(expected []ConstructionReferenceInlineExpectation) ([]parser.ConstructionReferenceInlineExpectation, error) {

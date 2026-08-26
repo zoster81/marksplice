@@ -18,6 +18,9 @@ func TestMapSimpleCodeSpanPreservesFenceBoundaries(t *testing.T) {
 	}{
 		{name: "single backtick", source: []byte("before `old` after\r\n"), anchor: 7, content: Range{Start: 8, End: 11}, wantRange: Range{Start: 7, End: 12}, wantFence: 1},
 		{name: "double backtick with inner backtick", source: []byte("before ``old`code`` after\n"), anchor: 7, content: Range{Start: 9, End: 17}, wantRange: Range{Start: 7, End: 19}, wantFence: 2},
+		{name: "line start after LF", source: []byte("prev`\n`old`\n"), anchor: 6, content: Range{Start: 7, End: 10}, wantRange: Range{Start: 6, End: 11}, wantFence: 1},
+		{name: "line start after CRLF", source: []byte("prev`\r\n`old`\r\n"), anchor: 7, content: Range{Start: 8, End: 11}, wantRange: Range{Start: 7, End: 12}, wantFence: 1},
+		{name: "line start after CR", source: []byte("prev`\r`old`\r"), anchor: 6, content: Range{Start: 7, End: 10}, wantRange: Range{Start: 6, End: 11}, wantFence: 1},
 	}
 	for _, tt := range tests {
 		tt := tt

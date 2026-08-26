@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/zoster81/marksplice/internal/parser"
-	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
 )
 
 // ConstructionReferenceDefinition is one construction-only reference target.
@@ -27,7 +26,7 @@ func ResolveConstructionReference(label string, definitions []ConstructionRefere
 			HasTitle:    definition.HasTitle,
 		}
 	}
-	resolved, err := goldmarkparser.ResolveConstructionReference(label, converted)
+	resolved, err := newParserBackend().ResolveConstructionReference(label, converted)
 	if err != nil {
 		return ConstructionReferenceDefinition{}, fmt.Errorf("resolve construction reference: %w", err)
 	}
@@ -40,11 +39,11 @@ func ResolveConstructionReference(label string, definitions []ConstructionRefere
 }
 
 func referenceLabelKey(label string) string {
-	return goldmarkparser.ReferenceLabelKey(label)
+	return defaultReferenceLabelKey(label)
 }
 
 // ConstructionReferenceLabelsEquivalent reports whether two labels share one
 // parser-defined GFM reference normalization key.
 func ConstructionReferenceLabelsEquivalent(left, right string) bool {
-	return goldmarkparser.ConstructionReferenceLabelsEquivalent(left, right)
+	return defaultReferenceLabelKey(left) == defaultReferenceLabelKey(right)
 }

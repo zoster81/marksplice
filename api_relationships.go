@@ -71,7 +71,7 @@ func (r LinkRelationship) SourceNodeID() (NodeID, bool) {
 }
 
 // Destination returns the parser-resolved semantic destination.
-// Other-document paths and URLs remain opaque data; M99 does not access them.
+// Other-document paths and URLs remain opaque data; Marksplice does not access them.
 func (r LinkRelationship) Destination() string { return r.destination }
 
 // Title returns the parser-resolved title when one is present.
@@ -92,11 +92,11 @@ func (r LinkRelationship) ReferenceDefinitionID() (NodeID, bool) {
 	return r.referenceDefinitionID, r.hasReferenceDefinition
 }
 
-// FragmentStatus reports M98-compatible intra-document fragment resolution for
-// destinations beginning with '#'. Other destinations return NotApplicable.
+// FragmentStatus reports intra-document fragment resolution using the same semantics
+// as ResolveFragment for destinations beginning with '#'. Other destinations return NotApplicable.
 func (r LinkRelationship) FragmentStatus() LinkFragmentStatus { return r.fragmentStatus }
 
-// FragmentTarget returns the M98 target when FragmentStatus is Resolved.
+// FragmentTarget returns the resolved target when FragmentStatus is Resolved.
 func (r LinkRelationship) FragmentTarget() (FragmentTarget, bool) {
 	return r.fragmentTarget, r.hasFragmentTarget
 }

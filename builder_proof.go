@@ -15,9 +15,11 @@ type constructionExpectation struct {
 	level            int
 	contentRange     splice.Range
 	sourceRange      splice.Range
+	mathStyle        splice.MathExpressionStyle
 	list             constructionListProof
 	fence            constructionFenceProof
 	reference        constructionReferenceProof
+	footnote         constructionFootnoteProof
 	table            constructionTableProof
 	tableRow         constructionTableRowProof
 	blockquote       constructionBlockquoteProof
@@ -60,6 +62,12 @@ type constructionReferenceProof struct {
 	title       string
 	hasTitle    bool
 	titleRange  splice.Range
+}
+
+type constructionFootnoteProof struct {
+	label      string
+	labelRange splice.Range
+	bodyRange  splice.Range
 }
 
 type constructionTableProof struct {
@@ -199,9 +207,9 @@ func isConstructionProofNode(node splice.Node) bool {
 		return false
 	}
 	switch node.Kind {
-	case splice.KindParagraph, splice.KindHeading:
+	case splice.KindParagraph, splice.KindHeading, splice.KindMathExpression:
 		return node.TopLevel
-	case splice.KindListItem, splice.KindReferenceDefinition, splice.KindTable, splice.KindTableRow:
+	case splice.KindListItem, splice.KindReferenceDefinition, splice.KindFootnoteDefinition, splice.KindTable, splice.KindTableRow:
 		return true
 	default:
 		return false
@@ -210,7 +218,7 @@ func isConstructionProofNode(node splice.Node) bool {
 
 func validateConstructionExpectation(node splice.Node, want constructionExpectation) error {
 	if node.Kind != want.kind {
-		return fmt.Errorf("%w: generated block kind changed", ErrInvalidConstruction)
+		return fmt.Errorf("%w: generated block kind changed: got %d want %d", ErrInvalidConstruction, node.Kind, want.kind)
 	}
 	switch node.Kind {
 	case splice.KindHeading:
@@ -227,6 +235,10 @@ func validateConstructionExpectation(node splice.Node, want constructionExpectat
 		return validateConstructionFencedCodeExpectation(node, want)
 	case splice.KindReferenceDefinition:
 		return validateConstructionReferenceDefinitionExpectation(node, want)
+	case splice.KindFootnoteDefinition:
+		return validateConstructionFootnoteDefinitionExpectation(node, want)
+	case splice.KindMathExpression:
+		return validateConstructionMathExpectation(node, want)
 	case splice.KindTable:
 		return validateConstructionTableExpectation(node, want)
 	case splice.KindTableRow:
@@ -234,6 +246,16 @@ func validateConstructionExpectation(node splice.Node, want constructionExpectat
 	default:
 		return fmt.Errorf("%w: generated unsupported proof block", ErrInvalidConstruction)
 	}
+}
+
+func validateConstructionMathExpectation(node splice.Node, want constructionExpectation) error {
+	mapping := node.MathSource
+	if !node.TopLevel || !node.Editable || mapping.Style != want.mathStyle ||
+		node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
+		mapping.Range != want.sourceRange || mapping.PayloadRange != want.contentRange {
+		return fmt.Errorf("%w: generated mathematical block mapping changed", ErrInvalidConstruction)
+	}
+	return nil
 }
 
 func validateConstructionHeadingExpectation(node splice.Node, want constructionExpectation) error {
@@ -413,6 +435,16 @@ func validateConstructionReferenceDefinitionExpectation(node splice.Node, want c
 		mapping.Range != want.sourceRange || mapping.DestinationRange != want.contentRange || mapping.TitleRange != want.reference.titleRange ||
 		!mapping.AngleDestination || mapping.HasTitle != want.reference.hasTitle {
 		return fmt.Errorf("%w: generated reference-definition mapping changed", ErrInvalidConstruction)
+	}
+	return nil
+}
+
+func validateConstructionFootnoteDefinitionExpectation(node splice.Node, want constructionExpectation) error {
+	mapping := node.FootnoteSource
+	if !node.TopLevel || !node.Editable || node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
+		node.Label != want.footnote.label || mapping.Range != want.sourceRange || mapping.LabelRange != want.footnote.labelRange ||
+		mapping.BodyRange != want.footnote.bodyRange || len(mapping.BodyRanges) != 1 || mapping.BodyRanges[0] != want.footnote.bodyRange {
+		return fmt.Errorf("%w: generated footnote-definition mapping changed", ErrInvalidConstruction)
 	}
 	return nil
 }

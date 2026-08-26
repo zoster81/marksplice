@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/zoster81/marksplice/internal/parser"
-	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
 	"github.com/zoster81/marksplice/internal/source"
 )
 
@@ -49,6 +48,8 @@ const (
 	KindThematicBreak
 	KindBlockquote
 	KindTable
+	KindFootnoteDefinition
+	KindMathExpression
 )
 
 // HeadingStyle identifies the source syntax of a heading.
@@ -145,6 +146,8 @@ type Node struct {
 	EmphasisSource            source.EmphasisMapping
 	ThematicBreakSource       source.ThematicBreakMapping
 	BlockquoteSource          source.BlockquoteMapping
+	FootnoteSource            source.FootnoteDefinitionMapping
+	MathSource                source.MathExpressionMapping
 	Anchor                    int
 	Destination               string
 	Label                     string
@@ -169,6 +172,14 @@ type frontMatterEnvelope struct {
 	ClosingRange Range
 }
 
+// FrontMatterEnvelope is immutable source ownership for one recognized leading metadata envelope.
+type FrontMatterEnvelope struct {
+	Format       FrontMatterFormat
+	Range        Range
+	OpeningRange Range
+	ClosingRange Range
+}
+
 // Document is an immutable parsed source snapshot used by the feasibility slice.
 type Document struct {
 	source                    []byte
@@ -187,24 +198,44 @@ type Document struct {
 	frontMatter               frontMatterEnvelope
 	linkUsages                []parser.LinkUsage
 	unresolvedReferenceUsages []parser.UnresolvedReferenceUsage
+	footnoteReferences        []FootnoteReference
 }
 
-// Parse creates a snapshot-local Marksplice model using the internal Goldmark adapter.
+// Parse creates a snapshot-local Marksplice model using the active internal parser backend.
 func Parse(input []byte) (*Document, error) {
-	semanticParser := goldmarkparser.New()
+	return parseWithBackend(input, newParserBackend())
+}
+
+func parseWithBackend(input []byte, semanticParser parser.Backend) (*Document, error) {
+	if semanticParser == nil {
+		return nil, fmt.Errorf("parse markdown: nil parser backend")
+	}
+	return parseWithValidatedBackend(input, semanticParser)
+}
+
+func parseWithValidatedBackend(input []byte, semanticParser parser.Backend) (*Document, error) {
 	snapshot := append([]byte(nil), input...)
 	frontMatter, hasFrontMatter := source.MapLeadingFrontMatter(snapshot)
-	observations, linkUsages, unresolvedReferenceUsages, err := semanticParser.ParseWithLinkUsages(snapshot)
+	observed, err := semanticParser.ParseDocument(snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("parse markdown: %w", err)
 	}
+	observations := observed.Nodes
+	linkUsages := observed.LinkUsages
+	unresolvedReferenceUsages := observed.UnresolvedReferenceUsages
+	footnoteDefinitions := observed.FootnoteDefinitions
+	footnoteReferences := observed.FootnoteReferences
+	mathExpressions := observed.MathExpressions
 	if hasFrontMatter {
 		linkUsages = linkUsagesOutsideRange(linkUsages, frontMatter.Range)
 		unresolvedReferenceUsages = unresolvedReferenceUsagesOutsideRange(unresolvedReferenceUsages, frontMatter.Range)
+		footnoteDefinitions = footnoteDefinitionsOutsideRange(footnoteDefinitions, frontMatter.Range)
+		footnoteReferences = footnoteReferencesOutsideRange(footnoteReferences, frontMatter.Range)
+		mathExpressions = mathExpressionsOutsideRange(mathExpressions, frontMatter.Range)
 	}
 
 	fingerprint := source.Sum(snapshot)
-	nodes := make([]Node, 0, len(observations)+len(frontMatter.Fields))
+	nodes := make([]Node, 0, len(observations)+len(frontMatter.Fields)+len(footnoteDefinitions)+len(mathExpressions))
 	tableRows := make(map[int]tableRowSourceResult)
 	if hasFrontMatter {
 		nodes = append(nodes, frontMatterNodes(fingerprint, frontMatter)...)
@@ -219,6 +250,10 @@ func Parse(input []byte) (*Document, error) {
 			return nil, err
 		}
 		nodes = append(nodes, node)
+	}
+	nodes, err = promoteSupplementalNodes(snapshot, fingerprint, nodes, mathExpressions, footnoteDefinitions)
+	if err != nil {
+		return nil, err
 	}
 	listModel, err := resolveListItemModel(nodes)
 	if err != nil {
@@ -237,6 +272,7 @@ func Parse(input []byte) (*Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("index structural nodes: %w", err)
 	}
+	resolvedFootnoteReferences := resolveFootnoteReferences(nodes, footnoteReferences)
 	sections, sectionIndex, err := buildSections(snapshot, nodes)
 	if err != nil {
 		return nil, fmt.Errorf("index sections: %w", err)
@@ -266,7 +302,34 @@ func Parse(input []byte) (*Document, error) {
 		frontMatter:               storedFrontMatter,
 		linkUsages:                append([]parser.LinkUsage(nil), linkUsages...),
 		unresolvedReferenceUsages: append([]parser.UnresolvedReferenceUsage(nil), unresolvedReferenceUsages...),
+		footnoteReferences:        resolvedFootnoteReferences,
 	}, nil
+}
+
+func promoteSupplementalNodes(snapshot []byte, fingerprint source.Fingerprint, nodes []Node, mathExpressions []parser.MathExpressionObservation, footnotes []parser.FootnoteDefinitionObservation) ([]Node, error) {
+	mathNodes, err := promoteMathExpressionNodes(snapshot, fingerprint, mathExpressions)
+	if err != nil {
+		return nil, err
+	}
+	nodes = mergeSourceOrderedNodes(nodes, mathNodes)
+	footnoteNodes, err := promoteFootnoteDefinitionNodes(snapshot, fingerprint, footnotes)
+	if err != nil {
+		return nil, err
+	}
+	return mergeSourceOrderedNodes(nodes, footnoteNodes), nil
+}
+
+// FrontMatter returns the recognized document-leading metadata envelope, if present.
+func (d *Document) FrontMatter() (FrontMatterEnvelope, bool) {
+	if d == nil || d.frontMatter.Format == source.FrontMatterUnknown || d.frontMatter.OpeningRange.Start != 0 || d.frontMatter.ClosingRange.End < d.frontMatter.OpeningRange.End {
+		return FrontMatterEnvelope{}, false
+	}
+	return FrontMatterEnvelope{
+		Format:       FrontMatterFormat(d.frontMatter.Format),
+		Range:        Range{Start: d.frontMatter.OpeningRange.Start, End: d.frontMatter.ClosingRange.End},
+		OpeningRange: d.frontMatter.OpeningRange,
+		ClosingRange: d.frontMatter.ClosingRange,
+	}, true
 }
 
 // Nodes returns a copy of the snapshot-local structural nodes.
@@ -386,6 +449,7 @@ func cloneNode(node Node) Node {
 	node.TableSource.DelimiterAlignments = append([]source.TableDelimiterAlignment(nil), node.TableSource.DelimiterAlignments...)
 	node.BlockquoteSource.ContentRanges = append([]source.Range(nil), node.BlockquoteSource.ContentRanges...)
 	node.FencedBlockSource.ContentRanges = append([]source.Range(nil), node.FencedBlockSource.ContentRanges...)
+	node.FootnoteSource.BodyRanges = append([]source.Range(nil), node.FootnoteSource.BodyRanges...)
 	return node
 }
 

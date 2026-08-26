@@ -83,12 +83,39 @@ func writeConstructionBlock(output *bytes.Buffer, block constructionBlock) []con
 		return writeConstructionList(output, block.items, ordered)
 	case constructionFencedCode:
 		return []constructionExpectation{writeConstructionFencedCode(output, block.inlineGFM, block.info)}
+	default:
+		return writeConstructionAuxiliaryBlock(output, block)
+	}
+}
+
+func writeConstructionAuxiliaryBlock(output *bytes.Buffer, block constructionBlock) []constructionExpectation {
+	switch block.kind {
 	case constructionReferenceDefinition:
 		return []constructionExpectation{writeConstructionReferenceDefinition(output, block.label, block.destination, block.title, block.hasTitle)}
+	case constructionFootnoteDefinition:
+		return []constructionExpectation{writeConstructionFootnoteDefinition(output, block.label, block.inlineGFM)}
+	case constructionMathBlock:
+		return []constructionExpectation{writeConstructionMathBlock(output, block.inlineGFM)}
 	case constructionTableBlock:
 		return writeConstructionTable(output, block.table)
 	default:
 		return nil
+	}
+}
+
+func writeConstructionMathBlock(output *bytes.Buffer, payload string) constructionExpectation {
+	start := output.Len()
+	output.WriteString("$$")
+	payloadStart := output.Len()
+	output.WriteString(payload)
+	payloadEnd := output.Len()
+	output.WriteString("$$")
+	output.WriteByte('\n')
+	return constructionExpectation{
+		kind:         splice.KindMathExpression,
+		contentRange: splice.Range{Start: payloadStart, End: payloadEnd},
+		sourceRange:  splice.Range{Start: start, End: output.Len()},
+		mathStyle:    splice.MathExpressionBlockDollar,
 	}
 }
 
@@ -360,6 +387,29 @@ func writeConstructionReferenceDefinition(output *bytes.Buffer, label, destinati
 			title:       title,
 			hasTitle:    hasTitle,
 			titleRange:  titleRange,
+		},
+	}
+}
+
+func writeConstructionFootnoteDefinition(output *bytes.Buffer, label, body string) constructionExpectation {
+	start := output.Len()
+	output.WriteString("[^")
+	labelStart := output.Len()
+	output.WriteString(label)
+	labelRange := splice.Range{Start: labelStart, End: output.Len()}
+	output.WriteString("]: ")
+	bodyStart := output.Len()
+	output.WriteString(body)
+	bodyRange := splice.Range{Start: bodyStart, End: output.Len()}
+	output.WriteByte('\n')
+	return constructionExpectation{
+		kind:         splice.KindFootnoteDefinition,
+		contentRange: bodyRange,
+		sourceRange:  splice.Range{Start: start, End: output.Len()},
+		footnote: constructionFootnoteProof{
+			label:      label,
+			labelRange: labelRange,
+			bodyRange:  bodyRange,
 		},
 	}
 }

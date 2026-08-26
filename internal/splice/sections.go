@@ -15,6 +15,12 @@ type Section struct {
 	childCount       int
 }
 
+type sectionHeading struct {
+	ID    NodeID
+	Level int
+	Range Range
+}
+
 func buildSections(source []byte, nodes []Node) ([]Section, map[NodeID]int, error) {
 	headings, err := collectSectionHeadings(source, nodes)
 	if err != nil {
@@ -59,8 +65,8 @@ func buildSections(source []byte, nodes []Node) ([]Section, map[NodeID]int, erro
 	return sections, index, nil
 }
 
-func collectSectionHeadings(source []byte, nodes []Node) ([]Node, error) {
-	headings := make([]Node, 0)
+func collectSectionHeadings(source []byte, nodes []Node) ([]sectionHeading, error) {
+	headings := make([]sectionHeading, 0)
 	for _, node := range nodes {
 		if node.Kind != KindHeading || !node.Editable || !node.TopLevel {
 			continue
@@ -72,12 +78,12 @@ func collectSectionHeadings(source []byte, nodes []Node) ([]Node, error) {
 			previous := headings[len(headings)-1]
 			return nil, fmt.Errorf("section headings out of source order: %q at %d after %q at %d", node.ID, node.Range.Start, previous.ID, previous.Range.Start)
 		}
-		headings = append(headings, node)
+		headings = append(headings, sectionHeading{ID: node.ID, Level: node.Level, Range: node.Range})
 	}
 	return headings, nil
 }
 
-func newSection(source []byte, heading Node, nextHeadingStart int) (Section, error) {
+func newSection(source []byte, heading sectionHeading, nextHeadingStart int) (Section, error) {
 	bodyStart, err := sectionBodyStart(source, heading.Range.End)
 	if err != nil {
 		return Section{}, fmt.Errorf("section heading %q: %w", heading.ID, err)

@@ -52,8 +52,8 @@ func MapLeadingFrontMatter(input []byte) (FrontMatterMapping, bool) {
 	if !ok {
 		return FrontMatterMapping{}, false
 	}
-	fields := collectUniqueFrontMatterFields(input, bodyStart, closingStart, format)
-	if len(fields) == 0 {
+	fields, recognized := collectFrontMatterFields(input, bodyStart, closingStart, format)
+	if !recognized {
 		return FrontMatterMapping{}, false
 	}
 	return FrontMatterMapping{
@@ -104,12 +104,25 @@ func findFrontMatterClosing(input []byte, bodyStart int, delimiter []byte) (int,
 	return 0, 0, false
 }
 
-func collectUniqueFrontMatterFields(input []byte, bodyStart, closingStart int, format FrontMatterFormat) []FrontMatterFieldMapping {
+func collectFrontMatterFields(input []byte, bodyStart, closingStart int, format FrontMatterFormat) ([]FrontMatterFieldMapping, bool) {
 	candidates := make([]FrontMatterFieldMapping, 0)
+	recognized := bodyStart == closingStart
+	tomlTable := false
 	for lineStart := bodyStart; lineStart < closingStart; {
 		lineEnd := physicalLineEnd(input, lineStart)
-		if field, ok := mapFrontMatterField(input, lineStart, lineEnd, format); ok {
-			candidates = append(candidates, field)
+		line := input[lineStart:lineEnd]
+		if format == FrontMatterTOML && tomlTableHeaderCandidate(line) {
+			recognized = true
+			tomlTable = true
+		} else {
+			if _, _, ok := scanFrontMatterKeySeparator(line, format); ok {
+				recognized = true
+			}
+			if !tomlTable {
+				if field, ok := mapFrontMatterField(input, lineStart, lineEnd, format); ok {
+					candidates = append(candidates, field)
+				}
+			}
 		}
 		next, ok := nextPhysicalLineStart(input, lineEnd)
 		if !ok || next >= closingStart {
@@ -117,6 +130,10 @@ func collectUniqueFrontMatterFields(input []byte, bodyStart, closingStart int, f
 		}
 		lineStart = next
 	}
+	return uniqueFrontMatterFields(candidates), recognized
+}
+
+func uniqueFrontMatterFields(candidates []FrontMatterFieldMapping) []FrontMatterFieldMapping {
 	counts := make(map[string]int, len(candidates))
 	for _, field := range candidates {
 		counts[field.Key]++
@@ -128,6 +145,33 @@ func collectUniqueFrontMatterFields(input []byte, bodyStart, closingStart int, f
 		}
 	}
 	return fields
+}
+
+func tomlTableHeaderCandidate(line []byte) bool {
+	start := skipHorizontalSpace(line, 0, len(line))
+	end := len(line)
+	for end > start && isHorizontalSpace(line[end-1]) {
+		end--
+	}
+	if start >= end || line[start] != '[' {
+		return false
+	}
+	if start+1 < end && line[start+1] == '[' {
+		return end-start >= 5 && line[end-2] == ']' && line[end-1] == ']' && simpleTOMLTableKey(line[start+2:end-2])
+	}
+	return end-start >= 3 && line[end-1] == ']' && simpleTOMLTableKey(line[start+1:end-1])
+}
+
+func simpleTOMLTableKey(value []byte) bool {
+	if len(value) == 0 {
+		return false
+	}
+	for _, b := range value {
+		if !isSimpleMetadataKeyByte(b) {
+			return false
+		}
+	}
+	return true
 }
 
 func mapFrontMatterField(input []byte, lineStart, lineEnd int, format FrontMatterFormat) (FrontMatterFieldMapping, bool) {
@@ -156,6 +200,18 @@ func mapFrontMatterField(input []byte, lineStart, lineEnd int, format FrontMatte
 }
 
 func scanFrontMatterKeyValueStart(line []byte, format FrontMatterFormat) (Range, int, bool) {
+	keyRange, pos, ok := scanFrontMatterKeySeparator(line, format)
+	if !ok {
+		return Range{}, 0, false
+	}
+	pos = skipHorizontalSpace(line, pos, len(line))
+	if pos >= len(line) {
+		return Range{}, 0, false
+	}
+	return keyRange, pos, true
+}
+
+func scanFrontMatterKeySeparator(line []byte, format FrontMatterFormat) (Range, int, bool) {
 	if len(line) == 0 {
 		return Range{}, 0, false
 	}
@@ -165,7 +221,6 @@ func scanFrontMatterKeyValueStart(line []byte, format FrontMatterFormat) (Range,
 	} else if isHorizontalSpace(line[0]) {
 		return Range{}, 0, false
 	}
-
 	keyStart := pos
 	for pos < len(line) && isSimpleMetadataKeyByte(line[pos]) {
 		pos++
@@ -174,7 +229,6 @@ func scanFrontMatterKeyValueStart(line []byte, format FrontMatterFormat) (Range,
 		return Range{}, 0, false
 	}
 	keyRange := Range{Start: keyStart, End: pos}
-
 	if format == FrontMatterTOML {
 		pos = skipHorizontalSpace(line, pos, len(line))
 		if pos >= len(line) || line[pos] != '=' {
@@ -183,11 +237,7 @@ func scanFrontMatterKeyValueStart(line []byte, format FrontMatterFormat) (Range,
 	} else if pos >= len(line) || line[pos] != ':' {
 		return Range{}, 0, false
 	}
-	pos = skipHorizontalSpace(line, pos+1, len(line))
-	if pos >= len(line) {
-		return Range{}, 0, false
-	}
-	return keyRange, pos, true
+	return keyRange, pos + 1, true
 }
 
 func scanSimpleMetadataValue(line []byte, start int, format FrontMatterFormat) (Range, FrontMatterValueStyle, byte, bool) {

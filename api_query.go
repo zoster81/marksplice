@@ -120,16 +120,16 @@ func (d *Document) querySourceLen(limit int) (int, error) {
 
 type nodeQueryKindFilter struct {
 	all    bool
-	values [KindBlockquote + 1]bool
+	values [KindMathExpression + 1]bool
 }
 
 func newNodeQueryKindFilter(kinds []Kind) (nodeQueryKindFilter, error) {
-	if len(kinds) > int(KindBlockquote) {
+	if len(kinds) > int(KindMathExpression) {
 		return nodeQueryKindFilter{}, fmt.Errorf("%w: too many node-kind filters: %d", ErrInvalidQuery, len(kinds))
 	}
 	filter := nodeQueryKindFilter{all: len(kinds) == 0}
 	for _, kind := range kinds {
-		if kind <= KindUnknown || kind > KindBlockquote {
+		if kind <= KindUnknown || kind > KindMathExpression {
 			return nodeQueryKindFilter{}, fmt.Errorf("%w: unsupported node kind %d", ErrInvalidQuery, kind)
 		}
 		filter.values[kind] = true
@@ -138,7 +138,7 @@ func newNodeQueryKindFilter(kinds []Kind) (nodeQueryKindFilter, error) {
 }
 
 func (f nodeQueryKindFilter) matches(kind Kind) bool {
-	return f.all || kind > KindUnknown && kind <= KindBlockquote && f.values[kind]
+	return f.all || kind > KindUnknown && kind <= KindMathExpression && f.values[kind]
 }
 
 type sectionQueryLevelFilter struct {

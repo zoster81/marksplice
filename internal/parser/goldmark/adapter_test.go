@@ -2,6 +2,7 @@ package goldmark
 
 import (
 	"bytes"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -370,6 +371,54 @@ func countNodeKind(root ast.Node, kind ast.NodeKind) int {
 		return ast.WalkContinue, nil
 	})
 	return count
+}
+
+func BenchmarkM108DenseDelimiterBackendScaling(b *testing.B) {
+	for _, sizeKiB := range []int{16, 64, 256} {
+		source := []byte(strings.Repeat("*_~`", (sizeKiB<<10)/4) + "\n")
+		b.Run(fmt.Sprintf("RawGoldmark/%dKiB", sizeKiB), func(b *testing.B) {
+			parser := New().markdown.Parser()
+			b.ReportAllocs()
+			b.SetBytes(int64(len(source)))
+			for i := 0; i < b.N; i++ {
+				_ = parser.Parse(text.NewReader(source))
+			}
+		})
+		b.Run(fmt.Sprintf("Adapter/%dKiB", sizeKiB), func(b *testing.B) {
+			adapter := New()
+			b.ReportAllocs()
+			b.SetBytes(int64(len(source)))
+			for i := 0; i < b.N; i++ {
+				if _, err := adapter.Parse(source); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkM108DeepBlockquoteBackendScaling(b *testing.B) {
+	for _, depth := range []int{256, 1024, 4096} {
+		source := []byte(strings.Repeat("> ", depth) + "payload\n")
+		b.Run(fmt.Sprintf("RawGoldmark/%d", depth), func(b *testing.B) {
+			parser := New().markdown.Parser()
+			b.ReportAllocs()
+			b.SetBytes(int64(len(source)))
+			for i := 0; i < b.N; i++ {
+				_ = parser.Parse(text.NewReader(source))
+			}
+		})
+		b.Run(fmt.Sprintf("Adapter/%d", depth), func(b *testing.B) {
+			adapter := New()
+			b.ReportAllocs()
+			b.SetBytes(int64(len(source)))
+			for i := 0; i < b.N; i++ {
+				if _, err := adapter.Parse(source); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 func FuzzParseProducesValidSourceRanges(f *testing.F) {

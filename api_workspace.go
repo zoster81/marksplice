@@ -30,12 +30,13 @@ type WorkspaceResolution struct {
 	Fragment string
 }
 
-// WorkspaceResolver classifies one non-local M99 relationship for workspace
-// validation. It is invoked synchronously during ValidateWorkspace and is never retained.
+// WorkspaceResolver classifies one non-local link relationship for workspace validation.
+// It is invoked synchronously, never concurrently during one ValidateWorkspace call,
+// and is never retained.
 type WorkspaceResolver func(source DocumentKey, relationship LinkRelationship) WorkspaceResolution
 
-// ManagedTOC identifies one caller-designated section whose body is expected to be
-// the conservative managed TOC shape established by M98.
+// ManagedTOC identifies one caller-designated section whose body is expected to use
+// the conservative managed TOC shape recognized by TOCStale and PrepareSyncTOC.
 type ManagedTOC struct {
 	Document  DocumentKey
 	HeadingID NodeID
@@ -68,32 +69,47 @@ const (
 	WorkspaceDiagnosticUnrecognizedGeneratedIndex
 )
 
+// UnresolvedReference is immutable semantic metadata for one conservative explicit
+// full/collapsed reference whose parser context contains no matching definition.
+type UnresolvedReference struct {
+	reference string
+	form      ReferenceForm
+	image     bool
+}
+
+// Reference returns the unresolved reference label.
+func (r UnresolvedReference) Reference() string { return r.reference }
+
+// Form returns the explicit full or collapsed reference form.
+func (r UnresolvedReference) Form() ReferenceForm { return r.form }
+
+// IsImage reports whether the unresolved reference is an image reference.
+func (r UnresolvedReference) IsImage() bool { return r.image }
+
 // WorkspaceDiagnostic is one immutable workspace validation finding. Accessors expose
 // only metadata meaningful for the diagnostic kind; absent metadata returns false.
 type WorkspaceDiagnostic struct {
-	kind                     WorkspaceDiagnosticKind
-	relationship             LinkRelationship
-	hasRelationship          bool
-	sourceOffset             int
-	hasSourceOffset          bool
-	sourceDocument           DocumentKey
-	hasSourceDocument        bool
-	targetDocument           DocumentKey
-	hasTargetDocument        bool
-	fragment                 string
-	hasFragment              bool
-	unresolvedReference      string
-	unresolvedReferenceForm  ReferenceForm
-	unresolvedReferenceImage bool
-	hasUnresolvedReference   bool
-	nodeID                   NodeID
-	hasNodeID                bool
+	kind                   WorkspaceDiagnosticKind
+	relationship           LinkRelationship
+	hasRelationship        bool
+	sourceOffset           int
+	hasSourceOffset        bool
+	sourceDocument         DocumentKey
+	hasSourceDocument      bool
+	targetDocument         DocumentKey
+	hasTargetDocument      bool
+	fragment               string
+	hasFragment            bool
+	unresolvedReference    UnresolvedReference
+	hasUnresolvedReference bool
+	nodeID                 NodeID
+	hasNodeID              bool
 }
 
 // Kind returns the diagnostic category.
 func (d WorkspaceDiagnostic) Kind() WorkspaceDiagnosticKind { return d.kind }
 
-// Relationship returns the M99 relationship associated with this diagnostic.
+// Relationship returns the link relationship associated with this diagnostic.
 func (d WorkspaceDiagnostic) Relationship() (LinkRelationship, bool) {
 	return d.relationship, d.hasRelationship
 }
@@ -120,8 +136,8 @@ func (d WorkspaceDiagnostic) Fragment() (string, bool) {
 
 // UnresolvedReference returns conservative explicit unresolved reference metadata.
 // Shortcut bracket text is never reported because it is ambiguous with ordinary text.
-func (d WorkspaceDiagnostic) UnresolvedReference() (string, ReferenceForm, bool, bool) {
-	return d.unresolvedReference, d.unresolvedReferenceForm, d.unresolvedReferenceImage, d.hasUnresolvedReference
+func (d WorkspaceDiagnostic) UnresolvedReference() (UnresolvedReference, bool) {
+	return d.unresolvedReference, d.hasUnresolvedReference
 }
 
 // NodeID returns the snapshot-local node associated with a generated-index diagnostic.
@@ -153,7 +169,7 @@ func (p WorkspaceRepairPlan) Repairs() []WorkspaceRepair {
 	return append([]WorkspaceRepair(nil), p.repairs...)
 }
 
-// WorkspaceReport combines the resolved M100 graph, deterministic diagnostics, and
+// WorkspaceReport combines the resolved DocumentGraph, deterministic diagnostics, and
 // conservative repair plan for one explicit validation run.
 type WorkspaceReport struct {
 	graph       *DocumentGraph
@@ -161,7 +177,7 @@ type WorkspaceReport struct {
 	repairPlan  WorkspaceRepairPlan
 }
 
-// Graph returns the immutable M100 graph produced by this validation run.
+// Graph returns the immutable document graph produced by this validation run.
 func (r *WorkspaceReport) Graph() *DocumentGraph {
 	if r == nil {
 		return nil
@@ -498,15 +514,17 @@ func (s *workspaceValidationState) appendUnresolvedReferences() error {
 				return fmt.Errorf("%w: invalid unresolved-reference form for %q", ErrInvalidWorkspace, item.Key)
 			}
 			s.diagnostics = append(s.diagnostics, WorkspaceDiagnostic{
-				kind:                     WorkspaceDiagnosticUnresolvedReference,
-				sourceOffset:             reference.SourceOffset,
-				hasSourceOffset:          true,
-				sourceDocument:           item.Key,
-				hasSourceDocument:        true,
-				unresolvedReference:      reference.Reference,
-				unresolvedReferenceForm:  form,
-				unresolvedReferenceImage: reference.Image,
-				hasUnresolvedReference:   true,
+				kind:              WorkspaceDiagnosticUnresolvedReference,
+				sourceOffset:      reference.SourceOffset,
+				hasSourceOffset:   true,
+				sourceDocument:    item.Key,
+				hasSourceDocument: true,
+				unresolvedReference: UnresolvedReference{
+					reference: reference.Reference,
+					form:      form,
+					image:     reference.Image,
+				},
+				hasUnresolvedReference: true,
 			})
 		}
 	}

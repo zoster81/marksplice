@@ -25,9 +25,14 @@ var (
 	ErrInvalidGraph = errors.New("invalid document graph")
 	// ErrInvalidWorkspace reports malformed workspace validation authority or targets.
 	ErrInvalidWorkspace = errors.New("invalid workspace validation")
+	// ErrInvalidKnowledge reports malformed syntax-independent knowledge metadata or references.
+	ErrInvalidKnowledge = errors.New("invalid knowledge index")
+	// ErrInvalidExtension reports malformed third-party extension configuration or observations.
+	ErrInvalidExtension = errors.New("invalid extension")
 )
 
-// Kind identifies a structural Markdown node category.
+// Kind identifies a Marksplice core structural Markdown node category.
+// Third-party extension identities are intentionally outside this core enum.
 type Kind uint8
 
 const (
@@ -53,6 +58,8 @@ const (
 	KindTable
 	KindThematicBreak
 	KindBlockquote
+	KindFootnoteDefinition
+	KindMathExpression
 )
 
 // NodeID identifies a node within one parsed source snapshot.
@@ -102,7 +109,8 @@ func (n Node) Kind() Kind {
 
 // Document is an immutable parsed Markdown source snapshot.
 type Document struct {
-	document *splice.Document
+	document       *splice.Document
+	extensionNodes []ExtensionNode
 }
 
 // Parse copies and parses source into an immutable document snapshot.
@@ -238,7 +246,7 @@ func internalNodeID(id NodeID) splice.NodeID {
 	return splice.NodeID(id.value)
 }
 
-var publicKindByInternalKind = [splice.KindTable + 1]Kind{
+var publicKindByInternalKind = [splice.KindMathExpression + 1]Kind{
 	splice.KindParagraph:            KindParagraph,
 	splice.KindHeading:              KindHeading,
 	splice.KindTask:                 KindTask,
@@ -261,6 +269,8 @@ var publicKindByInternalKind = [splice.KindTable + 1]Kind{
 	splice.KindThematicBreak:        KindThematicBreak,
 	splice.KindBlockquote:           KindBlockquote,
 	splice.KindTable:                KindTable,
+	splice.KindFootnoteDefinition:   KindFootnoteDefinition,
+	splice.KindMathExpression:       KindMathExpression,
 }
 
 func publicKind(kind splice.Kind) (Kind, bool) {

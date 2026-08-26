@@ -72,7 +72,7 @@ func (d *Document) Alerts() []Alert {
 
 // AlertBodyRanges returns caller-owned inner source segments after the alert marker line.
 // Marker-only blank lines are represented by valid empty ranges and lazy continuation
-// lines retain their source-proven M94 inner ranges.
+// lines retain their source-proven blockquote inner ranges.
 func (d *Document) AlertBodyRanges(id NodeID) ([]Range, bool) {
 	node, err := d.promotedNode(id, splice.KindBlockquote, true)
 	if err != nil {

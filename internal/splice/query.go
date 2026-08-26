@@ -38,6 +38,10 @@ func nodeSelectionRange(node Node) (Range, bool) {
 		return node.ThematicBreakSource.LineRange, true
 	case KindBlockquote:
 		return node.BlockquoteSource.LineRange, true
+	case KindFootnoteDefinition:
+		return node.FootnoteSource.Range, true
+	case KindMathExpression:
+		return node.MathSource.Range, true
 	default:
 		return Range{}, false
 	}

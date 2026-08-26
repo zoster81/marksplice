@@ -22,6 +22,9 @@ const (
 	inlineConstructionBareAutoLink
 	inlineConstructionReferenceLink
 	inlineConstructionReferenceImage
+	inlineConstructionFootnoteReference
+	inlineConstructionMathDollar
+	inlineConstructionMathBacktick
 )
 
 // Inline is a construction-only typed inline value.
@@ -42,8 +45,8 @@ type Inline struct {
 
 // TextInline returns semantic plain text for typed inline construction.
 //
-// M75 encodes ASCII punctuation with canonical GFM backslash escapes so caller
-// text cannot become Markdown syntax implicitly. Validation occurs when the
+// ASCII punctuation is encoded with canonical GFM backslash escapes so caller text
+// cannot become Markdown syntax implicitly. Validation occurs when the
 // value is appended to a DocumentBuilder.
 func TextInline(text string) Inline {
 	return Inline{kind: inlineConstructionText, text: text}
@@ -51,7 +54,7 @@ func TextInline(text string) Inline {
 
 // CodeInline returns one conservative single-line code span construction value.
 //
-// M76 selects an adaptive backtick delimiter longer than every internal run.
+// The writer selects an adaptive backtick delimiter longer than every internal run.
 // Leading/trailing horizontal space and leading/trailing backticks are rejected
 // because supporting those shapes would require semantic whitespace or delimiter
 // normalization beyond the existing source-proven parsed CodeSpan capability.
@@ -60,20 +63,20 @@ func CodeInline(code string) Inline {
 }
 
 // EmphasisInline returns one conservative emphasis construction value.
-// M88 permits bounded nesting of code, emphasis, strong, and strikethrough
-// children while keeping links/images/autolinks outside this wrapper slice.
+// It permits bounded nesting of code, emphasis, strong, and strikethrough children
+// while keeping links/images/autolinks outside this wrapper slice.
 func EmphasisInline(content ...Inline) Inline {
 	return Inline{kind: inlineConstructionEmphasis, children: cloneTypedInlineConstruction(content)}
 }
 
 // StrongInline returns one conservative strong-emphasis construction value.
-// M88 applies the same bounded structured-child policy as EmphasisInline.
+// It applies the same bounded structured-child policy as EmphasisInline.
 func StrongInline(content ...Inline) Inline {
 	return Inline{kind: inlineConstructionStrong, children: cloneTypedInlineConstruction(content)}
 }
 
 // StrikethroughInline returns one conservative GFM strikethrough construction value.
-// M88 permits bounded code/emphasis/strong children but rejects direct
+// It permits bounded code/emphasis/strong children but rejects direct
 // strikethrough-in-strikethrough nesting because adjacent tilde runs are ambiguous.
 func StrikethroughInline(content ...Inline) Inline {
 	return Inline{kind: inlineConstructionStrikethrough, children: cloneTypedInlineConstruction(content)}
@@ -81,30 +84,30 @@ func StrikethroughInline(content ...Inline) Inline {
 
 // LinkInline returns one conservative inline-link construction value.
 //
-// M77 writes the destination in angle brackets, M87 adds the separate WithTitle
-// constructor, and M92 permits the reviewed bounded structured-inline children.
+// The destination is written in angle brackets and labels may contain the reviewed
+// bounded structured-inline children; use LinkInlineWithTitle for a title.
 func LinkInline(destination string, label ...Inline) Inline {
 	return newTypedLinkOrImage(inlineConstructionLink, destination, "", false, label)
 }
 
 // LinkInlineWithTitle returns one conservative inline-link construction value
-// with a canonical double-quoted title. M87 requires a non-empty title that needs
-// no GFM escape or entity interpretation.
+// with a canonical double-quoted title. The title must be non-empty and require no
+// GFM escape or entity interpretation.
 func LinkInlineWithTitle(destination, title string, label ...Inline) Inline {
 	return newTypedLinkOrImage(inlineConstructionLink, destination, title, true, label)
 }
 
 // ImageInline returns one conservative inline-image construction value.
 //
-// M77 writes the destination in angle brackets, M87 adds the separate WithTitle
-// constructor, and M92 permits the reviewed bounded structured-inline children.
+// The destination is written in angle brackets and alt content may contain the reviewed
+// bounded structured-inline children; use ImageInlineWithTitle for a title.
 func ImageInline(destination string, alt ...Inline) Inline {
 	return newTypedLinkOrImage(inlineConstructionImage, destination, "", false, alt)
 }
 
 // ImageInlineWithTitle returns one conservative inline-image construction value
-// with a canonical double-quoted title. M87 applies the same conservative title
-// policy as LinkInlineWithTitle.
+// with a canonical double-quoted title. It applies the same conservative title policy
+// as LinkInlineWithTitle.
 func ImageInlineWithTitle(destination, title string, alt ...Inline) Inline {
 	return newTypedLinkOrImage(inlineConstructionImage, destination, title, true, alt)
 }
@@ -190,6 +193,7 @@ type typedInlineExpectation struct {
 	titleRange       Range
 	destination      string
 	title            string
+	mathStyle        MathExpressionStyle
 	angleDestination bool
 	hasTitle         bool
 }
@@ -208,8 +212,11 @@ type typedInlineWriteContext struct {
 	hierarchy                    *[]splice.ConstructionInlineExpectation
 	linkImageExpected            *[]splice.ConstructionLinkImageExpectation
 	referenceExpected            *[]splice.ConstructionReferenceInlineExpectation
+	footnoteExpected             *[]typedFootnoteReferenceExpectation
 	referenceDefinitions         []typedInlineReferenceDefinition
 	deferredReferenceDefinitions []typedInlineReferenceDefinition
+	footnoteDefinitions          []string
+	deferredFootnoteDefinitions  []string
 	policy                       typedInlineWritePolicy
 	parent                       int
 	depth                        int
@@ -226,13 +233,17 @@ func (b *DocumentBuilder) renderTypedInlineConstruction(content []Inline) (strin
 	hierarchy := make([]splice.ConstructionInlineExpectation, 0, len(content))
 	linkImageExpected := make([]splice.ConstructionLinkImageExpectation, 0, len(content))
 	referenceExpected := make([]splice.ConstructionReferenceInlineExpectation, 0, len(content))
+	footnoteExpected := make([]typedFootnoteReferenceExpectation, 0, len(content))
 	context := typedInlineWriteContext{
 		expected:                     &expected,
 		hierarchy:                    &hierarchy,
 		linkImageExpected:            &linkImageExpected,
 		referenceExpected:            &referenceExpected,
+		footnoteExpected:             &footnoteExpected,
 		referenceDefinitions:         typedInlineReferenceDefinitions(b.blocks),
 		deferredReferenceDefinitions: typedInlineReferenceDefinitions(b.deferredReferences),
+		footnoteDefinitions:          constructionFootnoteLabels(b.blocks),
+		deferredFootnoteDefinitions:  constructionFootnoteLabels(b.deferredFootnotes),
 		policy:                       typedInlineTopLevel,
 		parent:                       -1,
 	}
@@ -245,7 +256,7 @@ func (b *DocumentBuilder) renderTypedInlineConstruction(content []Inline) (strin
 		return "", fmt.Errorf("%w: typed inline content is empty", ErrInvalidConstruction)
 	}
 	source := output.String()
-	if err := validateTypedInlineConstruction(source, expected, hierarchy, linkImageExpected, referenceExpected); err != nil {
+	if err := validateTypedInlineConstruction(source, expected, hierarchy, linkImageExpected, referenceExpected, footnoteExpected); err != nil {
 		return "", err
 	}
 	return source, nil
@@ -266,6 +277,10 @@ func writeTypedInlineConstruction(output *strings.Builder, inline Inline, contex
 		return writeTypedInlineLinkOrImage(output, inline, context)
 	case inlineConstructionReferenceLink, inlineConstructionReferenceImage:
 		return writeTypedInlineReferenceLinkOrImage(output, inline, context)
+	case inlineConstructionFootnoteReference:
+		return writeTypedInlineFootnoteReference(output, inline, context)
+	case inlineConstructionMathDollar, inlineConstructionMathBacktick:
+		return writeTypedInlineMath(output, inline, context.expected)
 	case inlineConstructionAutoLink:
 		return writeTypedInlineAutoLink(output, inline.text, true, context.expected)
 	case inlineConstructionBareAutoLink:
@@ -504,7 +519,7 @@ func writeTypedInlineAutoLink(output *strings.Builder, value string, angle bool,
 	return nil
 }
 
-func validateTypedInlineConstruction(source string, expected []typedInlineExpectation, hierarchy []splice.ConstructionInlineExpectation, linkImages []splice.ConstructionLinkImageExpectation, references []splice.ConstructionReferenceInlineExpectation) error {
+func validateTypedInlineConstruction(source string, expected []typedInlineExpectation, hierarchy []splice.ConstructionInlineExpectation, linkImages []splice.ConstructionLinkImageExpectation, references []splice.ConstructionReferenceInlineExpectation, footnotes []typedFootnoteReferenceExpectation) error {
 	if err := splice.ValidateConstructionLinkImages([]byte(source), linkImages); err != nil {
 		return fmt.Errorf("%w: typed link/image semantic proof: %v", ErrInvalidConstruction, err)
 	}
@@ -513,6 +528,9 @@ func validateTypedInlineConstruction(source string, expected []typedInlineExpect
 	}
 	if err := splice.ValidateConstructionInlineHierarchy([]byte(source), hierarchy, references); err != nil {
 		return fmt.Errorf("%w: typed inline hierarchy proof: %v", ErrInvalidConstruction, err)
+	}
+	if err := validateTypedFootnoteReferences(source, footnotes); err != nil {
+		return err
 	}
 	document, err := Parse([]byte(source + "\n"))
 	if err != nil {
@@ -594,15 +612,36 @@ func typedInlineExpectationFromNode(document *Document, node Node) (typedInlineE
 			return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline strong emphasis is not source-proven", ErrInvalidConstruction)
 		}
 		return typedInlineExpectation{kind: KindStrong, contentRange: detail.Range()}, true, nil
+	default:
+		return typedInlineRelationshipExpectation(document, node)
+	}
+}
+
+func typedInlineRelationshipExpectation(document *Document, node Node) (typedInlineExpectation, bool, error) {
+	switch node.Kind() {
 	case KindInlineLink:
 		return typedInlineLinkExpectation(document, node)
 	case KindImage:
 		return typedInlineImageExpectation(document, node)
 	case KindAutoLink:
 		return typedInlineAutoLinkExpectation(document, node)
+	case KindMathExpression:
+		return typedInlineMathExpectation(document, node)
 	default:
 		return typedInlineExpectation{}, false, nil
 	}
+}
+
+func typedInlineMathExpectation(document *Document, node Node) (typedInlineExpectation, bool, error) {
+	detail, ok := document.MathExpression(node.ID())
+	if !ok || detail.Style() == MathExpressionFencedBlock {
+		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline math is not source-proven", ErrInvalidConstruction)
+	}
+	payload, ok := detail.PayloadRange()
+	if !ok {
+		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline math payload is not contiguous", ErrInvalidConstruction)
+	}
+	return typedInlineExpectation{kind: KindMathExpression, contentRange: payload, mathStyle: detail.Style()}, true, nil
 }
 
 func typedInlineLinkExpectation(document *Document, node Node) (typedInlineExpectation, bool, error) {

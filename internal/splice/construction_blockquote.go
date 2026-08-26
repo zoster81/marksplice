@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/zoster81/marksplice/internal/parser"
-	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
 	"github.com/zoster81/marksplice/internal/source"
 )
 
@@ -21,7 +20,7 @@ func ValidateConstructionNestedBlockquoteBlocks(input []byte, outer Range, inner
 		return fmt.Errorf("validate canonical blockquote blocks: %w", err)
 	}
 	parserOuter := parser.Range{Start: outer.Start, End: outer.End}
-	if err := goldmarkparser.ValidateNestedBlockquoteBlocks(input, parserOuter, innerSource, depth); err != nil {
+	if err := newParserBackend().ValidateNestedBlockquoteBlocks(input, parserOuter, innerSource, depth); err != nil {
 		return fmt.Errorf("validate semantic blockquote blocks: %w", err)
 	}
 	return nil
@@ -39,7 +38,7 @@ func ValidateConstructionNestedBlockquoteParagraph(input []byte, outer Range, co
 		parserLines[index] = parser.Range{Start: line.Start, End: line.End}
 	}
 	parserOuter := parser.Range{Start: outer.Start, End: outer.End}
-	if err := goldmarkparser.ValidateNestedBlockquoteParagraph(input, parserOuter, parserLines, depth); err != nil {
+	if err := newParserBackend().ValidateNestedBlockquoteParagraph(input, parserOuter, parserLines, depth); err != nil {
 		return fmt.Errorf("validate semantic blockquote paragraph: %w", err)
 	}
 	return nil

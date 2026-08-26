@@ -116,9 +116,9 @@ func TestM101ValidateWorkspaceReportsBrokenRelationshipsOrphansAndStaleTOC(t *te
 	}
 	for offset, want := range wantReferences {
 		diagnostic := diagnostics[6+offset]
-		value, form, image, ok := diagnostic.UnresolvedReference()
-		if !ok || value != want.value || form != want.form || image != want.image {
-			t.Fatalf("UnresolvedReference[%d] = %q/%v/%v/%v, want %q/%v/%v/true", offset, value, form, image, ok, want.value, want.form, want.image)
+		unresolved, ok := diagnostic.UnresolvedReference()
+		if !ok || unresolved.Reference() != want.value || unresolved.Form() != want.form || unresolved.IsImage() != want.image {
+			t.Fatalf("UnresolvedReference[%d] = %q/%v/%v/%v, want %q/%v/%v/true", offset, unresolved.Reference(), unresolved.Form(), unresolved.IsImage(), ok, want.value, want.form, want.image)
 		}
 		if _, ok := diagnostic.SourceOffset(); !ok {
 			t.Fatalf("unresolved diagnostic[%d] missing source offset", offset)
@@ -239,9 +239,9 @@ func TestM101ValidateWorkspaceExcludesFrontMatterAndAmbiguousShortcutTextFromUnr
 	if len(diagnostics) != 1 || diagnostics[0].Kind() != marksplice.WorkspaceDiagnosticUnresolvedReference {
 		t.Fatalf("diagnostics = %#v, want one body unresolved reference", diagnostics)
 	}
-	value, form, image, ok := diagnostics[0].UnresolvedReference()
-	if !ok || value != "missing" || form != marksplice.ReferenceFormFull || image {
-		t.Fatalf("UnresolvedReference() = %q/%v/%v/%v", value, form, image, ok)
+	unresolved, ok := diagnostics[0].UnresolvedReference()
+	if !ok || unresolved.Reference() != "missing" || unresolved.Form() != marksplice.ReferenceFormFull || unresolved.IsImage() {
+		t.Fatalf("UnresolvedReference() = %q/%v/%v/%v", unresolved.Reference(), unresolved.Form(), unresolved.IsImage(), ok)
 	}
 }
 

@@ -101,7 +101,7 @@ func TestM97QueryNodesRejectsInvalidQueries(t *testing.T) {
 	}
 	negative := marksplice.Range{Start: -1, End: 1}
 	pastEnd := marksplice.Range{Start: 0, End: 999}
-	tooManyKinds := make([]marksplice.Kind, int(marksplice.KindBlockquote)+1)
+	tooManyKinds := make([]marksplice.Kind, int(marksplice.KindMathExpression)+1)
 	for index := range tooManyKinds {
 		tooManyKinds[index] = marksplice.KindHeading
 	}

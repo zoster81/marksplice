@@ -88,7 +88,7 @@ func (d *Document) TableCell(id NodeID) (TableCell, bool) {
 }
 
 // TableRowCellIDs returns the promoted non-empty cells owned by one promoted body row in source order.
-// Empty cells are omitted because M5 does not assign them public cell identities.
+// Empty cells are omitted because they do not receive public cell identities.
 func (d *Document) TableRowCellIDs(rowID NodeID) ([]NodeID, bool) {
 	if d == nil || d.document == nil {
 		return nil, false
@@ -101,7 +101,7 @@ func (d *Document) TableRowCellIDs(rowID NodeID) ([]NodeID, bool) {
 }
 
 // TableRowHeaderCellIDs returns the promoted non-empty header cells for the table that owns one promoted body row.
-// Empty header cells are omitted because M5 does not assign them public cell identities.
+// Empty header cells are omitted because they do not receive public cell identities.
 func (d *Document) TableRowHeaderCellIDs(rowID NodeID) ([]NodeID, bool) {
 	if d == nil || d.document == nil {
 		return nil, false
@@ -332,6 +332,29 @@ func (d *Document) AutoLink(id NodeID) (AutoLink, bool) {
 		sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End},
 		value:       node.Value,
 		email:       node.AutoLinkEmail,
+	}, true
+}
+
+// FrontMatter returns the recognized document-leading YAML/TOML metadata envelope.
+// Complex or duplicate metadata can be readable through this envelope even when no
+// individual field is safe to promote for source-preserving mutation.
+func (d *Document) FrontMatter() (FrontMatter, bool) {
+	if d == nil || d.document == nil {
+		return FrontMatter{}, false
+	}
+	envelope, ok := d.document.FrontMatter()
+	if !ok {
+		return FrontMatter{}, false
+	}
+	format, ok := publicFrontMatterFormat(envelope.Format)
+	if !ok {
+		return FrontMatter{}, false
+	}
+	return FrontMatter{
+		format:       format,
+		sourceRange:  publicRange(envelope.Range),
+		openingRange: publicRange(envelope.OpeningRange),
+		closingRange: publicRange(envelope.ClosingRange),
 	}, true
 }
 

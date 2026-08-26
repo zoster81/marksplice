@@ -251,7 +251,7 @@ func validateParagraphReplacement(replacement []byte) error {
 				return ErrInvalidReplacement
 			}
 			paragraphs++
-		case parser.KindStrikethrough, parser.KindInlineLink, parser.KindAutoLink, parser.KindCodeSpan, parser.KindEmphasis, parser.KindStrong, parser.KindRawHTML:
+		case parser.KindStrikethrough, parser.KindInlineLink, parser.KindImage, parser.KindAutoLink, parser.KindCodeSpan, parser.KindEmphasis, parser.KindStrong, parser.KindRawHTML:
 			// Nested inline observations are compatible with a single paragraph replacement.
 		default:
 			return ErrInvalidReplacement

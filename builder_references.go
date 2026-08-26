@@ -6,10 +6,10 @@ import (
 	"github.com/zoster81/marksplice/internal/splice"
 )
 
-// DeferReferenceDefinition schedules one canonical top-level reference
-// definition after the ordinary constructed body. M93 uses this explicit
-// document-level contract for forward typed references without changing the
-// M89 prior-definition contract of ReferenceLinkInline/ReferenceImageInline.
+// DeferReferenceDefinition schedules one canonical top-level reference definition
+// after the ordinary constructed body. ForwardReferenceLinkInline and
+// ForwardReferenceImageInline resolve only against explicitly deferred definitions;
+// ReferenceLinkInline and ReferenceImageInline still require prior definitions.
 func (b *DocumentBuilder) DeferReferenceDefinition(label, destination string) error {
 	if b == nil {
 		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
@@ -64,11 +64,12 @@ func referenceDefinitionLabelCollides(label string, blocks []constructionBlock) 
 }
 
 func (b *DocumentBuilder) constructionDocumentBlocks() []constructionBlock {
-	if len(b.deferredReferences) == 0 {
+	if len(b.deferredReferences) == 0 && len(b.deferredFootnotes) == 0 {
 		return b.blocks
 	}
-	blocks := make([]constructionBlock, 0, len(b.blocks)+len(b.deferredReferences))
+	blocks := make([]constructionBlock, 0, len(b.blocks)+len(b.deferredReferences)+len(b.deferredFootnotes))
 	blocks = append(blocks, b.blocks...)
 	blocks = append(blocks, b.deferredReferences...)
+	blocks = append(blocks, b.deferredFootnotes...)
 	return blocks
 }

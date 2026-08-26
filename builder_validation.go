@@ -25,6 +25,8 @@ const (
 	constructionAlertBlocks
 	constructionNestedUnorderedList
 	constructionNestedOrderedList
+	constructionFootnoteDefinition
+	constructionMathBlock
 
 	maxConstructionBlockquoteDepth = 64
 )
@@ -94,6 +96,10 @@ func validateConstructionBlock(block constructionBlock) error {
 		return validateConstructionFenceInfo(block.info)
 	case constructionReferenceDefinition:
 		return validateConstructionReferenceDefinition(block.label, block.destination, block.title, block.hasTitle)
+	case constructionFootnoteDefinition:
+		return validateConstructionFootnoteDefinition(block.label, block.inlineGFM)
+	case constructionMathBlock:
+		return validateConstructionMathPayload(block.inlineGFM)
 	case constructionTableBlock:
 		return validateConstructionTable(block.table)
 	default:
@@ -357,6 +363,9 @@ func validateConstructionReferenceDefinition(label, destination, title string, h
 	if strings.ContainsAny(label, "[]") {
 		return fmt.Errorf("%w: reference label contains a bracket", ErrInvalidConstruction)
 	}
+	if strings.HasPrefix(label, "^") {
+		return fmt.Errorf("%w: caret-prefixed reference labels are reserved for footnote syntax", ErrInvalidConstruction)
+	}
 	if strings.ContainsAny(destination, "<>") {
 		return fmt.Errorf("%w: angle destination contains an angle bracket", ErrInvalidConstruction)
 	}
@@ -368,6 +377,26 @@ func validateConstructionReferenceDefinition(label, destination, title string, h
 	}
 	if strings.ContainsAny(title, "\"\\") {
 		return fmt.Errorf("%w: reference title requires escaping", ErrInvalidConstruction)
+	}
+	return nil
+}
+
+func validateConstructionFootnoteDefinition(label, body string) error {
+	if err := validateConstructionFootnoteLabel(label); err != nil {
+		return err
+	}
+	if err := validateConstructionInlineGFM(body); err != nil {
+		return fmt.Errorf("%w: footnote body must be one non-empty physical line", ErrInvalidConstruction)
+	}
+	return nil
+}
+
+func validateConstructionFootnoteLabel(label string) error {
+	if err := validateConstructionInlineGFM(label); err != nil {
+		return err
+	}
+	if strings.ContainsAny(label, "[]") {
+		return fmt.Errorf("%w: footnote label contains a bracket", ErrInvalidConstruction)
 	}
 	return nil
 }

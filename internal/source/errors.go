@@ -18,4 +18,6 @@ var (
 	ErrUnsupportedEmphasisShape            = errors.New("unsupported emphasis source shape")
 	ErrUnsupportedThematicBreakShape       = errors.New("unsupported thematic-break source shape")
 	ErrUnsupportedBlockquoteShape          = errors.New("unsupported blockquote source shape")
+	ErrUnsupportedFootnoteShape            = errors.New("unsupported footnote source shape")
+	ErrUnsupportedMathExpressionShape      = errors.New("unsupported math expression source shape")
 )

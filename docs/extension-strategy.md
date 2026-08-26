@@ -8,7 +8,7 @@ Marksplice does not maintain a collection of first-party syntax extensions.
 
 A feature belongs in Marksplice core only when it is sufficiently general to improve Markdown/document understanding, source-preserving editing, deterministic construction, navigation, validation, or relationship intelligence without turning the library into a collection of dialects.
 
-Dialect-specific, product-specific, presentation-only, renderer-only, or integration-specific behavior stays outside core. After M110, independent Go packages may implement such behavior through the reviewed public SPI if they need it.
+Dialect-specific, product-specific, presentation-only, renderer-only, or integration-specific behavior stays outside core. M110 defines the public read-only observation SPI through which independent Go packages may attach such semantics explicitly without becoming Marksplice dependencies.
 
 The Goldmark ecosystem is used only as a catalog of feature ideas. Its extension packages are not a dependency roadmap and are not an architecture model that Marksplice intends to reproduce.
 
@@ -52,19 +52,19 @@ Names such as `mermaid`, `geojson`, `topojson`, `stl`, `math`, `d2`, `pikchr`, o
 
 ### Footnotes
 
-Footnotes are a high-value candidate for core because they introduce useful document relationships rather than presentation-only behavior. If the source contract is approved, core support should include references, definitions, multiple-reference behavior, construction, source-preserving editing, navigation, and graph integration.
+M104 completes footnotes as a core capability because they add useful document relationships rather than presentation-only behavior. The reviewed contract is exact and case-sensitive: parser-backed references expose definition identity and occurrence order; top-level definitions require independent complete source ownership; multiline semantic body segments remain readable without becoming broad rewrite spans; simple bodies can be replaced source-preservingly; coordinated rename updates every parser-bound occurrence; canonical immediate/deferred definitions support typed references; and ordinary links inside footnote bodies participate in existing relationship/graph intelligence. The temporary backend uses an isolated footnote semantic pass rather than changing Marksplice's normative GFM profile or exposing a first-party extension mode.
 
 ### Mathematical expressions
 
-GitHub-compatible mathematical source semantics are useful enough to evaluate for core. Marksplice should own only the Markdown-level syntax and exact source ranges. The mathematical payload remains opaque. MathJax, KaTeX, MathML, LaTeX rendering, or other renderers remain outside core.
+M105 completes the reviewed mathematical core overlay. Marksplice owns only conservative Markdown-level source semantics for non-empty single-line `$...$`, dollar-backtick, and one-line `$$...$$`, plus exact-info `math` fenced projection through the existing M103 identity. Dedicated forms are independently source-proven, queryable, source-preservingly payload-editable, and constructible through typed/canonical APIs; ambiguous Markdown-owned source fails closed. Mathematical payload remains opaque, and MathJax, KaTeX, MathML, LaTeX parsing/rendering, execution, or network-backed behavior remains outside core.
 
 ### Metadata and front matter
 
-Marksplice already owns a conservative YAML/TOML document-envelope model. The useful ecosystem lesson is to audit whether the envelope/source model should become more general, not to replace it with a generic metadata AST or serializer. Unknown metadata must remain source-preserved rather than normalized.
+M106 completes the metadata/front-matter generalization audit by separating document-envelope ownership from field editability. `Document.FrontMatter()` can report an empty or conservatively metadata-evidenced YAML/TOML envelope even when every value remains opaque; duplicate/complex metadata does not gain mutation authority, and TOML table scope prevents nested members from being misrepresented as top-level fields. Empty leading envelopes have explicit metadata precedence while non-empty delimiter pairs without metadata evidence remain GFM. The useful ecosystem lesson is therefore implemented at the source-ownership layer only: Marksplice still has no generic metadata AST, YAML/TOML parser/serializer, schema system, or normalization path.
 
 ### Knowledge-document primitives
 
-Document aliases, logical references, tags, and relationship metadata may be useful as syntax-independent graph/query primitives. Core should add such concepts only when they remain useful independently of a specific dialect spelling.
+M107 implements the broadly useful subset as a syntax-independent overlay over M100: exact globally unique aliases, exact tags, direct logical references to existing `DocumentKey` targets, logical outgoing/backlink queries, and combined reachability/related-document traversal. The overlay does not infer wikilinks, hashtags, front-matter values, paths, or URLs; it does not add source mutation or a second graph. Arbitrary metadata schemas and free-form relationship attributes remain outside the reviewed core contract until a later explicit need justifies generally defined semantics.
 
 ## Ideas that should normally stay outside core
 
@@ -83,7 +83,7 @@ The following concepts are useful examples for future third-party packages rathe
 - CJK-specific parser behavior when it changes baseline syntax rules;
 - other project-specific Markdown dialects.
 
-This is not a prohibition on those features existing in the Marksplice ecosystem. It is a boundary: they should be implemented by independent packages through M110 unless a later explicit core decision establishes that a concept has become sufficiently general.
+This is not a prohibition on those features existing in the Marksplice ecosystem. It is a boundary: independent packages may recognize them through the M110 opt-in read-only overlay unless a later explicit core decision establishes that a concept has become sufficiently general.
 
 ## Rendering and integration ideas outside core
 
@@ -103,22 +103,15 @@ Marksplice may understand the surrounding Markdown structure while treating thos
 
 ## M110 third-party extensibility boundary
 
-M110 may expose a small public SPI for independent, statically linked Go packages. This is not Go's runtime `plugin` mechanism and does not mean Marksplice ships first-party extensions.
+M110 implements the smallest reviewed public SPI as an explicitly opted-in, read-only semantic/source overlay for independent statically linked Go packages. This is not Go's runtime `plugin` mechanism and does not mean Marksplice ships first-party extensions.
 
-The exact public API remains a later design task, but any approved SPI must satisfy these constraints:
+`Parse` remains the baseline GFM entrypoint. `ParseWithOptions` first completes the ordinary Marksplice parse, then invokes caller-registered recognizers synchronously and serially over one immutable source string. Each extension has an exact `ExtensionID` namespace and returns only extension-local kinds, non-empty snapshot-local ranges, and scalar attributes. Marksplice validates and defensively copies all retained observations under caller-provided total node and metadata-byte limits. Duplicate namespaces, malformed output, recognizer errors, recovered panics, or exhausted limits fail the complete call with `ErrInvalidExtension`; no partial extension state is returned.
 
-- core GFM semantics cannot be silently redefined;
-- third-party syntax/semantic kinds must be isolated or namespaced;
-- parsing and construction must remain deterministic and bounded;
-- source ownership must be explicit enough for every exposed edit;
-- third-party code cannot submit arbitrary unvalidated byte patches;
-- mutations still use Marksplice stale-source, overlap, candidate-proof, and patch validation;
-- filesystem/network/command authority is not granted by registration;
-- failure of one third-party recognizer must not corrupt core parser state;
-- callers must opt in explicitly to non-core syntax;
-- absence of a third-party package must leave baseline Marksplice behavior unchanged.
+The overlay cannot suppress, replace, or reclassify core nodes and never consumes core `Kind` ordinals. It exposes no raw patch, `ChangeSet`, `DocumentBuilder`, parser-AST, graph-resolver, filesystem, network, or command authority. Overlapping observations from different extensions are allowed because they are independent read-only claims. Zero options are equivalent to `Parse`, and absence of an extension leaves baseline behavior unchanged.
 
-The SPI should be designed together with the Marksplice-native parser boundary so extensibility is intentional rather than bolted onto the parser afterward.
+Recognizers are ordinary caller-linked Go code. Marksplice can validate and bound only the observations it retains; it cannot sandbox or preempt an extension's own CPU, memory, goroutine, filesystem, network, or command behavior. Caller trust therefore governs recognizer execution, while Marksplice retains fail-closed ownership of its own document state.
+
+This parser-backend-independent public boundary was deliberately defined before native-parser work. M111 freezes the separate internal parser-substitution contract/differential harness, M112 completes the native block candidate, and M113 completes native inline/reference parsed-document observations beneath it without changing the SPI. M114–M115 must preserve the same M110 public overlay rather than coupling extensions to Goldmark or requiring a parser-specific SPI redesign.
 
 ## Goldmark exit strategy
 
@@ -128,13 +121,13 @@ The transition is staged:
 
 1. complete and harden the Marksplice product/source model;
 2. define the M110 third-party boundary;
-3. freeze the native parser observation contract and differential harness in M111;
-4. implement native block parsing in M112;
-5. implement native inline parsing in M113;
+3. freeze the native parser observation/proof contract and differential harness in M111 (complete);
+4. implement native block parsing in M112 (complete);
+5. implement native inline parsing in M113 (complete);
 6. prove complete native conformance and hardening in M114;
 7. remove Goldmark and cut production over in M115.
 
-Goldmark may be used as a temporary differential oracle while the replacement is developed. No Goldmark upgrade or migration is part of this roadmap.
+Goldmark is isolated behind the M111 parser-independent backend contract and remains only the temporary production backend/differential oracle while the replacement is developed. M112 and M113 now supply the native parsed-document block/inline/reference candidate: block, inline-node, and link/reference relationship projections each pass all 676 parser-applicable published-GFM examples through the shared harness. M114 owns complete native backend/conformance hardening before M115 cutover. No Goldmark upgrade or migration is part of this roadmap.
 
 ## Native-parser cutover gate
 

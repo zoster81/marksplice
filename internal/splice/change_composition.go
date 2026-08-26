@@ -1,11 +1,11 @@
 package splice
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"slices"
 	"sort"
-	"strings"
 
 	"github.com/zoster81/marksplice/internal/parser"
 	"github.com/zoster81/marksplice/internal/source"
@@ -28,9 +28,11 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 	}
 
 	nodeDeltas := make([]compositionDelta[compositionNodeView], 0, len(changes))
-	linkDeltas := make([]compositionDelta[string], 0, len(changes))
+	linkDeltas := make([]compositionDelta[compositionLinkView], 0, len(changes))
+	footnoteDeltas := make([]compositionDelta[compositionFootnoteReferenceView], 0, len(changes))
 	originalNodes := compositionNodeViews(d)
 	originalLinks := compositionLinkViews(d.linkUsages)
+	originalFootnotes := compositionFootnoteReferenceViews(d)
 	for _, change := range changes {
 		candidate, err := change.Apply(d.source)
 		if err != nil {
@@ -41,8 +43,9 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 			return ChangeSet{}, fmt.Errorf("%w: parse independently prepared composition candidate: %v", ErrInvalidReplacement, err)
 		}
 		sourceStart := compositionPatchStart(change.Patches())
-		nodeDeltas = append(nodeDeltas, newCompositionDelta(originalNodes, compositionNodeViews(candidateDocument), sourceStart))
-		linkDeltas = append(linkDeltas, newCompositionDelta(originalLinks, compositionLinkViews(candidateDocument.linkUsages), sourceStart))
+		nodeDeltas = append(nodeDeltas, newCompositionDeltas(originalNodes, compositionNodeViews(candidateDocument), sourceStart)...)
+		linkDeltas = append(linkDeltas, newCompositionDeltas(originalLinks, compositionLinkViews(candidateDocument.linkUsages), sourceStart)...)
+		footnoteDeltas = append(footnoteDeltas, newCompositionDeltas(originalFootnotes, compositionFootnoteReferenceViews(candidateDocument), sourceStart)...)
 	}
 
 	expectedNodes, ok := applyCompositionDeltas(originalNodes, nodeDeltas)
@@ -53,6 +56,10 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 	if !ok {
 		return ChangeSet{}, fmt.Errorf("%w: prepared mutations affect overlapping link relationships", ErrInvalidReplacement)
 	}
+	expectedFootnotes, ok := applyCompositionDeltas(originalFootnotes, footnoteDeltas)
+	if !ok {
+		return ChangeSet{}, fmt.Errorf("%w: prepared mutations affect overlapping footnote relationships", ErrInvalidReplacement)
+	}
 	candidate, err := combined.Apply(d.source)
 	if err != nil {
 		return ChangeSet{}, compositionSourceError(err)
@@ -62,7 +69,8 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 		return ChangeSet{}, fmt.Errorf("%w: parse combined composition candidate: %v", ErrInvalidReplacement, err)
 	}
 	if !slices.Equal(compositionNodeViews(candidateDocument), expectedNodes) ||
-		!slices.Equal(compositionLinkViews(candidateDocument.linkUsages), expectedLinks) {
+		!slices.Equal(compositionLinkViews(candidateDocument.linkUsages), expectedLinks) ||
+		!slices.Equal(compositionFootnoteReferenceViews(candidateDocument), expectedFootnotes) {
 		return ChangeSet{}, fmt.Errorf("%w: combined candidate does not match independently validated model deltas", ErrInvalidReplacement)
 	}
 	return combined, nil
@@ -76,7 +84,7 @@ func compositionSourceError(err error) error {
 }
 
 type compositionNodeView struct {
-	semantic     string
+	semantic     compositionNodeSemanticView
 	sourceHash   source.Fingerprint
 	ownedLength  int
 	rangeStart   int
@@ -85,14 +93,53 @@ type compositionNodeView struct {
 	contentEnd   int
 }
 
+type compositionNodeSemanticView struct {
+	kind                Kind
+	survivor            removalSurvivorSignature
+	tableAlignments     string
+	listSubtreeComplete bool
+	listChildCount      int
+	listParent          int
+	table               int
+	row                 int
+	previousRow         int
+	nextRow             int
+	blockquoteMarker    compositionRelativeRangeView
+	blockquoteContent   string
+	footnoteLabel       compositionRelativeRangeView
+	footnoteBody        string
+	mathStyle           MathExpressionStyle
+	mathPayload         compositionRelativeRangeView
+}
+
+type compositionRelativeRangeView struct {
+	present bool
+	start   int
+	end     int
+}
+
+type compositionLinkView struct {
+	kind          parser.Kind
+	form          parser.LinkUsageForm
+	reference     string
+	destination   string
+	title         string
+	hasTitle      bool
+	autoLinkEmail bool
+}
+
+type compositionFootnoteReferenceView struct {
+	label           string
+	occurrence      int
+	hasDefinition   bool
+	definitionIndex int
+}
+
 func compositionNodeViews(document *Document) []compositionNodeView {
 	if document == nil {
 		return nil
 	}
-	indexes := make(map[NodeID]int, len(document.nodes))
-	for index, node := range document.nodes {
-		indexes[node.ID] = index
-	}
+	indexes := document.nodeIndex
 	views := make([]compositionNodeView, len(document.nodes))
 	for index, node := range document.nodes {
 		owned := compositionOwnedRange(node)
@@ -136,14 +183,32 @@ func compositionOwnedRange(node Node) Range {
 	}
 }
 
-func compositionNodeSemantic(node Node, index int, indexes map[NodeID]int, owned Range) string {
-	var builder strings.Builder
-	_, _ = fmt.Fprintf(&builder, "%d|%#v|align=%v|subtree=%t|children=%d", node.Kind, removalSurvivorSemanticSignature(node), node.TableAlignments, node.ListSubtreeComplete, node.ListChildCount)
-	_, _ = fmt.Fprintf(&builder, "|list-parent=%d|table=%d|row=%d|prev-row=%d|next-row=%d", relativeNodeIndex(index, node.ListParentID, indexes), relativeNodeIndex(index, node.TableID, indexes), relativeNodeIndex(index, node.TableRowID, indexes), relativeNodeIndex(index, node.TablePreviousRowID, indexes), relativeNodeIndex(index, node.TableNextRowID, indexes))
-	if node.Kind == KindBlockquote {
-		_, _ = fmt.Fprintf(&builder, "|bq-marker=%s|bq-content=%s", compositionRelativeRange(node.BlockquoteSource.MarkerRange, owned), compositionRelativeRanges(node.BlockquoteSource.ContentRanges, owned))
+func compositionNodeSemantic(node Node, index int, indexes map[NodeID]int, owned Range) compositionNodeSemanticView {
+	view := compositionNodeSemanticView{
+		kind:                node.Kind,
+		survivor:            removalSurvivorSemanticSignature(node),
+		tableAlignments:     compositionTableAlignments(node.TableAlignments),
+		listSubtreeComplete: node.ListSubtreeComplete,
+		listChildCount:      node.ListChildCount,
+		listParent:          relativeNodeIndex(index, node.ListParentID, indexes),
+		table:               relativeNodeIndex(index, node.TableID, indexes),
+		row:                 relativeNodeIndex(index, node.TableRowID, indexes),
+		previousRow:         relativeNodeIndex(index, node.TablePreviousRowID, indexes),
+		nextRow:             relativeNodeIndex(index, node.TableNextRowID, indexes),
 	}
-	return builder.String()
+	if node.Kind == KindBlockquote {
+		view.blockquoteMarker = compositionRelativeRange(node.BlockquoteSource.MarkerRange, owned)
+		view.blockquoteContent = compositionRelativeRanges(node.BlockquoteSource.ContentRanges, owned)
+	}
+	if node.Kind == KindFootnoteDefinition {
+		view.footnoteLabel = compositionRelativeRange(node.FootnoteSource.LabelRange, owned)
+		view.footnoteBody = compositionRelativeRanges(node.FootnoteSource.BodyRanges, owned)
+	}
+	if node.Kind == KindMathExpression {
+		view.mathStyle = node.MathSource.Style
+		view.mathPayload = compositionRelativeRange(node.MathSource.PayloadRange, owned)
+	}
+	return view
 }
 
 func relativeNodeIndex(current int, id NodeID, indexes map[NodeID]int) int {
@@ -157,31 +222,72 @@ func relativeNodeIndex(current int, id NodeID, indexes map[NodeID]int) int {
 	return index - current
 }
 
-func compositionRelativeRange(range_, base Range) string {
+func compositionRelativeRange(range_, base Range) compositionRelativeRangeView {
 	if range_ == (Range{}) {
-		return "-"
+		return compositionRelativeRangeView{}
 	}
-	return fmt.Sprintf("%d:%d", range_.Start-base.Start, range_.End-base.Start)
+	return compositionRelativeRangeView{present: true, start: range_.Start - base.Start, end: range_.End - base.Start}
+}
+
+func compositionTableAlignments(alignments []TableAlignment) string {
+	if len(alignments) == 0 {
+		return ""
+	}
+	encoded := make([]byte, len(alignments))
+	for index, alignment := range alignments {
+		encoded[index] = byte(alignment)
+	}
+	return string(encoded)
 }
 
 func compositionRelativeRanges(ranges []source.Range, base Range) string {
 	if len(ranges) == 0 {
-		return "-"
+		return ""
 	}
-	var builder strings.Builder
+	encoded := make([]byte, len(ranges)*16)
 	for index, range_ := range ranges {
-		if index != 0 {
-			builder.WriteByte(',')
-		}
-		_, _ = fmt.Fprintf(&builder, "%d:%d", range_.Start-base.Start, range_.End-base.Start)
+		offset := index * 16
+		binary.LittleEndian.PutUint64(encoded[offset:offset+8], uint64(int64(range_.Start-base.Start)))
+		binary.LittleEndian.PutUint64(encoded[offset+8:offset+16], uint64(int64(range_.End-base.Start)))
 	}
-	return builder.String()
+	return string(encoded)
 }
 
-func compositionLinkViews(usages []parser.LinkUsage) []string {
-	views := make([]string, len(usages))
+func compositionFootnoteReferenceViews(document *Document) []compositionFootnoteReferenceView {
+	if document == nil {
+		return nil
+	}
+	definitions := footnoteDefinitionIndexes(document)
+	views := make([]compositionFootnoteReferenceView, len(document.footnoteReferences))
+	for index, reference := range document.footnoteReferences {
+		definitionIndex := -1
+		if reference.HasDefinition {
+			if resolved, ok := definitions[reference.DefinitionID]; ok {
+				definitionIndex = resolved
+			}
+		}
+		views[index] = compositionFootnoteReferenceView{
+			label:           reference.Label,
+			occurrence:      reference.Occurrence,
+			hasDefinition:   reference.HasDefinition,
+			definitionIndex: definitionIndex,
+		}
+	}
+	return views
+}
+
+func compositionLinkViews(usages []parser.LinkUsage) []compositionLinkView {
+	views := make([]compositionLinkView, len(usages))
 	for index, usage := range usages {
-		views[index] = fmt.Sprintf("%d|%d|%s|%s|%s|%t|%t", usage.Kind, usage.Form, usage.Reference, usage.Destination, usage.Title, usage.HasTitle, usage.AutoLinkEmail)
+		views[index] = compositionLinkView{
+			kind:          usage.Kind,
+			form:          usage.Form,
+			reference:     usage.Reference,
+			destination:   usage.Destination,
+			title:         usage.Title,
+			hasTitle:      usage.HasTitle,
+			autoLinkEmail: usage.AutoLinkEmail,
+		}
 	}
 	return views
 }
@@ -191,6 +297,30 @@ type compositionDelta[T comparable] struct {
 	end         int
 	replacement []T
 	sourceStart int
+}
+
+func newCompositionDeltas[T comparable](original, candidate []T, sourceStart int) []compositionDelta[T] {
+	if len(original) != len(candidate) {
+		return []compositionDelta[T]{newCompositionDelta(original, candidate, sourceStart)}
+	}
+	result := make([]compositionDelta[T], 0)
+	for index := 0; index < len(original); {
+		if original[index] == candidate[index] {
+			index++
+			continue
+		}
+		start := index
+		for index < len(original) && original[index] != candidate[index] {
+			index++
+		}
+		result = append(result, compositionDelta[T]{
+			start:       start,
+			end:         index,
+			replacement: append([]T(nil), candidate[start:index]...),
+			sourceStart: sourceStart,
+		})
+	}
+	return result
 }
 
 func newCompositionDelta[T comparable](original, candidate []T, sourceStart int) compositionDelta[T] {

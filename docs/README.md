@@ -8,7 +8,7 @@ This directory is the single home for tracked project documentation beyond the r
 - [`architecture.md`](architecture.md): durable architecture, package boundaries, source-preservation model, and repository-layout rationale.
 - [`gfm-conformance.md`](gfm-conformance.md): normative GitHub Flavored Markdown profile and specification-update policy.
 - [`goldmark-capability-matrix.md`](goldmark-capability-matrix.md): Goldmark-versus-Marksplice parser/source responsibility boundary.
-- [`extension-strategy.md`](extension-strategy.md): selection of broadly useful core capabilities from ecosystem ideas, the future third-party extensibility/SPI boundary, and the mandatory M115 Goldmark removal plan.
+- [`extension-strategy.md`](extension-strategy.md): selection of broadly useful core capabilities from ecosystem ideas, the reviewed third-party extensibility/SPI boundary, and the mandatory M115 Goldmark removal plan.
 - [`releasing.md`](releasing.md): public Go-module versioning, beta-release procedure, and publication verification.
 - [`milestones/`](milestones/): detailed milestone contracts, design records, tests, and historical verification evidence.
 
@@ -23,8 +23,9 @@ This directory is the single home for tracked project documentation beyond the r
 ├── doc.go                   package documentation for pkg.go.dev
 ├── example_test.go          executable pkg.go.dev examples
 ├── internal/
-│   ├── parser/              parser-independent contracts and Goldmark adapter
+│   ├── parser/              parser-independent contract/differential tests, native block/inline candidate, temporary Goldmark adapter
 │   ├── publictest/          black-box tests of the public module API
+│   ├── testutil/            shared test-only conformance/differential loaders
 │   ├── source/              lossless source ownership/mapping
 │   └── splice/              source-preserving document and mutation engine
 ├── docs/                    project documentation
@@ -43,8 +44,8 @@ moving that package under a top-level `src/` directory would naturally change it
 
 The root package filenames are grouped deliberately:
 
-- `api*.go` owns parsed-document identity, typed views, sections, mutation preparation, the bounded public query surface in `api_query.go`, native anchor/fragment/TOC navigation in `api_navigation.go`, immutable single-document link intelligence in `api_relationships.go`, the explicit caller-provided multi-document graph in `api_graph.go`, bounded workspace validation/repair planning in `api_workspace.go`, Marksplice-owned semantic block overlays such as GitHub alerts in `api_alerts.go`, and the complete read-only fenced-container model in `api_fenced_blocks.go`;
-- `builder*.go` owns new-document construction and its private validation/writing/proof helpers; generic typed-inline writing stays in `builder_inline.go`, reference-link/reference-image forms, resolution, and proof stay in `builder_inline_reference.go`, and alert construction entrypoints stay in `builder_alerts.go` while reusing the shared blockquote writer/proof machinery;
+- `api*.go` owns parsed-document identity, typed views, sections, mutation preparation, the bounded public query surface in `api_query.go`, native anchor/fragment/TOC navigation in `api_navigation.go`, immutable single-document link intelligence in `api_relationships.go`, the explicit caller-provided multi-document graph in `api_graph.go`, bounded workspace validation/repair planning in `api_workspace.go`, syntax-independent knowledge-document indexing in `api_knowledge.go`, Marksplice-owned semantic block overlays such as GitHub alerts in `api_alerts.go`, the complete read-only fenced-container model in `api_fenced_blocks.go`, source-proven footnote definitions/reference relationships in `api_footnotes.go`, and mathematical-expression read/edit projection in `api_math.go`;
+- `builder*.go` owns new-document construction and its private validation/writing/proof helpers; generic typed-inline writing stays in `builder_inline.go`, reference-link/reference-image forms, resolution, and proof stay in `builder_inline_reference.go`, footnote definitions/typed-reference construction stays in `builder_footnotes.go`, mathematical construction stays in `builder_math.go`, and alert construction entrypoints stay in `builder_alerts.go` while reusing the shared blockquote writer/proof machinery;
 - `doc.go` and `example_test.go` own package documentation and executable examples.
 
 Do not introduce a second source tree or duplicate documentation tree merely for cosmetic separation. New code should extend the existing package boundaries or justify a new internal package with a concrete responsibility.

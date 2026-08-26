@@ -32,8 +32,8 @@ type typedInlineReferenceDefinition struct {
 
 // ReferenceLinkInline returns one conservative full reference-link construction value.
 // The exact reference label must identify one already-appended top-level reference
-// definition in the destination DocumentBuilder when the value is appended. M92
-// permits the same reviewed bounded structured-inline label children as direct links.
+// definition in the destination DocumentBuilder when the value is appended. It permits
+// the same reviewed bounded structured-inline label children as direct links.
 func ReferenceLinkInline(reference string, label ...Inline) Inline {
 	return newTypedReferenceLinkOrImage(inlineConstructionReferenceLink, typedInlineReferenceFull, typedInlineReferencePriorExact, reference, label)
 }
@@ -57,8 +57,7 @@ func ShortcutReferenceLinkInline(label ...Inline) Inline {
 }
 
 // ReferenceImageInline returns one conservative full reference-image construction value.
-// It follows the same existing exact-definition and M92 structured-alt requirements as
-// ReferenceLinkInline.
+// It follows the same exact-definition and structured-alt requirements as ReferenceLinkInline.
 func ReferenceImageInline(reference string, alt ...Inline) Inline {
 	return newTypedReferenceLinkOrImage(inlineConstructionReferenceImage, typedInlineReferenceFull, typedInlineReferencePriorExact, reference, alt)
 }

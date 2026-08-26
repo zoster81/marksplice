@@ -55,6 +55,9 @@ func (b *DocumentBuilder) AppendAlertBlocks(kind AlertKind, content *DocumentBui
 	if len(content.deferredReferences) != 0 {
 		return fmt.Errorf("%w: alert child builder cannot contain deferred reference definitions", ErrInvalidConstruction)
 	}
+	if len(content.deferredFootnotes) != 0 {
+		return fmt.Errorf("%w: alert child builder cannot contain deferred footnote definitions", ErrInvalidConstruction)
+	}
 	children := append([]constructionBlock(nil), content.blocks...)
 	return b.appendConstructionBlock(constructionBlock{
 		kind:      constructionAlertBlocks,

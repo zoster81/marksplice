@@ -17,12 +17,17 @@ import (
 
 // Adapter isolates Goldmark behind Marksplice-owned parser types.
 type Adapter struct {
-	markdown goldmark.Markdown
+	markdown  goldmark.Markdown
+	footnotes goldmark.Markdown
 }
 
-// New returns a Goldmark-backed semantic parser configured for Marksplice's single GFM profile.
+// New returns a Goldmark-backed semantic parser configured for Marksplice's
+// normative GFM profile plus an isolated footnote semantic pass.
 func New() *Adapter {
-	return &Adapter{markdown: newMarkdown()}
+	return &Adapter{
+		markdown:  newMarkdown(),
+		footnotes: newFootnoteMarkdown(),
+	}
 }
 
 func newMarkdown() goldmark.Markdown {
@@ -64,14 +69,19 @@ func hasGFMExtendedAutolinks(extenders []goldmark.Extender) bool {
 
 // Parse returns parser-independent semantic observations tied to source byte ranges.
 func (a *Adapter) Parse(source []byte) ([]parser.Node, error) {
-	nodes, _, _, err := a.ParseWithLinkUsages(source)
-	return nodes, err
+	observed, err := a.ParseDocument(source)
+	return observed.Nodes, err
 }
 
 // ParseWithLinkUsages returns ordinary structural observations, every
 // parser-resolved link/image/autolink relationship, and conservative unresolved
 // explicit full/collapsed reference usages in semantic source order.
 func (a *Adapter) ParseWithLinkUsages(source []byte) ([]parser.Node, []parser.LinkUsage, []parser.UnresolvedReferenceUsage, error) {
+	observed, err := a.ParseDocument(source)
+	return observed.Nodes, observed.LinkUsages, observed.UnresolvedReferenceUsages, err
+}
+
+func (a *Adapter) parseGFM(source []byte) ([]parser.Node, []parser.LinkUsage, []parser.UnresolvedReferenceUsage, []parser.MathExpressionObservation, error) {
 	parseSource := normalizeIsolatedCR(source)
 	context := goldmarkparser.NewContext()
 	root := a.markdown.Parser().Parse(text.NewReader(parseSource), goldmarkparser.WithContext(context))
@@ -115,10 +125,12 @@ func (a *Adapter) ParseWithLinkUsages(source []byte) ([]parser.Node, []parser.Li
 		return ast.WalkContinue, nil
 	})
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("walk goldmark AST: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("walk goldmark AST: %w", err)
 	}
 	unresolved := unresolvedReferenceUsages(source, root, context)
-	return nodes, usages, unresolved, nil
+	mathExpressions := mathExpressionObservations(source, root)
+	nodes = removeMathGFMConflicts(nodes, mathExpressions)
+	return nodes, usages, unresolved, mathExpressions, nil
 }
 
 func linkUsage(source []byte, node ast.Node) (parser.LinkUsage, bool) {
@@ -380,5 +392,3 @@ func paragraphContentEnd(source []byte, semanticEnd int) int {
 	}
 	return end
 }
-
-var _ parser.Adapter = (*Adapter)(nil)

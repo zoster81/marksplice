@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/zoster81/marksplice/internal/parser"
-	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
 )
 
 // ConstructionLinkImageExpectation is construction-only semantic proof input
@@ -36,7 +35,7 @@ func ValidateConstructionLinkImages(source []byte, expected []ConstructionLinkIm
 			HasTitle:    want.HasTitle,
 		}
 	}
-	if err := goldmarkparser.ValidateConstructionLinkImages(source, converted); err != nil {
+	if err := newParserBackend().ValidateConstructionLinkImages(source, converted); err != nil {
 		return fmt.Errorf("validate construction link/image semantics: %w", err)
 	}
 	return nil

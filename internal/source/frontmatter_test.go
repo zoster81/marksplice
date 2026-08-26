@@ -64,6 +64,64 @@ func TestMapLeadingFrontMatterPreservesYAMLAndTOMLBoundaries(t *testing.T) {
 	}
 }
 
+func TestMapLeadingFrontMatterRecognizesOpaqueAndEmptyEnvelopeWithoutEditableFields(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source []byte
+		format FrontMatterFormat
+	}{
+		{name: "duplicate-only YAML", source: []byte("---\ntitle: one\ntitle: two\n---\n"), format: FrontMatterYAML},
+		{name: "complex-only YAML", source: []byte("---\nitems:\n  - one\n---\n"), format: FrontMatterYAML},
+		{name: "empty YAML", source: []byte("---\n---\n"), format: FrontMatterYAML},
+		{name: "TOML table", source: []byte("+++\n[params]\nauthor = 'Ada'\n+++\n"), format: FrontMatterTOML},
+		{name: "TOML array table", source: []byte("+++\n[[products]]\nname = 'Book'\n+++\n"), format: FrontMatterTOML},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			mapping, ok := MapLeadingFrontMatter(tt.source)
+			if !ok || mapping.Format != tt.format {
+				t.Fatalf("MapLeadingFrontMatter() = %+v/%v, want format %v", mapping, ok, tt.format)
+			}
+			if len(mapping.Fields) != 0 {
+				t.Fatalf("Fields = %+v, want opaque envelope with no editable fields", mapping.Fields)
+			}
+		})
+	}
+}
+
+func TestMapLeadingFrontMatterRejectsMalformedTOMLTableEvidence(t *testing.T) {
+	t.Parallel()
+
+	for _, source := range [][]byte{
+		[]byte("+++\n[\n+++\n"),
+		[]byte("+++\n[params\n+++\n"),
+		[]byte("+++\n[]\n+++\n"),
+		[]byte("+++\n[[products]\n+++\n"),
+		[]byte("+++\n[[ ]]\n+++\n"),
+	} {
+		if mapping, ok := MapLeadingFrontMatter(source); ok {
+			t.Fatalf("MapLeadingFrontMatter(%q) = %+v, true; want false", source, mapping)
+		}
+	}
+}
+
+func TestMapLeadingFrontMatterStopsTopLevelTOMLFieldPromotionAtFirstTable(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("+++\ntitle = 'Top'\n[params]\nauthor = 'Nested'\n+++\n")
+	mapping, ok := MapLeadingFrontMatter(source)
+	if !ok {
+		t.Fatal("MapLeadingFrontMatter() ok = false")
+	}
+	if len(mapping.Fields) != 1 || mapping.Fields[0].Key != "title" {
+		t.Fatalf("Fields = %+v, want only top-level title", mapping.Fields)
+	}
+}
+
 func TestMapLeadingFrontMatterDoesNotTargetNonScalarYAMLOrBareTOMLStrings(t *testing.T) {
 	t.Parallel()
 
@@ -105,9 +163,7 @@ func TestMapLeadingFrontMatterFailsClosedOnAmbiguousOrUnsupportedEnvelope(t *tes
 	}{
 		{name: "not at document start", source: []byte("intro\n---\ntitle: value\n---\n")},
 		{name: "unclosed YAML", source: []byte("---\ntitle: value\n")},
-		{name: "ordinary thematic-break-looking content has no targetable field", source: []byte("---\nplain paragraph\n---\n")},
-		{name: "duplicate-only YAML has no unambiguous field", source: []byte("---\ntitle: one\ntitle: two\n---\n")},
-		{name: "complex-only YAML remains GFM", source: []byte("---\nitems:\n  - one\n---\n")},
+		{name: "ordinary thematic-break-looking content has no metadata evidence", source: []byte("---\nplain paragraph\n---\n")},
 	}
 	for _, tt := range tests {
 		tt := tt

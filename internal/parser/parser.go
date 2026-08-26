@@ -120,7 +120,71 @@ type UnresolvedReferenceUsage struct {
 	Reference string
 }
 
-// Adapter parses Markdown into Marksplice-owned semantic observations.
-type Adapter interface {
-	Parse(source []byte) ([]Node, error)
+// MathExpressionStyle identifies one reviewed GitHub-compatible mathematical source form.
+type MathExpressionStyle uint8
+
+const (
+	MathExpressionUnknown MathExpressionStyle = iota
+	MathExpressionInlineDollar
+	MathExpressionInlineBacktick
+	MathExpressionBlockDollar
+)
+
+// MathExpressionObservation records one Marksplice-recognized mathematical source form
+// whose location is proven against the ordinary GFM parse context. Payload remains opaque.
+type MathExpressionObservation struct {
+	Style        MathExpressionStyle
+	Range        Range
+	PayloadRange Range
+	TopLevel     bool
+}
+
+// FootnoteDefinitionObservation records one parser-proven footnote definition
+// independently from ordinary GFM block promotion. BodyRanges are semantic
+// source-backed content segments in physical source order.
+type FootnoteDefinitionObservation struct {
+	Anchor     int
+	Label      string
+	BodyRanges []Range
+}
+
+// FootnoteReferenceObservation records one parser-proven footnote reference.
+// Occurrence is zero-based among references to the same definition in source order.
+type FootnoteReferenceObservation struct {
+	Range            Range
+	LabelRange       Range
+	Label            string
+	DefinitionAnchor int
+	Occurrence       int
+}
+
+// DocumentObservations groups one immutable parse pass worth of parser-independent
+// semantic facts without retaining parser AST or context state. Slice order is semantic
+// source order unless the individual observation type documents a narrower ordering rule.
+type DocumentObservations struct {
+	Nodes                     []Node
+	LinkUsages                []LinkUsage
+	UnresolvedReferenceUsages []UnresolvedReferenceUsage
+	FootnoteDefinitions       []FootnoteDefinitionObservation
+	FootnoteReferences        []FootnoteReferenceObservation
+	MathExpressions           []MathExpressionObservation
+}
+
+// Backend is the complete parser-independent semantic contract consumed by Marksplice.
+// It deliberately contains both document observations and construction-only semantic
+// proof/reference operations so replacing one parser backend cannot leave hidden backend
+// dependencies elsewhere in the source-preserving or construction layers.
+//
+// Implementations must not mutate or retain caller source/expectation slices after a method
+// returns. Byte ranges are half-open offsets into the exact source argument. Successful
+// document observations and construction proofs must be deterministic for identical input.
+type Backend interface {
+	ParseDocument(source []byte) (DocumentObservations, error)
+	ValidateNestedBlockquoteBlocks(source []byte, outer Range, innerSource []byte, depth int) error
+	ValidateNestedBlockquoteParagraph(source []byte, outer Range, contentLines []Range, depth int) error
+	ValidateConstructionInlineHierarchy(source []byte, expected []ConstructionInlineExpectation, references []ConstructionReferenceInlineExpectation) error
+	ValidateConstructionLinkImages(source []byte, expected []ConstructionLinkImageExpectation) error
+	ValidateConstructionReferenceInlines(source []byte, expected []ConstructionReferenceInlineExpectation) error
+	ResolveConstructionReference(label string, definitions []ConstructionReferenceDefinition) (ConstructionReferenceDefinition, error)
+	ReferenceLabelKey(label string) string
 }

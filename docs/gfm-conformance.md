@@ -28,15 +28,19 @@ Lower-ranked sources do not override higher-ranked sources. A difference found i
 
 The conformance test reads an externally provisioned snapshot of the official published GFM page. The snapshot is intentionally not vendored into this Apache-2.0 repository because the upstream specification material is CC-BY-SA-4.0 validation input.
 
-`internal/parser/goldmark/gfm_conformance_test.go` is the single repository source of truth for the approved snapshot SHA-256. Do not duplicate that hash in documentation or configuration. The test fails closed if the supplied snapshot has a different hash, even if it still identifies itself as `Version 0.29-gfm`.
+`internal/testutil/gfmspec/corpus.go` is the single repository source of truth for the approved snapshot SHA-256 and published-example extraction. The Goldmark conformance test and the M111–M113 differential harnesses use this test-only loader. Do not duplicate that hash in documentation or configuration. The loader fails closed if the supplied snapshot has a different hash, even if it still identifies itself as `Version 0.29-gfm`.
 
-To run the gate, set `MARKSPLICE_GFM_SPEC_HTML` to the approved snapshot and run:
+To run the conformance and parser-differential gates, set `MARKSPLICE_GFM_SPEC_HTML` to the approved snapshot and run:
 
 ```text
 go test ./internal/parser/goldmark -run '^TestGFM029PublishedSpecificationConformance$' -count=1
+go test ./internal/parser/differential -run '^TestGoldmarkBackendsMatchPublishedGFMDifferentialCorpus$' -count=1
+go test ./internal/parser/differential -run '^TestNativeBlockParserMatchesPublishedGFMBlockProjection$' -count=1
+go test ./internal/parser/differential -run '^TestNativeInlineParserMatchesPublishedGFMInlineProjection$' -count=1
+go test ./internal/parser/differential -run '^TestNativeInlineRelationshipMatchesPublishedGFMAllParserExamples$' -count=1
 ```
 
-Use the anchored exact test name shown above. `go test -run` can exit successfully after selecting zero tests, so shortened or guessed filters are not acceptable conformance evidence.
+Use the anchored exact test names shown above. `go test -run` can exit successfully after selecting zero tests, so shortened or guessed filters are not acceptable conformance or differential evidence.
 
 The pinned page currently contains 677 examples. Marksplice exercises 676 parser/render examples through the production parser factory. The single `tagfilter` example is excluded because disallowed-raw-HTML filtering is an HTML-rendering responsibility and Marksplice core does not currently provide an HTML renderer.
 
@@ -51,7 +55,7 @@ A snapshot update requires all of the following:
 3. add or update focused regression tests for changed behavior;
 4. update the Marksplice Goldmark adapter only where necessary to match the reviewed GFM contract;
 5. run the full conformance gate and repository regression suite;
-6. update this document, affected capability/milestone documentation, and the approved SHA in the test in the same reviewed change.
+6. update this document, affected capability/milestone documentation, and the approved SHA in `internal/testutil/gfmspec/corpus.go` in the same reviewed change.
 
 If the new specification conflicts with current `cmark-gfm` or GitHub authoring guidance, record the discrepancy and follow the published specification unless GitHub publishes a superseding normative source.
 
@@ -67,7 +71,7 @@ Rules:
 - ordinary existing-document edits must never depend on serializing a Goldmark AST back to Markdown;
 - Marksplice continues to own exact source mapping, lexical trivia, source fingerprints, and minimal byte patches.
 
-The current Goldmark-backed production parser matches all 676 applicable examples from the approved published-spec snapshot, with focused regression coverage for known parser-boundary cases such as GFM HTML comments and extended autolinks. This remains transition evidence and later becomes part of the differential/conformance gate for the mandatory Marksplice-native replacement; it is not a long-term dependency decision.
+The current Goldmark-backed production parser matches all 676 applicable examples from the approved published-spec snapshot. M111 runs the same inputs through the parser-independent substitution harness. M112 now matches all 676 inputs for native block observations, and M113 matches all 676 for its complete parsed-document inline-node and link/reference relationship projections, including reference normalization and autolink semantics. This is complete parsed-document projection parity, not yet complete native `parser.Backend` or production conformance: construction-only proof methods and pathological/fuzz/resource/cross-platform hardening remain M114, and Goldmark remains the temporary production backend/oracle until the explicit M115 cutover.
 
 ## Rendering boundary
 

@@ -25,7 +25,8 @@ type DocumentResolution struct {
 
 // DocumentResolver resolves one non-local relationship against the caller's own
 // authorization/domain model. Returning false leaves the relationship outside the graph.
-// Marksplice never retains the resolver and never performs filesystem or network access.
+// Marksplice invokes the resolver synchronously and never concurrently during one build,
+// never retains it, and never performs filesystem or network access.
 type DocumentResolver func(source DocumentKey, relationship LinkRelationship) (DocumentResolution, bool)
 
 // GraphEdge is one immutable resolved relationship between two caller-provided documents.
@@ -45,7 +46,7 @@ func (e GraphEdge) SourceDocument() DocumentKey { return e.sourceDocument }
 // TargetDocument returns the caller-defined logical target document key.
 func (e GraphEdge) TargetDocument() DocumentKey { return e.targetDocument }
 
-// Relationship returns the immutable M99 relationship that produced this edge.
+// Relationship returns the immutable link relationship that produced this edge.
 func (e GraphEdge) Relationship() LinkRelationship { return e.relationship }
 
 // Fragment returns the local target fragment when the edge carries one. For
@@ -76,14 +77,27 @@ func BuildDocumentGraph(documents []GraphDocument, resolver DocumentResolver) (*
 }
 
 func buildDocumentGraph(documents []GraphDocument, resolver DocumentResolver, fragmentResolvers graphFragmentResolvers) (*DocumentGraph, error) {
+	graph, err := newDocumentGraph(documents)
+	if err != nil {
+		return nil, err
+	}
+	if fragmentResolvers == nil {
+		fragmentResolvers = make(graphFragmentResolvers)
+	}
+	for _, item := range documents {
+		if err := graph.appendDocumentRelationships(item, resolver, fragmentResolvers); err != nil {
+			return nil, err
+		}
+	}
+	return graph, nil
+}
+
+func newDocumentGraph(documents []GraphDocument) (*DocumentGraph, error) {
 	graph := &DocumentGraph{
 		keys:      make([]DocumentKey, 0, len(documents)),
 		documents: make(map[DocumentKey]*Document, len(documents)),
 		outgoing:  make(map[DocumentKey][]int, len(documents)),
 		backlinks: make(map[DocumentKey][]int, len(documents)),
-	}
-	if fragmentResolvers == nil {
-		fragmentResolvers = make(graphFragmentResolvers)
 	}
 	for index, item := range documents {
 		if item.Key == "" {
@@ -92,38 +106,39 @@ func buildDocumentGraph(documents []GraphDocument, resolver DocumentResolver, fr
 		if item.Document == nil || item.Document.document == nil {
 			return nil, fmt.Errorf("%w: document %q is nil or uninitialized", ErrInvalidGraph, item.Key)
 		}
-		if _, exists := graph.documents[item.Key]; exists {
+		if graph.hasDocument(item.Key) {
 			return nil, fmt.Errorf("%w: duplicate document key %q", ErrInvalidGraph, item.Key)
 		}
 		graph.keys = append(graph.keys, item.Key)
 		graph.documents[item.Key] = item.Document
 	}
-
-	for _, item := range documents {
-		relationships, ok := item.Document.linkRelationships()
-		if !ok {
-			return nil, fmt.Errorf("%w: relationship projection failed for %q", ErrInvalidGraph, item.Key)
-		}
-		for _, relationship := range relationships {
-			if strings.HasPrefix(relationship.Destination(), "#") {
-				graph.addEdge(localGraphEdge(item.Key, relationship))
-				continue
-			}
-			if resolver == nil {
-				continue
-			}
-			resolution, resolved := resolver(item.Key, relationship)
-			if !resolved {
-				continue
-			}
-			target, ok := graph.documents[resolution.Target]
-			if resolution.Target == "" || !ok {
-				return nil, fmt.Errorf("%w: resolver target %q from %q is not in the document set", ErrInvalidGraph, resolution.Target, item.Key)
-			}
-			graph.addEdge(resolvedGraphEdge(item.Key, resolution, relationship, target, fragmentResolvers))
-		}
-	}
 	return graph, nil
+}
+
+func (g *DocumentGraph) appendDocumentRelationships(item GraphDocument, resolver DocumentResolver, fragmentResolvers graphFragmentResolvers) error {
+	relationships, ok := item.Document.linkRelationships()
+	if !ok {
+		return fmt.Errorf("%w: relationship projection failed for %q", ErrInvalidGraph, item.Key)
+	}
+	for _, relationship := range relationships {
+		if strings.HasPrefix(relationship.Destination(), "#") {
+			g.addEdge(localGraphEdge(item.Key, relationship))
+			continue
+		}
+		if resolver == nil {
+			continue
+		}
+		resolution, resolved := resolver(item.Key, relationship)
+		if !resolved {
+			continue
+		}
+		target, ok := g.documents[resolution.Target]
+		if resolution.Target == "" || !ok {
+			return fmt.Errorf("%w: resolver target %q from %q is not in the document set", ErrInvalidGraph, resolution.Target, item.Key)
+		}
+		g.addEdge(resolvedGraphEdge(item.Key, resolution, relationship, target, fragmentResolvers))
+	}
+	return nil
 }
 
 func localGraphEdge(key DocumentKey, relationship LinkRelationship) GraphEdge {
@@ -238,13 +253,27 @@ func (g *DocumentGraph) edgesAt(indices []int) []GraphEdge {
 	return result
 }
 
+func (g *DocumentGraph) hasDocument(key DocumentKey) bool {
+	if g == nil {
+		return false
+	}
+	_, ok := g.documents[key]
+	return ok
+}
+
+func appendUnvisitedDocument(target DocumentKey, visited map[DocumentKey]bool, queue, result *[]DocumentKey) {
+	if visited[target] {
+		return
+	}
+	visited[target] = true
+	*queue = append(*queue, target)
+	*result = append(*result, target)
+}
+
 // ReachableFrom returns every other document reachable from key using resolved graph
 // edges. Results are in deterministic breadth-first discovery order; self cycles are omitted.
 func (g *DocumentGraph) ReachableFrom(key DocumentKey) ([]DocumentKey, bool) {
-	if g == nil {
-		return nil, false
-	}
-	if _, ok := g.documents[key]; !ok {
+	if !g.hasDocument(key) {
 		return nil, false
 	}
 	visited := make(map[DocumentKey]bool, len(g.documents))
@@ -254,13 +283,7 @@ func (g *DocumentGraph) ReachableFrom(key DocumentKey) ([]DocumentKey, bool) {
 	result := make([]DocumentKey, 0, len(g.documents)-1)
 	for head := 0; head < len(queue); head++ {
 		for _, edgeIndex := range g.outgoing[queue[head]] {
-			target := g.edges[edgeIndex].targetDocument
-			if visited[target] {
-				continue
-			}
-			visited[target] = true
-			queue = append(queue, target)
-			result = append(result, target)
+			appendUnvisitedDocument(g.edges[edgeIndex].targetDocument, visited, &queue, &result)
 		}
 	}
 	return result, true
@@ -292,30 +315,29 @@ func (g *DocumentGraph) reachableFromRoots(roots []DocumentKey) map[DocumentKey]
 // RelatedDocuments returns direct incoming-or-outgoing neighboring documents in the
 // original graph-input order. Self edges and duplicate neighbors are omitted.
 func (g *DocumentGraph) RelatedDocuments(key DocumentKey) ([]DocumentKey, bool) {
-	if g == nil {
-		return nil, false
-	}
-	if _, ok := g.documents[key]; !ok {
+	if !g.hasDocument(key) {
 		return nil, false
 	}
 	related := make(map[DocumentKey]bool)
+	g.markRelatedDocuments(key, related)
+	return g.orderedRelatedDocuments(key, related), true
+}
+
+func (g *DocumentGraph) markRelatedDocuments(key DocumentKey, related map[DocumentKey]bool) {
 	for _, edgeIndex := range g.outgoing[key] {
-		target := g.edges[edgeIndex].targetDocument
-		if target != key {
-			related[target] = true
-		}
+		related[g.edges[edgeIndex].targetDocument] = true
 	}
 	for _, edgeIndex := range g.backlinks[key] {
-		source := g.edges[edgeIndex].sourceDocument
-		if source != key {
-			related[source] = true
-		}
+		related[g.edges[edgeIndex].sourceDocument] = true
 	}
+}
+
+func (g *DocumentGraph) orderedRelatedDocuments(key DocumentKey, related map[DocumentKey]bool) []DocumentKey {
 	result := make([]DocumentKey, 0, len(related))
 	for _, candidate := range g.keys {
-		if related[candidate] {
+		if candidate != key && related[candidate] {
 			result = append(result, candidate)
 		}
 	}
-	return result, true
+	return result
 }

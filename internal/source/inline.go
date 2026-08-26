@@ -18,16 +18,14 @@ func MapSimpleCodeSpan(input []byte, anchor int, content Range) (CodeSpanMapping
 		return CodeSpanMapping{}, fmt.Errorf("%w: content crosses a physical line", ErrUnsupportedCodeSpanShape)
 	}
 
-	lineStart := physicalLineStart(input, anchor)
-	lineEnd := physicalLineEnd(input, content.End)
-	if anchor > lineStart && input[anchor-1] == '`' {
+	if anchor > 0 && input[anchor-1] == '`' {
 		return CodeSpanMapping{}, fmt.Errorf("%w: anchor is inside a larger opener run", ErrUnsupportedCodeSpanShape)
 	}
-	openerLength := byteRunLength(input, anchor, lineEnd, '`')
+	openerLength := byteRunLength(input, anchor, len(input), '`')
 	if openerLength == 0 || content.Start != anchor+openerLength {
 		return CodeSpanMapping{}, fmt.Errorf("%w: semantic content is not directly after the opener", ErrUnsupportedCodeSpanShape)
 	}
-	closingLength := byteRunLength(input, content.End, lineEnd, '`')
+	closingLength := byteRunLength(input, content.End, len(input), '`')
 	if closingLength != openerLength {
 		return CodeSpanMapping{}, fmt.Errorf("%w: closing run length %d does not match opener %d", ErrUnsupportedCodeSpanShape, closingLength, openerLength)
 	}

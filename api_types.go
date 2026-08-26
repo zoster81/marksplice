@@ -9,7 +9,7 @@ const (
 	HeadingStyleSetext
 )
 
-// FrontMatterFormat identifies the source envelope format of a promoted front-matter field.
+// FrontMatterFormat identifies the source format of a recognized front-matter envelope or promoted field.
 type FrontMatterFormat uint8
 
 const (
@@ -17,6 +17,28 @@ const (
 	FrontMatterFormatYAML
 	FrontMatterFormatTOML
 )
+
+// FrontMatter is immutable source ownership for one recognized document-leading metadata envelope.
+// It is document-envelope state rather than a structural Markdown node.
+type FrontMatter struct {
+	format       FrontMatterFormat
+	sourceRange  Range
+	openingRange Range
+	closingRange Range
+}
+
+// Format returns whether the envelope uses the reviewed YAML or TOML delimiters.
+func (f FrontMatter) Format() FrontMatterFormat { return f.format }
+
+// Range returns the complete envelope from the opening delimiter through the closing delimiter.
+// A physical line terminator following the closing delimiter is outside this range.
+func (f FrontMatter) Range() Range { return f.sourceRange }
+
+// OpeningRange returns the exact opening delimiter bytes.
+func (f FrontMatter) OpeningRange() Range { return f.openingRange }
+
+// ClosingRange returns the exact closing delimiter bytes.
+func (f FrontMatter) ClosingRange() Range { return f.closingRange }
 
 // HTMLAnchorAttribute identifies the semantic anchor attribute targeted by an HTMLAnchor.
 type HTMLAnchorAttribute uint8
