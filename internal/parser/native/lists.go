@@ -18,6 +18,8 @@ type listItemSource struct {
 	lines          []physicalLine
 	separatedAfter bool
 	trailingBlank  bool
+	child          blockParseResult
+	childReady     bool
 }
 
 type listSource struct {
@@ -35,7 +37,6 @@ type listItemCollector struct {
 	pendingBlank    []physicalLine
 	hasContent      bool
 	nestedTailEmpty bool
-	allowLazy       bool
 }
 
 func parseListMarker(source []byte, line physicalLine) (listMarker, bool) {
@@ -175,7 +176,10 @@ func parseListItems(source []byte, items []listItemSource) ([]parsedListItem, bo
 	parsed := make([]parsedListItem, len(items))
 	loose := false
 	for index, item := range items {
-		child := parseBlockLines(source, item.lines, false)
+		child := item.child
+		if !item.childReady {
+			child = parseBlockLines(source, item.lines, false)
+		}
 		parsed[index] = parsedListItem{source: item, child: child}
 		if child.blankBetweenRoots || item.separatedAfter || referenceResidualMakesListLoose(child.roots) {
 			loose = true
@@ -211,6 +215,7 @@ func assembleList(source []byte, items []parsedListItem, loose bool) blockParseR
 		result.semantic = append(result.semantic, child.semantic...)
 		result.inlines = append(result.inlines, child.inlines...)
 		result.references = append(result.references, child.references...)
+		result.lastLeafParagraph = child.lastLeafParagraph && !item.trailingBlank
 	}
 	result.roots = append(result.roots, rootBlock{
 		kind:                   rootBlockList,
@@ -279,6 +284,9 @@ func collectListItem(source []byte, lines []physicalLine, index int, marker, lis
 			next++
 			continue
 		}
+		if collector.stopsEmptyItemAtIncompatibleListMarker(source, line, listStyle) {
+			break
+		}
 		_, columns := leadingIndent(source, line)
 		if columns >= marker.contentIndent {
 			if collector.consumeIndented(source, line, columns, marker, listStyle) {
@@ -296,6 +304,9 @@ func collectListItem(source []byte, lines []physicalLine, index int, marker, lis
 		}
 		break
 	}
+	if collector.hasContent && len(collector.pendingBlank) != 0 {
+		collector.item.trailingBlank = true
+	}
 	return collector.item, next
 }
 
@@ -306,13 +317,20 @@ func newListItemCollector(source []byte, line physicalLine, marker listMarker) l
 		pendingBlank:    make([]physicalLine, 0),
 		hasContent:      !blankLine(source, firstLine),
 		nestedTailEmpty: blankNestedListLine(source, firstLine),
-		allowLazy:       nestedParagraphEligibleLine(source, firstLine),
 	}
 }
 
 func (collector *listItemCollector) appendBlank(line physicalLine) {
 	collector.pendingBlank = append(collector.pendingBlank, line)
-	collector.allowLazy = false
+	collector.item.childReady = false
+}
+
+func (collector *listItemCollector) stopsEmptyItemAtIncompatibleListMarker(source []byte, line physicalLine, listStyle listMarker) bool {
+	if collector.hasContent || len(collector.pendingBlank) != 0 {
+		return false
+	}
+	nextMarker, ok := parseListMarker(source, line)
+	return ok && !compatibleListMarker(listStyle, nextMarker)
 }
 
 func (collector *listItemCollector) consumeIndented(source []byte, line physicalLine, columns int, marker, listStyle listMarker) bool {
@@ -329,9 +347,9 @@ func (collector *listItemCollector) consumeIndented(source []byte, line physical
 	}
 	line = stripIndentColumns(source, line, marker.contentIndent)
 	collector.item.lines = append(collector.item.lines, line)
+	collector.item.childReady = false
 	collector.hasContent = true
 	collector.nestedTailEmpty = blankNestedListLine(source, line)
-	collector.allowLazy = nestedParagraphEligibleLine(source, line)
 	return false
 }
 
@@ -361,10 +379,16 @@ func (collector *listItemCollector) stopsAfterPendingBlank() bool {
 }
 
 func (collector *listItemCollector) consumeLazy(source []byte, line physicalLine) bool {
-	if !collector.allowLazy || !lazyParagraphContinuation(source, line) {
+	if !lazyParagraphContinuation(source, line) {
+		return false
+	}
+	collector.item.child = parseBlockLines(source, collector.item.lines, false)
+	collector.item.childReady = true
+	if !collector.item.child.lastLeafParagraph {
 		return false
 	}
 	collector.item.lines = append(collector.item.lines, line)
+	collector.item.childReady = false
 	collector.hasContent = true
 	collector.nestedTailEmpty = false
 	return true

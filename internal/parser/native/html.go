@@ -44,7 +44,7 @@ func htmlBlockStart(source []byte, line physicalLine) (htmlBlockOpening, bool) {
 		return htmlBlockOpening{kind: htmlBlockProcessingInstruction, anchor: anchor}, true
 	case bytes.HasPrefix(text, []byte("<![CDATA[")):
 		return htmlBlockOpening{kind: htmlBlockCDATA, anchor: anchor}, true
-	case len(text) >= 3 && text[0] == '<' && text[1] == '!' && asciiUpper(text[2]):
+	case len(text) >= 3 && text[0] == '<' && text[1] == '!' && asciiLetter(text[2]):
 		return htmlBlockOpening{kind: htmlBlockDeclaration, anchor: anchor}, true
 	case htmlType6Start(text):
 		return htmlBlockOpening{kind: htmlBlockNamedTag, anchor: anchor}, true
@@ -93,7 +93,7 @@ func finalizeHTMLSemanticRanges(source []byte, lines []physicalLine, first, next
 	}
 	lastLine := lines[next-1]
 	if !blankLine(source, lastLine) {
-		ranges[len(ranges)-1].End = lastLine.next
+		ranges[len(ranges)-1].End = blockLineSemanticEnd(source, lastLine.next)
 	}
 	return ranges
 }
@@ -105,7 +105,7 @@ func htmlBlockBlankTerminated(kind htmlBlockKind) bool {
 func htmlBlockEnds(line []byte, kind htmlBlockKind) bool {
 	switch kind {
 	case htmlBlockRawTag:
-		return containsASCIIFold(line, "</script>") || containsASCIIFold(line, "</pre>") || containsASCIIFold(line, "</style>")
+		return containsASCIIFold(line, "</script>") || containsASCIIFold(line, "</pre>") || containsASCIIFold(line, "</style>") || containsASCIIFold(line, "</textarea>")
 	case htmlBlockComment:
 		return bytes.Contains(line, []byte("-->"))
 	case htmlBlockProcessingInstruction:
@@ -120,7 +120,7 @@ func htmlBlockEnds(line []byte, kind htmlBlockKind) bool {
 }
 
 func htmlType1Start(text []byte) bool {
-	for _, name := range []string{"script", "pre", "style"} {
+	for _, name := range []string{"script", "pre", "style", "textarea"} {
 		prefix := "<" + name
 		if !hasASCIIFoldPrefix(text, prefix) {
 			continue
@@ -176,7 +176,7 @@ func htmlBlockTagName(name []byte) bool {
 		"caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir", "div", "dl", "dt",
 		"fieldset", "figcaption", "figure", "footer", "form", "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6",
 		"head", "header", "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem", "nav", "noframes",
-		"ol", "optgroup", "option", "p", "param", "section", "source", "summary", "table", "tbody", "td", "tfoot", "th",
+		"ol", "optgroup", "option", "p", "param", "search", "section", "summary", "table", "tbody", "td", "tfoot", "th",
 		"thead", "title", "tr", "track", "ul":
 		return true
 	default:
@@ -319,10 +319,6 @@ func htmlAttributeNameContinue(value byte) bool {
 
 func asciiLetter(value byte) bool {
 	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
-}
-
-func asciiUpper(value byte) bool {
-	return value >= 'A' && value <= 'Z'
 }
 
 func asciiDigit(value byte) bool {

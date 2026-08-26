@@ -95,10 +95,13 @@ func (a *Adapter) parseFootnotes(source []byte) ([]parser.FootnoteDefinitionObse
 		return nil, nil, nil, fmt.Errorf("collect footnote semantics: %w", collection.err)
 	}
 
-	definitions := make([]parser.FootnoteDefinitionObservation, len(collection.definitions))
+	definitions := make([]parser.FootnoteDefinitionObservation, 0, len(collection.definitions))
 	indexed := make(map[int]indexedFootnoteDefinition, len(collection.definitions))
-	for index, definition := range collection.definitions {
-		definitions[index] = definition.observation
+	for _, definition := range collection.definitions {
+		if !footnoteDefinitionTopLevel(source, definition.observation.Anchor) {
+			continue
+		}
+		definitions = append(definitions, definition.observation)
 		if definition.index > 0 {
 			indexed[definition.index] = indexedFootnoteDefinition{
 				anchor: definition.observation.Anchor,
@@ -132,9 +135,31 @@ func (a *Adapter) parseFootnotes(source []byte) ([]parser.FootnoteDefinitionObse
 		references[index].Occurrence = occurrences[anchor]
 		occurrences[anchor]++
 	}
-	linkUsages := append([]parser.LinkUsage(nil), collection.linkUsages...)
+	claims := footnoteClaimedRanges(source, definitions)
+	linkUsages := make([]parser.LinkUsage, 0, len(collection.linkUsages))
+	for _, usage := range collection.linkUsages {
+		if offsetInsideAny(usage.Anchor, claims) {
+			linkUsages = append(linkUsages, usage)
+		}
+	}
 	sort.SliceStable(linkUsages, func(i, j int) bool { return linkUsages[i].Anchor < linkUsages[j].Anchor })
 	return definitions, references, linkUsages, nil
+}
+
+func footnoteDefinitionTopLevel(source []byte, anchor int) bool {
+	if anchor < 0 || anchor >= len(source) {
+		return false
+	}
+	start := footnotePhysicalLineStart(source, anchor)
+	if anchor-start > 3 {
+		return false
+	}
+	for _, value := range source[start:anchor] {
+		if value != ' ' {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *footnoteCollector) Transform(root *ast.Document, reader text.Reader, context goldmarkparser.Context) {
@@ -228,46 +253,37 @@ func footnoteReferenceRanges(source []byte, pos int, label string) (parser.Range
 	return parser.Range{}, parser.Range{}, false
 }
 
-type footnoteReferenceConflictKey struct {
-	labelKey    string
-	destination string
-	title       string
-	hasTitle    bool
-}
-
 func removeFootnoteGFMConflicts(source []byte, nodes []parser.Node, usages []parser.LinkUsage, definitions []parser.FootnoteDefinitionObservation) ([]parser.Node, []parser.LinkUsage) {
 	if len(definitions) == 0 {
 		return nodes, usages
 	}
 	anchors := make(map[int]struct{}, len(definitions))
+	caretKeys := make(map[string]struct{}, len(definitions))
 	for _, definition := range definitions {
 		anchors[definition.Anchor] = struct{}{}
+		caretKeys[ReferenceLabelKey("^"+definition.Label)] = struct{}{}
 	}
 	claims := footnoteClaimedRanges(source, definitions)
-	filteredNodes, suppressedDefinitions := filterFootnoteConflictNodes(nodes, claims, anchors)
-	filteredUsages, suppressedUsageAnchors := filterFootnoteConflictUsages(usages, claims, suppressedDefinitions)
+	filteredNodes := filterFootnoteConflictNodes(nodes, claims, anchors)
+	filteredUsages, suppressedUsageAnchors := filterFootnoteConflictUsages(usages, claims, caretKeys)
 	return removeSuppressedReferenceNodes(filteredNodes, suppressedUsageAnchors), filteredUsages
 }
 
-func filterFootnoteConflictNodes(nodes []parser.Node, claims []parser.Range, anchors map[int]struct{}) ([]parser.Node, map[footnoteReferenceConflictKey]struct{}) {
-	suppressed := make(map[footnoteReferenceConflictKey]struct{})
+func filterFootnoteConflictNodes(nodes []parser.Node, claims []parser.Range, anchors map[int]struct{}) []parser.Node {
 	filtered := nodes[:0]
 	for _, node := range nodes {
 		insideClaim := rangeInsideAny(node.Range, claims)
 		_, claimedAnchor := anchors[node.Range.Start]
 		if insideClaim || node.Kind == parser.KindReferenceDefinition && claimedAnchor {
-			if node.Kind == parser.KindReferenceDefinition {
-				suppressed[footnoteConflictKey(node.Label, node.Destination, node.Title, node.HasTitle)] = struct{}{}
-			}
 			continue
 		}
 		filtered = append(filtered, node)
 	}
 	clear(nodes[len(filtered):])
-	return filtered, suppressed
+	return filtered
 }
 
-func filterFootnoteConflictUsages(usages []parser.LinkUsage, claims []parser.Range, suppressedDefinitions map[footnoteReferenceConflictKey]struct{}) ([]parser.LinkUsage, map[linkUsageNodeKey]struct{}) {
+func filterFootnoteConflictUsages(usages []parser.LinkUsage, claims []parser.Range, caretKeys map[string]struct{}) ([]parser.LinkUsage, map[linkUsageNodeKey]struct{}) {
 	filtered := make([]parser.LinkUsage, 0, len(usages))
 	suppressedAnchors := make(map[linkUsageNodeKey]struct{})
 	for _, usage := range usages {
@@ -275,8 +291,7 @@ func filterFootnoteConflictUsages(usages []parser.LinkUsage, claims []parser.Ran
 			continue
 		}
 		if usage.Form != parser.LinkUsageDirect {
-			key := footnoteConflictKey(usage.Reference, usage.Destination, usage.Title, usage.HasTitle)
-			if _, suppressed := suppressedDefinitions[key]; suppressed {
+			if _, suppressed := caretKeys[ReferenceLabelKey(usage.Reference)]; suppressed {
 				suppressedAnchors[linkUsageNodeKey{kind: usage.Kind, anchor: usage.Anchor}] = struct{}{}
 				continue
 			}
@@ -284,15 +299,6 @@ func filterFootnoteConflictUsages(usages []parser.LinkUsage, claims []parser.Ran
 		filtered = append(filtered, usage)
 	}
 	return filtered, suppressedAnchors
-}
-
-func footnoteConflictKey(label, destination, title string, hasTitle bool) footnoteReferenceConflictKey {
-	return footnoteReferenceConflictKey{
-		labelKey:    ReferenceLabelKey(label),
-		destination: destination,
-		title:       title,
-		hasTitle:    hasTitle,
-	}
 }
 
 func removeSuppressedReferenceNodes(nodes []parser.Node, suppressed map[linkUsageNodeKey]struct{}) []parser.Node {

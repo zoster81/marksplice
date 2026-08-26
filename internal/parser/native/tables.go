@@ -10,33 +10,14 @@ type tableRowScan struct {
 }
 
 func parseTable(source []byte, lines []physicalLine, index int) ([]parser.Node, []parser.Range, int, bool) {
-	if index < 0 || index+1 >= len(lines) {
+	header, alignments, ok := parseTableOpening(source, lines, index)
+	if !ok {
 		return nil, nil, index, false
 	}
 	headerLine := lines[index]
-	delimiterLine := lines[index+1]
-	if _, ok := ordinaryIndent(source, headerLine); !ok {
-		return nil, nil, index, false
-	}
-	if _, ok := ordinaryIndent(source, delimiterLine); !ok || !sameBlockContainer(headerLine, delimiterLine) {
-		return nil, nil, index, false
-	}
-
-	header, ok := scanTableRow(source, headerLine, true)
-	if !ok {
-		return nil, nil, index, false
-	}
-	delimiter, ok := scanTableRow(source, delimiterLine, true)
-	if !ok || !header.hasPipe && !delimiter.hasPipe || len(header.cells) != len(delimiter.cells) {
-		return nil, nil, index, false
-	}
-	alignments, ok := tableDelimiterAlignments(source, delimiter.cells)
-	if !ok {
-		return nil, nil, index, false
-	}
 
 	bodyNodes := make([]parser.Node, 0)
-	semantic := []parser.Range{{Start: headerLine.start, End: headerLine.end}}
+	semantic := tableRowSemanticRanges(source, header.cells, len(header.cells))
 	bodyRowCount := 0
 	lastBodyRowAnchor := 0
 	next := index + 2
@@ -49,7 +30,7 @@ func parseTable(source []byte, lines []physicalLine, index int) ([]parser.Node, 
 		lastBodyRowAnchor = row.anchor
 		bodyNodes = append(bodyNodes, tableRowNode(row, header.anchor, len(header.cells), alignments))
 		bodyNodes = append(bodyNodes, tableCellNodes(row.cells, false, row.anchor, header.anchor, len(header.cells))...)
-		semantic = append(semantic, parser.Range{Start: lines[next].start, End: lines[next].end})
+		semantic = append(semantic, tableRowSemanticRanges(source, row.cells, len(header.cells))...)
 		next++
 	}
 
@@ -68,14 +49,64 @@ func parseTable(source []byte, lines []physicalLine, index int) ([]parser.Node, 
 	return nodes, semantic, next, true
 }
 
+func parseTableOpening(source []byte, lines []physicalLine, index int) (tableRowScan, []parser.TableAlignment, bool) {
+	if index < 0 || index+1 >= len(lines) {
+		return tableRowScan{}, nil, false
+	}
+	headerLine := lines[index]
+	delimiterLine := lines[index+1]
+	if _, ok := ordinaryIndent(source, headerLine); !ok {
+		return tableRowScan{}, nil, false
+	}
+	if _, ok := ordinaryIndent(source, delimiterLine); !ok || !sameBlockContainer(headerLine, delimiterLine) {
+		return tableRowScan{}, nil, false
+	}
+	if interruptsParagraph(source, delimiterLine) || startsBlockquote(source, delimiterLine) {
+		return tableRowScan{}, nil, false
+	}
+	header, ok := scanTableRow(source, headerLine, true)
+	if !ok {
+		return tableRowScan{}, nil, false
+	}
+	delimiter, ok := scanTableRow(source, delimiterLine, true)
+	if !ok || !header.hasPipe && !delimiter.hasPipe || len(header.cells) != len(delimiter.cells) {
+		return tableRowScan{}, nil, false
+	}
+	alignments, ok := tableDelimiterAlignments(source, delimiter.cells)
+	if !ok {
+		return tableRowScan{}, nil, false
+	}
+	return header, alignments, true
+}
+
+func tableRowSemanticRanges(source []byte, cells []parser.Range, columnCount int) []parser.Range {
+	limit := min(len(cells), columnCount)
+	ranges := make([]parser.Range, 0, limit)
+	for index := 0; index < limit; index++ {
+		cell := cells[index]
+		range_ := parser.Range{Start: cell.Start, End: blockLineSemanticEnd(source, cell.End)}
+		if range_.Start != range_.End {
+			ranges = append(ranges, range_)
+		}
+	}
+	return ranges
+}
+
 func tableBodyContinues(source []byte, header, line physicalLine) bool {
-	if blankLine(source, line) || !sameBlockContainer(header, line) {
+	if blankLine(source, line) {
+		return false
+	}
+	if !sameBlockContainer(header, line) && !tableLazyBodyContinuation(source, header, line) {
 		return false
 	}
 	if startsBlockquote(source, line) {
 		return false
 	}
 	return !interruptsParagraph(source, line)
+}
+
+func tableLazyBodyContinuation(source []byte, header, line physicalLine) bool {
+	return header.start != header.physicalStart && line.start == line.physicalStart && lazyParagraphContinuation(source, line)
 }
 
 func tableRowNode(row tableRowScan, tableAnchor, columnCount int, alignments []parser.TableAlignment) parser.Node {

@@ -127,13 +127,13 @@ The transition is staged:
 6. prove complete native conformance and hardening in M114;
 7. remove Goldmark and cut production over in M115.
 
-Goldmark is isolated behind the M111 parser-independent backend contract and remains only the temporary production backend/differential oracle while the replacement is developed. M112 and M113 now supply the native parsed-document block/inline/reference candidate: block, inline-node, and link/reference relationship projections each pass all 676 parser-applicable published-GFM examples through the shared harness. M114 owns complete native backend/conformance hardening before M115 cutover. No Goldmark upgrade or migration is part of this roadmap.
+Goldmark is isolated behind the M111 parser-independent backend contract and remains only the temporary production backend and a secondary differential comparison while the replacement is developed. M112 and M113 historically matched its block/inline/reference projections across the legacy published-GFM corpus; M114 now recertifies those semantics against CommonMark 0.31.2 first, explicit GFM extension/correction rules second, and approved Marksplice-owned contracts for extra-GFM capabilities. A Goldmark mismatch is not itself a correctness verdict. No Goldmark upgrade or migration is part of this roadmap.
 
 ## Native-parser cutover gate
 
 Before M115 removes Goldmark, the Marksplice-native parser must satisfy all of the following:
 
-- the complete applicable pinned GFM conformance corpus;
+- the complete applicable pinned CommonMark 0.31.2 conformance corpus plus the normative explicit GFM extension corpus;
 - every focused parser-boundary and source-position regression required by Marksplice;
 - equivalent or better semantic/source observations for every public read/edit/create capability;
 - no reduction in source-preservation or stale-source guarantees;

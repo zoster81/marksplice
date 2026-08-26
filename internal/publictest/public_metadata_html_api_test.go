@@ -204,8 +204,8 @@ func TestPublicFrontMatterAndHTMLFilterUnsupportedShapesAndPreserveErrors(t *tes
 	if _, err := doc.PrepareReplaceFrontMatterValue(field.ID(), []byte("one\ntwo")); !errors.Is(err, marksplice.ErrInvalidReplacement) {
 		t.Fatalf("PrepareReplaceFrontMatterValue(multiline) error = %v, want ErrInvalidReplacement", err)
 	}
-	if _, err := doc.PrepareReplaceHTMLComment(comment.ID(), []byte("bad -- split")); !errors.Is(err, marksplice.ErrInvalidReplacement) {
-		t.Fatalf("PrepareReplaceHTMLComment(double hyphen) error = %v, want ErrInvalidReplacement", err)
+	if _, err := doc.PrepareReplaceHTMLComment(comment.ID(), []byte("bad --> split")); !errors.Is(err, marksplice.ErrInvalidReplacement) {
+		t.Fatalf("PrepareReplaceHTMLComment(embedded close) error = %v, want ErrInvalidReplacement", err)
 	}
 	if _, err := doc.PrepareReplaceHTMLAnchor(anchor.ID(), []byte("bad\"anchor")); !errors.Is(err, marksplice.ErrInvalidReplacement) {
 		t.Fatalf("PrepareReplaceHTMLAnchor(quote) error = %v, want ErrInvalidReplacement", err)

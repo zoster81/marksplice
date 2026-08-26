@@ -9,6 +9,140 @@ import (
 	"github.com/zoster81/marksplice/internal/parser"
 )
 
+func TestM114CommonMark0312BlockquoteTabStructures(t *testing.T) {
+	t.Parallel()
+
+	for _, source := range [][]byte{
+		[]byte(">\t#"),
+		[]byte("   >  \t#"),
+	} {
+		nodes, err := ParseBlocks(source)
+		if err != nil {
+			t.Fatalf("ParseBlocks(%q) error = %v", source, err)
+		}
+		for _, node := range nodes {
+			if node.Kind == parser.KindParagraph {
+				t.Fatalf("ParseBlocks(%q) = %#v, empty ATX heading must not become paragraph content", source, nodes)
+			}
+		}
+	}
+
+	for _, tt := range []struct {
+		source []byte
+		fence  []byte
+	}{
+		{source: []byte(">\t```"), fence: []byte("```")},
+		{source: []byte("   >\t~~~"), fence: []byte("~~~")},
+	} {
+		nodes, err := ParseBlocks(tt.source)
+		if err != nil {
+			t.Fatalf("ParseBlocks(%q) error = %v", tt.source, err)
+		}
+		wantAnchor := bytes.Index(tt.source, tt.fence)
+		found := false
+		for _, node := range nodes {
+			if node.Kind != parser.KindFencedCode {
+				continue
+			}
+			found = true
+			if node.Anchor != wantAnchor {
+				t.Fatalf("ParseBlocks(%q) fenced anchor = %d, want physical source byte %d", tt.source, node.Anchor, wantAnchor)
+			}
+		}
+		if !found {
+			t.Fatalf("ParseBlocks(%q) = %#v, want fenced-code observation", tt.source, nodes)
+		}
+	}
+}
+
+func TestM114CommonMark0312LazyBlockquoteContinuationRequiresParagraphLeaf(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		source       []byte
+		wantTopLevel bool
+	}{
+		{name: "complete HTML leaf stops lazy continuation", source: []byte("><A>\n0"), wantTopLevel: true},
+		{name: "paragraph leaf permits lazy continuation", source: []byte(">p\n0"), wantTopLevel: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodes, err := ParseBlocks(tt.source)
+			if err != nil {
+				t.Fatalf("ParseBlocks() error = %v", err)
+			}
+			offset := len(tt.source) - 1
+			found := false
+			for _, node := range nodes {
+				if node.Kind != parser.KindParagraph || offset < node.Range.Start || offset >= node.Range.End {
+					continue
+				}
+				found = true
+				if node.TopLevel != tt.wantTopLevel {
+					t.Fatalf("ParseBlocks(%q) trailing paragraph TopLevel = %v, want %v; node = %#v", tt.source, node.TopLevel, tt.wantTopLevel, node)
+				}
+			}
+			if !found {
+				t.Fatalf("ParseBlocks(%q) has no paragraph owning trailing byte; nodes = %#v", tt.source, nodes)
+			}
+		})
+	}
+}
+
+func TestM114CommonMark0312HTMLBlockGrammar(t *testing.T) {
+	t.Parallel()
+
+	t.Run("textarea is type one", func(t *testing.T) {
+		source := []byte("<textarea>\n\n*x*\n\n</textarea>\n")
+		nodes, err := ParseBlocks(source)
+		if err != nil {
+			t.Fatalf("ParseBlocks() error = %v", err)
+		}
+		if len(nodes) != 1 || nodes[0].Kind != parser.KindHTMLBlock {
+			t.Fatalf("ParseBlocks() = %#v, want one HTML block", nodes)
+		}
+	})
+
+	t.Run("type six tag list follows CommonMark 0.31.2", func(t *testing.T) {
+		for _, tt := range []struct {
+			name      string
+			source    []byte
+			wantHTML  bool
+			paragraph bool
+		}{
+			{name: "search interrupts paragraph", source: []byte("x\n<search>\ny\n"), wantHTML: true},
+			{name: "source no longer interrupts paragraph", source: []byte("x\n<source>\ny\n"), wantHTML: false, paragraph: true},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				nodes, err := ParseBlocks(tt.source)
+				if err != nil {
+					t.Fatalf("ParseBlocks() error = %v", err)
+				}
+				gotHTML := false
+				gotParagraph := false
+				for _, node := range nodes {
+					gotHTML = gotHTML || node.Kind == parser.KindHTMLBlock
+					gotParagraph = gotParagraph || node.Kind == parser.KindParagraph
+				}
+				if gotHTML != tt.wantHTML || tt.paragraph && !gotParagraph {
+					t.Fatalf("ParseBlocks() = %#v, want HTML=%v paragraph=%v", nodes, tt.wantHTML, tt.paragraph)
+				}
+			})
+		}
+	})
+
+	t.Run("lowercase declaration starts HTML block", func(t *testing.T) {
+		nodes, err := ParseBlocks([]byte("<!a0>\n"))
+		if err != nil {
+			t.Fatalf("ParseBlocks() error = %v", err)
+		}
+		if len(nodes) != 1 || nodes[0].Kind != parser.KindHTMLBlock {
+			t.Fatalf("ParseBlocks() = %#v, want declaration HTML block", nodes)
+		}
+	})
+}
+
 func TestParseBlocksLeafStructures(t *testing.T) {
 	t.Parallel()
 

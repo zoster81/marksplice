@@ -193,11 +193,11 @@ func exactNestedBlockquoteLines(source []byte, outer parser.Range, depth int) ([
 	}
 	current := append([]physicalLine(nil), lines[start:end]...)
 	for level := 0; level < depth; level++ {
-		_, child, next := parseBlockquote(source, current, 0)
-		if next != len(current) || len(child) == 0 {
+		quoted := parseBlockquote(source, current, 0)
+		if quoted.next != len(current) || len(quoted.content) == 0 {
 			return nil, fmt.Errorf("expected exact nested blockquote hierarchy")
 		}
-		current = child
+		current = quoted.content
 	}
 	return current, nil
 }

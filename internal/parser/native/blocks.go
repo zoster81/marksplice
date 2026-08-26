@@ -37,6 +37,7 @@ type blockParseResult struct {
 	roots             []rootBlock
 	blankBetweenRoots bool
 	trailingBlank     bool
+	lastLeafParagraph bool
 }
 
 type fenceOpening struct {
@@ -45,6 +46,14 @@ type fenceOpening struct {
 	marker byte
 	length int
 	info   string
+}
+
+type blockquoteParseResult struct {
+	node       parser.Node
+	content    []physicalLine
+	child      blockParseResult
+	childReady bool
+	next       int
 }
 
 // ParseBlocks returns the parser-independent block observations owned by the
@@ -62,6 +71,7 @@ func parseBlockLines(source []byte, lines []physicalLine, topLevel bool) blockPa
 	for index := 0; index < len(lines); {
 		line := lines[index]
 		if blankLine(source, line) {
+			result.lastLeafParagraph = false
 			referenceParagraphOpen = false
 			if len(result.roots) != 0 {
 				blankBeforeRoot = true
@@ -130,39 +140,48 @@ func appendParagraphBlock(result *blockParseResult, source []byte, lines []physi
 		recordRoot(result, rootBlock{kind: rootBlockOther, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
 	}
 	result.semantic = append(result.semantic, semantic...)
+	result.lastLeafParagraph = node.Kind == parser.KindParagraph
 	return next
 }
 
 func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLine, index int, topLevel, blankBeforeRoot bool) (int, bool, bool) {
 	line := lines[index]
 	if _, _, ok := parseBlockquoteOpening(source, line); ok {
-		node, contentLines, next := parseBlockquote(source, lines, index)
-		child := parseBlockLines(source, contentLines, false)
+		quoted := parseBlockquote(source, lines, index)
+		child := quoted.child
+		if !quoted.childReady {
+			child = parseBlockLines(source, quoted.content, false)
+		}
 		if topLevel {
-			node.BlockquoteSemanticRanges = child.semantic
+			quoted.node.BlockquoteSemanticRanges = child.semantic
 			if simpleBlockquoteParagraph(child) {
-				node.BlockquoteContentRange = child.nodes[0].Range
+				quoted.node.BlockquoteContentRange = child.nodes[0].Range
 			}
-			result.nodes = append(result.nodes, node)
+			result.nodes = append(result.nodes, quoted.node)
 		}
 		result.nodes = append(result.nodes, child.nodes...)
 		result.semantic = append(result.semantic, child.semantic...)
 		result.inlines = append(result.inlines, child.inlines...)
 		result.references = append(result.references, child.references...)
+		result.lastLeafParagraph = child.lastLeafParagraph
 		recordRoot(result, rootBlock{kind: rootBlockOther}, blankBeforeRoot)
-		return next, true, false
+		return quoted.next, true, false
 	}
 	if indentedCodeLine(source, line) {
 		semantic, next := parseIndentedCodeLines(source, lines, index)
 		result.semantic = append(result.semantic, semantic...)
+		result.lastLeafParagraph = false
 		recordRoot(result, rootBlock{kind: rootBlockOther, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
 		return next, true, false
 	}
 	if opening, ok := parseFenceOpening(source, line); ok {
 		node, semantic, next := parseFencedBlock(source, lines, index, opening)
 		node.TopLevel = topLevel
-		result.nodes = append(result.nodes, node)
+		if node.Anchor >= 0 && node.Anchor < len(source) {
+			result.nodes = append(result.nodes, node)
+		}
 		result.semantic = append(result.semantic, semantic...)
+		result.lastLeafParagraph = false
 		recordRoot(result, rootBlock{kind: rootBlockOther}, blankBeforeRoot)
 		return next, true, false
 	}
@@ -170,6 +189,7 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 		node, semantic, next := parseHTMLBlock(source, lines, index, opening)
 		result.nodes = append(result.nodes, node)
 		result.semantic = append(result.semantic, semantic...)
+		result.lastLeafParagraph = false
 		recordRoot(result, rootBlock{kind: rootBlockOther, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
 		return next, true, false
 	}
@@ -179,6 +199,7 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 		}
 		result.semantic = append(result.semantic, semantic...)
 		result.references = append(result.references, reference)
+		result.lastLeafParagraph = true
 		recordRoot(result, rootBlock{kind: rootBlockReference, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
 		return next, true, true
 	}
@@ -188,6 +209,7 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 func parseStructuralBlock(result *blockParseResult, source []byte, lines []physicalLine, index int, topLevel, blankBeforeRoot bool) (int, bool, bool) {
 	line := lines[index]
 	if node, ok := parseATXHeading(source, line); ok {
+		result.lastLeafParagraph = false
 		node.TopLevel = topLevel
 		if node.Range.Start != node.Range.End {
 			result.semantic = append(result.semantic, parser.Range{Start: node.Range.Start, End: line.end})
@@ -204,10 +226,12 @@ func parseStructuralBlock(result *blockParseResult, source []byte, lines []physi
 		result.semantic = append(result.semantic, list.semantic...)
 		result.inlines = append(result.inlines, list.inlines...)
 		result.references = append(result.references, list.references...)
+		result.lastLeafParagraph = list.lastLeafParagraph
 		recordRoots(result, list.roots, blankBeforeRoot)
 		return next, list.trailingBlank, true
 	}
 	if node, ok := parseThematicBreak(source, line); ok {
+		result.lastLeafParagraph = false
 		node.TopLevel = topLevel
 		result.nodes = append(result.nodes, node)
 		recordRoot(result, rootBlock{kind: rootBlockOther}, blankBeforeRoot)
@@ -216,6 +240,7 @@ func parseStructuralBlock(result *blockParseResult, source []byte, lines []physi
 	if nodes, semantic, next, ok := parseTable(source, lines, index); ok {
 		result.nodes = append(result.nodes, nodes...)
 		result.semantic = append(result.semantic, semantic...)
+		result.lastLeafParagraph = true
 		appendTableInlineBlocks(result, nodes)
 		recordRoot(result, rootBlock{kind: rootBlockOther, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
 		return next, false, true
@@ -298,43 +323,44 @@ func blockquoteContentLine(source []byte, line physicalLine, anchor, contentStar
 	return advancePhysicalLineStart(source, line, contentStart, virtualIndent)
 }
 
-func parseBlockquote(source []byte, lines []physicalLine, index int) (parser.Node, []physicalLine, int) {
+func parseBlockquote(source []byte, lines []physicalLine, index int) blockquoteParseResult {
 	anchor, _, _ := parseBlockquoteOpening(source, lines[index])
-	content := make([]physicalLine, 0)
-	var lazyCandidate physicalLine
+	result := blockquoteParseResult{
+		node: parser.Node{
+			Kind:     parser.KindBlockquote,
+			Range:    parser.Range{Start: anchor, End: lines[index].end},
+			TopLevel: true,
+		},
+		content: make([]physicalLine, 0),
+		next:    index,
+	}
 	allowLazy := false
 	lazyKnown := false
-	next := index
-	for next < len(lines) {
-		line := lines[next]
+	for result.next < len(lines) {
+		line := lines[result.next]
 		lineAnchor, contentStart, marked := parseBlockquoteOpening(source, line)
 		if marked {
 			line = blockquoteContentLine(source, line, lineAnchor, contentStart)
-			content = append(content, line)
-			lazyCandidate = line
+			result.content = append(result.content, line)
+			result.childReady = false
 			lazyKnown = false
-			next++
+			result.next++
 			continue
 		}
 		if !lazyKnown {
-			allowLazy = blockquoteMarkedParagraphLine(source, lazyCandidate)
+			result.child = parseBlockLines(source, result.content, false)
+			result.childReady = true
+			allowLazy = result.child.lastLeafParagraph
 			lazyKnown = true
 		}
 		if !allowLazy || blankLine(source, line) || !strictContainerLazyParagraphLine(source, line) {
 			break
 		}
-		content = append(content, line)
-		next++
+		result.content = append(result.content, line)
+		result.childReady = false
+		result.next++
 	}
-	return parser.Node{
-		Kind:     parser.KindBlockquote,
-		Range:    parser.Range{Start: anchor, End: lines[index].end},
-		TopLevel: true,
-	}, content, next
-}
-
-func blockquoteMarkedParagraphLine(source []byte, line physicalLine) bool {
-	return nestedParagraphEligibleLine(source, line)
+	return result
 }
 
 func strictContainerLazyParagraphLine(source []byte, line physicalLine) bool {
@@ -365,14 +391,13 @@ func scanATXHeadingOpening(source []byte, line physicalLine) (int, int, bool) {
 	if !ok {
 		return 0, line.start, false
 	}
-	_, indentColumns := leadingIndent(source, line)
 	position := line.start + indent
 	markerStart := position
 	for position < line.end && source[position] == '#' && position-markerStart < 7 {
 		position++
 	}
 	level := position - markerStart
-	if !validATXHeadingMarker(source, line, position, level) || atxSingletonSourceTabQuirk(source, line, indent, indentColumns, position, level) {
+	if !validATXHeadingMarker(source, line, position, level) {
 		return 0, line.start, false
 	}
 	return level, position, true
@@ -380,14 +405,6 @@ func scanATXHeadingOpening(source []byte, line physicalLine) (int, int, bool) {
 
 func validATXHeadingMarker(source []byte, line physicalLine, position, level int) bool {
 	return level >= 1 && level <= 6 && (position == line.end || source[position] == ' ' || source[position] == '\t')
-}
-
-func atxSingletonSourceTabQuirk(source []byte, line physicalLine, indentBytes, indentColumns, position, level int) bool {
-	if level != 1 || position != line.end || line.next != line.end || indentBytes <= 0 || source[line.start] != '\t' {
-		return false
-	}
-	effectiveLineLength := line.virtualIndent + line.end - line.start
-	return indentColumns >= effectiveLineLength
 }
 
 func atxContentEnd(source []byte, start, end int) int {
@@ -476,11 +493,12 @@ func parseFenceOpening(source []byte, line physicalLine) (fenceOpening, bool) {
 		return fenceOpening{}, false
 	}
 	marker := source[position]
-	anchor := position
+	markerStart := position
+	anchor := markerStart
 	for position < line.end && source[position] == marker {
 		position++
 	}
-	length := position - anchor
+	length := position - markerStart
 	if length < 3 {
 		return fenceOpening{}, false
 	}
@@ -512,7 +530,7 @@ func parseFencedBlock(source []byte, lines []physicalLine, index int, opening fe
 			removed++
 		}
 		content = append(content, parser.Range{Start: start, End: line.end})
-		semantic = append(semantic, parser.Range{Start: start, End: line.next})
+		semantic = append(semantic, parser.Range{Start: start, End: blockLineSemanticEnd(source, line.next)})
 		next++
 	}
 	range_ := parser.Range{Start: opening.anchor, End: opening.anchor}

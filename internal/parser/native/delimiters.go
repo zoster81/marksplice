@@ -392,7 +392,7 @@ func delimiterMarkerIndex(marker byte) int {
 }
 
 func openerCategory(run delimiterRun) int {
-	category := run.remaining % 3
+	category := run.length % 3
 	if run.canClose {
 		category += 3
 	}

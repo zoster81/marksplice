@@ -39,9 +39,6 @@ func newMarkdownWithExtensions(extenders []goldmark.Extender, options ...goldmar
 		goldmarkparser.WithBlockParsers(
 			util.Prioritized(newFencedCodePositionParser(), 699),
 		),
-		goldmarkparser.WithInlineParsers(
-			util.Prioritized(&gfmCompatibilityInlineParser{}, 399),
-		),
 	}
 	if hasGFMExtendedAutolinks(extenders) {
 		parserOptions = append(parserOptions,

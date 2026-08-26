@@ -1,39 +1,47 @@
-# GFM Conformance Policy
+# Markdown Conformance Policy
 
-Status: source of truth for Marksplice's Markdown syntax profile, conformance hierarchy, and parser-upgrade gate.
+Status: source of truth for Marksplice's Markdown syntax profile, normative hierarchy, conformance gates, and parser-update policy.
 
 ## Normative profile
 
-Marksplice targets GitHub Flavored Markdown (GFM) as its single Markdown syntax profile.
+Marksplice exposes one Markdown syntax profile. Its normative base grammar is **CommonMark 0.31.2** at `https://spec.commonmark.org/0.31.2/`. The published GFM specification at `https://github.github.com/gfm/` is layered on top for explicit GitHub Flavored Markdown extensions or corrections that are not already superseded by the newer CommonMark base.
 
-The normative language contract is the published GFM 0.29 specification at `https://github.github.com/gfm/`. GFM is defined as a strict superset of CommonMark, so CommonMark syntax is supported as the inherited base of GFM; Marksplice does not expose a separate strict-CommonMark mode.
+The published GFM page is based on an older CommonMark line. Therefore inherited GFM core examples do not override CommonMark 0.31.2. When the two published documents disagree about base Markdown syntax, CommonMark 0.31.2 is authoritative. GFM remains authoritative for its explicit extension sections such as tables, task-list items, strikethrough, and extended autolinks. Marksplice does not expose separate CommonMark and GFM modes.
 
-A future request for a second Markdown dialect or a separately observable CommonMark mode requires an explicit architecture decision. It must not be introduced implicitly through parser configuration.
+A future request for another Markdown dialect or a separately observable compatibility mode requires an explicit architecture decision. It must not be introduced implicitly through parser configuration or by copying one implementation's quirks.
 
-GitHub's broader authoring surface includes features such as footnotes, alerts, mathematical expressions, and fenced technical/diagram blocks that are not all part of the pinned GFM 0.29 specification. Their product evaluation belongs to [`extension-strategy.md`](extension-strategy.md). Broadly useful capabilities may enter Marksplice core through an explicit reviewed contract without creating separate first-party extension modes. Dialect-specific syntax stays outside core and may later be implemented by independent packages through the M110 opt-in SPI.
+GitHub's broader authoring surface includes features such as footnotes, alerts, mathematical expressions, and fenced technical/diagram blocks that are not all defined by either normative specification. Their product evaluation belongs to [`extension-strategy.md`](extension-strategy.md). Broadly useful capabilities may enter Marksplice core only through an explicit reviewed Marksplice contract without creating first-party extension modes. Dialect-specific syntax stays outside core and may be implemented by independent packages through the M110 opt-in SPI.
 
 ## Source hierarchy
 
 When sources disagree, use this order:
 
-1. the hash-pinned snapshot of the official published GFM 0.29 specification;
-2. Marksplice conformance and focused regression tests that implement that pinned contract;
-3. the current `github/cmark-gfm` implementation and release behavior as compatibility/security evidence;
-4. GitHub-maintained authoring guidance, including `github/awesome-copilot` Markdown GFM instructions, as advisory evidence and a source of test ideas;
-5. Goldmark behavior as an implementation detail.
+1. the hash-pinned official CommonMark 0.31.2 specification for base Markdown syntax;
+2. the hash-pinned published GFM specification for explicit GFM extension/correction sections not superseded by CommonMark 0.31.2;
+3. explicit reviewed Marksplice contracts for core capabilities outside those specifications, provided they do not silently redefine the normative base grammar;
+4. Marksplice conformance/focused tests that cite and implement the applicable contract above;
+5. official reference/current implementations (`commonmark` reference implementation, `cmark-gfm`) and GitHub-maintained authoring guidance as compatibility, interpretation, and security evidence;
+6. other documented Markdown specifications/implementations when the normative sources leave a case unspecified or materially ambiguous;
+7. Goldmark behavior as temporary implementation evidence only.
 
-Lower-ranked sources do not override higher-ranked sources. A difference found in `cmark-gfm`, GitHub authoring guidance, or Goldmark is evidence to investigate; it is not by itself a reason to change Marksplice semantics.
+Lower-ranked sources do not override higher-ranked sources. A parser-library mismatch is evidence to investigate, never by itself a reason to change Marksplice semantics. In particular, a Native-versus-Goldmark differential failure must first be classified against the applicable specification or Marksplice-owned contract before either backend is changed.
 
-## Pinned specification snapshot
+## Pinned specification snapshots
 
-The conformance test reads an externally provisioned snapshot of the official published GFM page. The snapshot is intentionally not vendored into this Apache-2.0 repository because the upstream specification material is CC-BY-SA-4.0 validation input.
+Conformance tests read externally provisioned snapshots of the official CommonMark and GFM pages. The snapshots are intentionally not vendored into this Apache-2.0 repository because upstream specification material is separately licensed validation input.
 
-`internal/testutil/gfmspec/corpus.go` is the single repository source of truth for the approved snapshot SHA-256 and published-example extraction. The Goldmark conformance test and the M111–M113 differential harnesses use this test-only loader. Do not duplicate that hash in documentation or configuration. The loader fails closed if the supplied snapshot has a different hash, even if it still identifies itself as `Version 0.29-gfm`.
+`internal/testutil/commonmarkspec/corpus.go` owns the approved CommonMark 0.31.2 snapshot SHA-256 and extracts its 652 numbered examples. `internal/testutil/gfmspec/corpus.go` continues to own the approved published GFM snapshot SHA-256 and extension-section classification. Do not duplicate either hash in documentation or configuration. Both loaders fail closed on changed bytes.
 
-To run the conformance and parser-differential gates, set `MARKSPLICE_GFM_SPEC_HTML` to the approved snapshot and run:
+Set `MARKSPLICE_COMMONMARK_SPEC_HTML` to the approved CommonMark snapshot and `MARKSPLICE_GFM_SPEC_HTML` to the approved GFM snapshot. The CommonMark loader gate is:
 
 ```text
-go test ./internal/parser/goldmark -run '^TestGFM029PublishedSpecificationConformance$' -count=1
+go test ./internal/testutil/commonmarkspec -run '^TestPublishedCommonMark0312Corpus$' -count=1
+```
+
+The historical GFM/parser-differential commands remain useful compatibility evidence while M114 replaces Goldmark-first parity with specification-first gates:
+
+```text
+go test ./internal/parser/goldmark -run '^TestGFM029PublishedExtensionConformance$' -count=1
 go test ./internal/parser/differential -run '^TestGoldmarkBackendsMatchPublishedGFMDifferentialCorpus$' -count=1
 go test ./internal/parser/differential -run '^TestNativeBlockParserMatchesPublishedGFMBlockProjection$' -count=1
 go test ./internal/parser/differential -run '^TestNativeInlineParserMatchesPublishedGFMInlineProjection$' -count=1
@@ -42,26 +50,27 @@ go test ./internal/parser/differential -run '^TestNativeInlineRelationshipMatche
 
 Use the anchored exact test names shown above. `go test -run` can exit successfully after selecting zero tests, so shortened or guessed filters are not acceptable conformance or differential evidence.
 
-The pinned page currently contains 677 examples. Marksplice exercises 676 parser/render examples through the production parser factory. The single `tagfilter` example is excluded because disallowed-raw-HTML filtering is an HTML-rendering responsibility and Marksplice core does not currently provide an HTML renderer.
+The pinned GFM page contains 677 examples. Its explicit extension sections remain normative according to the hierarchy above. The inherited GFM core examples are retained as legacy compatibility/regression input, but cannot override a conflicting CommonMark 0.31.2 requirement. The single `tagfilter` example is rendering-specific and remains outside parser conformance while Marksplice core exposes no HTML renderer.
 
-## Updating the normative snapshot
+## Updating normative snapshots
 
-Do not update the approved SHA merely because the official page changed.
+Do not update an approved SHA merely because an official page changed.
 
-A snapshot update requires all of the following:
+A CommonMark or GFM snapshot update requires all of the following:
 
-1. obtain the changed official published GFM page from its canonical source;
+1. obtain the changed official published page from its canonical source;
 2. review the specification diff and identify semantic changes, not only example-count changes;
-3. add or update focused regression tests for changed behavior;
-4. update the Marksplice Goldmark adapter only where necessary to match the reviewed GFM contract;
-5. run the full conformance gate and repository regression suite;
-6. update this document, affected capability/milestone documentation, and the approved SHA in `internal/testutil/gfmspec/corpus.go` in the same reviewed change.
+3. classify whether each change belongs to the CommonMark base or an explicit GFM extension/correction;
+4. add or update focused regression tests that cite the changed normative rule;
+5. update native/temporary adapter behavior only where necessary to match the reviewed contract;
+6. run the full conformance and repository regression gates;
+7. update this document, affected capability/milestone documentation, and the appropriate approved hash in the same reviewed change.
 
-If the new specification conflicts with current `cmark-gfm` or GitHub authoring guidance, record the discrepancy and follow the published specification unless GitHub publishes a superseding normative source.
+If an implementation conflicts with the applicable published specification, record the discrepancy and follow the specification. If the specifications themselves do not determine the case, document the Marksplice decision and the secondary evidence used.
 
 ## Goldmark boundary
 
-`github.com/yuin/goldmark` is the current temporary semantic parser implementation. While it remains in use, Marksplice's default parser uses GFM semantics and may add narrowly scoped compatibility behavior inside `internal/parser/goldmark` where Goldmark differs from the pinned GFM contract. The approved roadmap replaces this backend with the Marksplice-native parser and removes Goldmark at M115.
+`github.com/yuin/goldmark` is the current temporary semantic parser implementation. While it remains in use, Marksplice may add narrowly scoped compatibility behavior inside `internal/parser/goldmark` where Goldmark differs from the specification-first Marksplice contract. Goldmark is never the normative oracle. The approved roadmap replaces this backend with the Marksplice-native parser and removes Goldmark at M115.
 
 Rules:
 
@@ -71,7 +80,7 @@ Rules:
 - ordinary existing-document edits must never depend on serializing a Goldmark AST back to Markdown;
 - Marksplice continues to own exact source mapping, lexical trivia, source fingerprints, and minimal byte patches.
 
-The current Goldmark-backed production parser matches all 676 applicable examples from the approved published-spec snapshot. M111 runs the same inputs through the parser-independent substitution harness. M112 now matches all 676 inputs for native block observations, and M113 matches all 676 for its complete parsed-document inline-node and link/reference relationship projections, including reference normalization and autolink semantics. This is complete parsed-document projection parity, not yet complete native `parser.Backend` or production conformance: construction-only proof methods and pathological/fuzz/resource/cross-platform hardening remain M114, and Goldmark remains the temporary production backend/oracle until the explicit M115 cutover.
+Historical M111–M113 evidence shows parity with the Goldmark-backed production parser across the applicable published GFM 0.29 corpus. M114 is recertifying that work under the specification-first hierarchy above because legacy GFM-core/Goldmark parity is not sufficient when CommonMark 0.31.2 differs. Goldmark remains the temporary production backend until the explicit M115 cutover, but no M114 correctness decision may be justified solely by matching it.
 
 ## Rendering boundary
 

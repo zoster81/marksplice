@@ -371,6 +371,18 @@ func collectInlineSpans(source []byte, block inlineBlock) []inlineSpan {
 				position = end
 				continue
 			}
+			if endSegment, end, ok := scanMultilineHTMLProcessingInstruction(source, block, segmentIndex, position); ok {
+				spans = append(spans, inlineSpan{segment: segmentIndex, start: position, endSegment: endSegment, end: end})
+				segmentIndex = endSegment
+				position = end
+				continue
+			}
+			if endSegment, end, ok := scanMultilineHTMLDeclaration(source, block, segmentIndex, position); ok {
+				spans = append(spans, inlineSpan{segment: segmentIndex, start: position, endSegment: endSegment, end: end})
+				segmentIndex = endSegment
+				position = end
+				continue
+			}
 			if endSegment, end, ok := scanMultilineHTMLTag(source, block, segmentIndex, position); ok {
 				spans = append(spans, inlineSpan{segment: segmentIndex, start: position, endSegment: endSegment, end: end})
 				segmentIndex = endSegment
@@ -434,6 +446,7 @@ func scanExtendedURLAutolink(source []byte, start, limit int) (int, bool) {
 	domainStart := start
 	switch {
 	case hasPrefixAt(source, start, limit, "www."):
+		domainStart += len("www.")
 	case hasPrefixAt(source, start, limit, "http://"):
 		domainStart += len("http://")
 	case hasPrefixAt(source, start, limit, "https://"):
@@ -441,9 +454,12 @@ func scanExtendedURLAutolink(source []byte, start, limit int) (int, bool) {
 	default:
 		return start, false
 	}
-	domainEnd := scanExtendedDomainEnd(source, domainStart, limit)
+	domainEnd, domainTruncated := scanExtendedDomainEnd(source, domainStart, limit)
 	if domainEnd <= domainStart || !validExtendedDomain(source[domainStart:domainEnd]) {
 		return start, false
+	}
+	if domainTruncated {
+		return domainEnd, true
 	}
 	end := domainEnd
 	for end < limit && !extendedAutolinkTerminator(source[end]) {
@@ -456,15 +472,16 @@ func scanExtendedURLAutolink(source []byte, start, limit int) (int, bool) {
 	return end, true
 }
 
-func scanExtendedDomainEnd(source []byte, start, limit int) int {
-	end := start
-	for end < limit && extendedDomainByte(source[end]) {
-		end++
+func scanExtendedDomainEnd(source []byte, start, limit int) (int, bool) {
+	rawEnd := start
+	for rawEnd < limit && extendedDomainByte(source[rawEnd]) {
+		rawEnd++
 	}
-	for end > start && source[end-1] == '.' {
-		end--
+	domainEnd := rawEnd
+	for domainEnd > start && source[domainEnd-1] == '.' {
+		domainEnd--
 	}
-	return end
+	return domainEnd, domainEnd != rawEnd
 }
 
 func validExtendedDomain(domain []byte) bool {
@@ -473,15 +490,26 @@ func validExtendedDomain(domain []byte) bool {
 	}
 	labels := bytes.Split(domain, []byte{'.'})
 	for _, label := range labels {
-		if len(label) == 0 {
+		if !validExtendedDomainLabel(label) {
 			return false
 		}
-		for _, b := range label {
-			if !asciiLetter(b) && !asciiDigit(b) && b != '_' && b != '-' {
-				return false
-			}
+	}
+	return validExtendedDomainTail(labels)
+}
+
+func validExtendedDomainLabel(label []byte) bool {
+	if len(label) == 0 {
+		return false
+	}
+	for _, b := range label {
+		if !asciiLetter(b) && !asciiDigit(b) && b != '_' && b != '-' {
+			return false
 		}
 	}
+	return true
+}
+
+func validExtendedDomainTail(labels [][]byte) bool {
 	lastTwo := labels
 	if len(lastTwo) > 2 {
 		lastTwo = lastTwo[len(lastTwo)-2:]
@@ -559,10 +587,29 @@ func extendedTrailingPunctuation(b byte) bool {
 }
 
 func scanExtendedEmailAutolink(source []byte, start, limit int) (int, bool) {
-	if start >= limit || !asciiLetter(source[start]) && !asciiDigit(source[start]) {
+	if start >= limit || !asciiAlphaNumeric(source[start]) {
 		return start, false
 	}
-	return scanEmailAutolink(source, start, limit, emailLocalByte)
+	position := start
+	for position < limit && emailLocalByte(source[position]) {
+		position++
+	}
+	if position == start || position >= limit || source[position] != '@' {
+		return start, false
+	}
+	domainStart := position + 1
+	position = domainStart
+	for position < limit && extendedEmailDomainByte(source[position]) {
+		position++
+	}
+	domainEnd := position
+	for domainEnd > domainStart && source[domainEnd-1] == '.' {
+		domainEnd--
+	}
+	if !validExtendedEmailDomain(source[domainStart:domainEnd]) {
+		return start, false
+	}
+	return domainEnd, true
 }
 
 func scanEmailAutolink(source []byte, start, limit int, localByte func(byte) bool) (int, bool) {
@@ -766,6 +813,50 @@ type inlineHTMLCursor struct {
 	position int
 }
 
+func scanMultilineHTMLProcessingInstruction(source []byte, block inlineBlock, startSegment, start int) (int, int, bool) {
+	if startSegment < 0 || startSegment >= len(block.segments) {
+		return startSegment, start, false
+	}
+	segment := block.segments[startSegment]
+	if start+1 >= segment.End || source[start] != '<' || source[start+1] != '?' {
+		return startSegment, start, false
+	}
+	cursor := inlineHTMLCursor{block: block, segment: startSegment, position: start + 2}
+	previousQuestion := false
+	for {
+		value, ok := cursor.peek(source)
+		if !ok {
+			return startSegment, start, false
+		}
+		cursor.advance()
+		if previousQuestion && value == '>' {
+			return multilineHTMLEnd(cursor, startSegment, start)
+		}
+		previousQuestion = value == '?'
+	}
+}
+
+func scanMultilineHTMLDeclaration(source []byte, block inlineBlock, startSegment, start int) (int, int, bool) {
+	if startSegment < 0 || startSegment >= len(block.segments) {
+		return startSegment, start, false
+	}
+	segment := block.segments[startSegment]
+	if start+2 >= segment.End || source[start] != '<' || source[start+1] != '!' || !asciiLetter(source[start+2]) {
+		return startSegment, start, false
+	}
+	cursor := inlineHTMLCursor{block: block, segment: startSegment, position: start + 3}
+	for {
+		value, ok := cursor.peek(source)
+		if !ok {
+			return startSegment, start, false
+		}
+		cursor.advance()
+		if value == '>' {
+			return multilineHTMLEnd(cursor, startSegment, start)
+		}
+	}
+}
+
 func scanMultilineHTMLTag(source []byte, block inlineBlock, startSegment, start int) (int, int, bool) {
 	segment := block.segments[startSegment]
 	position, closing, ok := scanMultilineHTMLTagName(source[start:segment.End])
@@ -947,7 +1038,7 @@ func scanInlineHTML(source []byte, start, limit int) (int, bool) {
 		return scanInlineHTMLUntil(source, start+2, limit, []byte("?>"))
 	case bytes.HasPrefix(text, []byte("<![CDATA[")):
 		return scanInlineHTMLUntil(source, start+9, limit, []byte("]]>"))
-	case len(text) >= 3 && text[0] == '<' && text[1] == '!' && asciiUpper(text[2]):
+	case len(text) >= 3 && text[0] == '<' && text[1] == '!' && asciiLetter(text[2]):
 		return scanInlineHTMLDeclaration(source, start, limit)
 	default:
 		return scanInlineHTMLTag(source, start, limit)
@@ -955,16 +1046,17 @@ func scanInlineHTML(source []byte, start, limit int) (int, bool) {
 }
 
 func scanInlineHTMLComment(source []byte, start, limit int) (int, bool) {
+	text := source[start:limit]
+	if bytes.HasPrefix(text, []byte("<!-->")) {
+		return start + len("<!-->"), true
+	}
+	if bytes.HasPrefix(text, []byte("<!--->")) {
+		return start + len("<!--->"), true
+	}
 	bodyStart := start + len("<!--")
 	relative := bytes.Index(source[bodyStart:limit], []byte("-->"))
 	if relative < 0 {
 		return start, false
-	}
-	body := source[bodyStart : bodyStart+relative]
-	if len(body) != 0 {
-		if body[0] == '>' || bytes.HasPrefix(body, []byte("->")) || body[len(body)-1] == '-' || bytes.Contains(body, []byte("--")) {
-			return start, false
-		}
 	}
 	return bodyStart + relative + len("-->"), true
 }
@@ -978,7 +1070,7 @@ func scanInlineHTMLUntil(source []byte, searchStart, limit int, closing []byte) 
 }
 
 func scanInlineHTMLDeclaration(source []byte, start, limit int) (int, bool) {
-	if start+2 >= limit || source[start] != '<' || source[start+1] != '!' || !asciiUpper(source[start+2]) {
+	if start+2 >= limit || source[start] != '<' || source[start+1] != '!' || !asciiLetter(source[start+2]) {
 		return start, false
 	}
 	position := start + 3

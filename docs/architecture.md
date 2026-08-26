@@ -4,7 +4,7 @@ Status: source of truth for durable architecture decisions.
 
 ## Mission
 
-Marksplice is a Pure-Go library for creating and source-preserving structural manipulation of GitHub Flavored Markdown (GFM). GFM is the project's single normative Markdown syntax profile.
+Marksplice is a Pure-Go library for creating and source-preserving structural manipulation of one Markdown profile: CommonMark 0.31.2 as the normative base grammar plus the published GFM extensions/corrections layered on top.
 
 Marksplice has two deliberately separate core paths:
 
@@ -38,7 +38,7 @@ M0 is the green repository-bootstrap baseline and M1–M113 are complete. Detail
 - `internal/parser` owns the complete parser-independent backend contract consumed by Marksplice; `internal/parser/differential` owns the test-only oracle/candidate comparison harness.
 - `internal/parser/goldmark` implements that contract with the temporary Goldmark parser, including AST traversal and narrowly scoped GFM compatibility behavior. No Goldmark type crosses this boundary.
 - `internal/parser/native` owns the completed M112/M113 native parsed-document candidate: physical-line/indent views, Marksplice-owned block/inline grammar, full GFM reference-label normalization, and parser-independent block/inline/relationship observations. It is differential-tested but remains non-production until M114 hardening and the explicit M115 cutover.
-- `internal/testutil/gfmspec` owns the test-only approved GFM snapshot hash/example extraction shared by conformance and differential tests; the external snapshot itself remains untracked validation input.
+- `internal/testutil/commonmarkspec` owns the test-only approved CommonMark 0.31.2 snapshot hash/example extraction. `internal/testutil/gfmspec` owns the approved published GFM snapshot and extension-section classification. Both external snapshots remain untracked validation input.
 - `internal/source` owns parser-independent byte ranges, lexical source proof, source fingerprints, validated patches, and patch application.
 - `internal/splice` combines parser observations with source mappings, builds immutable snapshot indexes/relationships, and prepares structural mutations.
 - `internal/publictest` owns black-box tests that import the root module API exactly as an external Go consumer would.
@@ -268,9 +268,9 @@ Construction proof reuses the same parser-independent source mappings and semant
 
 ## GFM and Goldmark boundary
 
-`docs/gfm-conformance.md` owns the normative source hierarchy, pinned GFM snapshot, conformance procedure, and update policy. CommonMark is inherited as GFM's base syntax; Marksplice exposes no separate CommonMark mode.
+`docs/gfm-conformance.md` owns the normative source hierarchy, pinned CommonMark/GFM snapshots, conformance procedure, and update policy. CommonMark 0.31.2 is the authoritative base grammar; the published GFM specification adds explicit extension/correction behavior. Marksplice exposes no separate CommonMark mode.
 
-Goldmark is the current temporary semantic parser implementation, configured for GFM plus only narrowly scoped compatibility behavior required by the approved contract. Do not expose Goldmark AST/types publicly, serialize its AST as the existing-document edit path, or expand Marksplice syntax merely because Goldmark supports additional constructs. M102 alert semantics intentionally require no Goldmark alert extension: ordinary blockquote parsing remains the semantic substrate and the marker overlay is Marksplice-owned. M103 adds only a narrow adapter-local decorator around Goldmark's public fenced-code block parser so the temporary AST retains the opening fence position; the delegate still owns the grammar and the recorded position is only an anchor for independent Marksplice source proof. M104 keeps the normative GFM parser instance unchanged and uses a second adapter-local Footnote-enabled parser solely as a temporary semantic oracle for the explicitly reviewed core footnote contract; that isolated pass is not a new normative Markdown profile or public extension mode. M105 likewise leaves the normative parser unchanged and derives its reviewed mathematical overlay from bounded adapter-local observations plus independent Marksplice source proof; no Goldmark math extension or renderer is enabled.
+Goldmark is the current temporary semantic parser implementation plus only narrowly scoped compatibility behavior required by the approved contract. It is never a normative source: differential mismatches must be classified against CommonMark 0.31.2, explicit GFM extensions/corrections, or an approved Marksplice-owned capability before either backend changes. Do not expose Goldmark AST/types publicly, serialize its AST as the existing-document edit path, or expand Marksplice syntax merely because Goldmark supports additional constructs. M102 alert semantics intentionally require no Goldmark alert extension: ordinary blockquote parsing remains the semantic substrate and the marker overlay is Marksplice-owned. M103 adds only a narrow adapter-local decorator around Goldmark's public fenced-code block parser so the temporary AST retains the opening fence position; the delegate still owns the grammar and the recorded position is only an anchor for independent Marksplice source proof. M104 keeps the normative GFM parser instance unchanged and uses a second adapter-local Footnote-enabled parser solely as a temporary semantic oracle for the explicitly reviewed core footnote contract; that isolated pass is not a new normative Markdown profile or public extension mode. M105 likewise leaves the normative parser unchanged and derives its reviewed mathematical overlay from bounded adapter-local observations plus independent Marksplice source proof; no Goldmark math extension or renderer is enabled.
 
 Where Goldmark positions or public semantic state are insufficient for lossless source work, Marksplice may perform bounded lexical scans tied to the source snapshot. Such scans remain parser-independent and internal; Marksplice must not copy/fork Goldmark implementation code to obtain lexical trivia.
 
@@ -292,7 +292,7 @@ M111 freezes this substitution boundary as the internal `parser.Backend`: one co
 
 The roadmap ends with a Marksplice-native CommonMark/GFM parser and complete removal of `github.com/yuin/goldmark` from the dependency graph. Goldmark remains only while the native parser is developed against that differential contract. No Goldmark upgrade or migration is part of the roadmap.
 
-The native parser must pass the full applicable pinned GFM corpus, every focused semantic/source-position regression, malformed/deep/oversized-input safety tests, fuzz/resource tests, performance/allocation benchmarks, and maintainability gates before production cutover. During transition, the current Goldmark backend is the temporary differential oracle; after cutover, Goldmark-specific adapter and compatibility code is removed.
+The native parser must pass the full applicable pinned CommonMark 0.31.2 corpus plus the normative explicit GFM extension corpus, every focused semantic/source-position regression required by approved Marksplice contracts, malformed/deep/oversized-input safety tests, fuzz/resource tests, performance/allocation benchmarks, and maintainability gates before production cutover. During transition, Goldmark is only a secondary differential comparison after normative classification; after cutover, Goldmark-specific adapter and compatibility code is removed.
 
 ## Line endings, Unicode, and encoding
 

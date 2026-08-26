@@ -36,7 +36,7 @@ func TestVerifyPublishedGFMSpecSnapshotRejectsUnexpectedBytes(t *testing.T) {
 	}
 }
 
-func TestGFM029PublishedSpecificationConformance(t *testing.T) {
+func TestGFM029PublishedExtensionConformance(t *testing.T) {
 	specPath := os.Getenv("MARKSPLICE_GFM_SPEC_HTML")
 	if specPath == "" {
 		t.Skip("MARKSPLICE_GFM_SPEC_HTML is not set")
@@ -51,22 +51,22 @@ func TestGFM029PublishedSpecificationConformance(t *testing.T) {
 		t.Fatalf("unexpected published GFM corpus shape: %+v", stats)
 	}
 
-	result, err := evaluateGFMSpec(cases)
+	result, err := evaluateGFMExtensions(cases)
 	if err != nil {
-		t.Fatalf("evaluate published GFM spec: %v", err)
+		t.Fatalf("evaluate published GFM extensions: %v", err)
 	}
-	if result.validated != 676 {
-		t.Fatalf("validated examples = %d, want 676", result.validated)
+	if result.validated != 27 {
+		t.Fatalf("validated extension examples = %d, want 27", result.validated)
 	}
 	if len(result.mismatches) != 0 {
-		t.Fatalf("%d of %d validated GFM examples differ; first mismatches:\n%s", len(result.mismatches), result.validated, formatGFMMismatches(result.mismatches, 20))
+		t.Fatalf("%d of %d validated GFM extension examples differ; first mismatches:\n%s", len(result.mismatches), result.validated, formatGFMMismatches(result.mismatches, 20))
 	}
 }
 
-func evaluateGFMSpec(cases []gfmspec.Case) (gfmEvaluation, error) {
+func evaluateGFMExtensions(cases []gfmspec.Case) (gfmEvaluation, error) {
 	result := gfmEvaluation{mismatches: make([]gfmMismatch, 0)}
 	for _, tc := range cases {
-		if slices.Contains(tc.Extensions, "tagfilter") {
+		if len(tc.Extensions) == 0 || slices.Contains(tc.Extensions, "tagfilter") {
 			continue
 		}
 

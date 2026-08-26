@@ -11,6 +11,82 @@ import (
 	"github.com/zoster81/marksplice/internal/parser/native"
 )
 
+func TestM114CommonMark0312InlineHTMLGrammar(t *testing.T) {
+	backend := native.New()
+	tests := []struct {
+		name    string
+		source  []byte
+		wantRaw bool
+	}{
+		{name: "processing instruction opener cannot overlap closer", source: []byte("0<?>"), wantRaw: false},
+		{name: "processing instruction with explicit closer", source: []byte("0<??>"), wantRaw: true},
+		{name: "lowercase declaration", source: []byte("0<!a0>"), wantRaw: true},
+		{name: "short comment", source: []byte("0<!-->"), wantRaw: true},
+		{name: "short hyphen comment", source: []byte("0<!--->"), wantRaw: true},
+		{name: "comment may contain double hyphen", source: []byte("0<!-- a--b -->"), wantRaw: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			observed, err := backend.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			gotRaw := false
+			for _, node := range observed.Nodes {
+				gotRaw = gotRaw || node.Kind == parser.KindRawHTML
+			}
+			if gotRaw != tt.wantRaw {
+				t.Fatalf("RawHTML presence = %v, want %v; observations = %#v", gotRaw, tt.wantRaw, observed.Nodes)
+			}
+		})
+	}
+}
+
+func TestM114PublishedGFMAutolinkGrammar(t *testing.T) {
+	backend := native.New()
+	tests := []struct {
+		name      string
+		source    []byte
+		wantValue string
+		wantEmail bool
+		wantLink  bool
+	}{
+		{name: "www suffix still requires a period", source: []byte("www.000"), wantLink: false},
+		{name: "numeric final URL segment is valid", source: []byte("www.example.000"), wantValue: "www.example.000", wantLink: true},
+		{name: "uppercase final URL segment is valid", source: []byte("www.example.COM"), wantValue: "www.example.COM", wantLink: true},
+		{name: "mixed alphanumeric final URL segment is valid", source: []byte("www.example.a00"), wantValue: "www.example.a00", wantLink: true},
+		{name: "numeric final HTTP segment is valid", source: []byte("http://example.000"), wantValue: "http://example.000", wantLink: true},
+		{name: "numeric HTTP domain is valid", source: []byte("http://0.0"), wantValue: "http://0.0", wantLink: true},
+		{name: "email domain permits underscore", source: []byte("a@a_b.0"), wantValue: "a@a_b.0", wantEmail: true, wantLink: true},
+		{name: "terminal underscore invalidates complete email", source: []byte("0@0.0_"), wantLink: false},
+		{name: "terminal hyphen invalidates complete email", source: []byte("0@0.0-"), wantLink: false},
+		{name: "terminal dot is excluded from otherwise valid email", source: []byte("0@0.0."), wantValue: "0@0.0", wantEmail: true, wantLink: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			observed, err := backend.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			var links []parser.Node
+			for _, node := range observed.Nodes {
+				if node.Kind == parser.KindAutoLink {
+					links = append(links, node)
+				}
+			}
+			if !tt.wantLink {
+				if len(links) != 0 {
+					t.Fatalf("AutoLink nodes = %#v, want none", links)
+				}
+				return
+			}
+			if len(links) != 1 || links[0].Value != tt.wantValue || links[0].AutoLinkEmail != tt.wantEmail {
+				t.Fatalf("AutoLink nodes = %#v, want value %q email=%v", links, tt.wantValue, tt.wantEmail)
+			}
+		})
+	}
+}
+
 func TestM114NativeBackendPathologicalInputsRemainSourceBound(t *testing.T) {
 	backend := native.New()
 	tests := []struct {
@@ -106,17 +182,24 @@ func TestM114NativeBackendMatchesGoldmarkBracketedDelimiterContent(t *testing.T)
 		{name: "single underscore crossing direct link", source: []byte("_0[*_](x)")},
 		{name: "single underscore crossing reference link", source: []byte("_0[*_][r]\n[r]:x")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -136,6 +219,12 @@ func TestM114NativeBackendMatchesGoldmarkInlineHTMLDeclarations(t *testing.T) {
 		{name: "declaration across lf", source: []byte("0<!A\n0>")},
 		{name: "declaration across isolated cr", source: []byte("0<!A\r0>")},
 		{name: "declaration across crlf", source: []byte("0<!A\r\n0>")},
+		{name: "declaration across lf owns delimiters", source: []byte("0<!A\n*0*>")},
+		{name: "declaration across isolated cr owns delimiters", source: []byte("0<!A\r*0*>")},
+		{name: "declaration across crlf owns delimiters", source: []byte("0<!A\r\n*0*>")},
+		{name: "declaration across two lines owns delimiters", source: []byte("0<!A\n*0*\n>")},
+		{name: "exact fuzz artifact", source: []byte("00000000000000000000000000<!A\r*0*>")},
+		{name: "lowercase multiline prefix does not own delimiters", source: []byte("0<!a\r*0*>")},
 		{name: "declaration closes on next line", source: []byte("0<!A\n>")},
 		{name: "lowercase declaration prefix is not declaration", source: []byte("0<!a0>")},
 		{name: "digit declaration prefix is not declaration", source: []byte("0<!0>")},
@@ -143,17 +232,178 @@ func TestM114NativeBackendMatchesGoldmarkInlineHTMLDeclarations(t *testing.T) {
 		{name: "unclosed declaration", source: []byte("0<!A")},
 		{name: "cdata remains independent", source: []byte("0<![CDATA[x]]>")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
+			}
+		})
+	}
+}
+
+func TestM114NativeBackendMatchesGoldmarkExtendedWWWAutolinks(t *testing.T) {
+	tests := []struct {
+		name   string
+		source []byte
+	}{
+		{name: "exact round 54 artifact", source: []byte("www.000")},
+		{name: "alphabetic tld", source: []byte("www.com")},
+		{name: "single alphabetic tld", source: []byte("www.a")},
+		{name: "mixed tld starts digit", source: []byte("www.0a0")},
+		{name: "mixed tld starts letter", source: []byte("www.a00")},
+		{name: "mixed tld ends letter", source: []byte("www.000a")},
+		{name: "mixed tld ends digit", source: []byte("www.com0")},
+		{name: "numeric intermediate label", source: []byte("www.000.com")},
+		{name: "numeric final label after name", source: []byte("www.example.000")},
+		{name: "www mixed tld starts digit", source: []byte("www.example.0a0")},
+		{name: "www mixed tld starts letter", source: []byte("www.example.a00")},
+		{name: "www mixed tld ends letter", source: []byte("www.example.000a")},
+		{name: "www mixed tld ends digit", source: []byte("www.example.com0")},
+		{name: "www single letter final tld", source: []byte("www.example.a")},
+		{name: "www two letter final tld", source: []byte("www.example.ab")},
+		{name: "www uppercase final tld", source: []byte("www.example.COM")},
+		{name: "numeric two-level domain", source: []byte("www.0.0")},
+		{name: "http ordinary domain", source: []byte("http://example.com")},
+		{name: "http single letter final tld", source: []byte("http://example.a")},
+		{name: "http two letter final tld", source: []byte("http://example.ab")},
+		{name: "http uppercase final tld", source: []byte("http://example.COM")},
+		{name: "http numeric tld", source: []byte("http://example.000")},
+		{name: "http mixed tld starts digit", source: []byte("http://example.0a0")},
+		{name: "http mixed tld starts letter", source: []byte("http://example.a00")},
+		{name: "http mixed tld ends letter", source: []byte("http://example.000a")},
+		{name: "http mixed tld ends digit", source: []byte("http://example.com0")},
+		{name: "http numeric host", source: []byte("http://0.0")},
+		{name: "https numeric host", source: []byte("https://0.0")},
+		{name: "http www numeric tld", source: []byte("http://www.000")},
+		{name: "www path after numeric tld", source: []byte("www.000/path")},
+		{name: "www punctuation after numeric tld", source: []byte("www.000,")},
+		{name: "www alphabetic tld path", source: []byte("www.example.com/path")},
+	}
+	candidate := native.New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
+			}
+		})
+	}
+}
+
+func TestM114NativeBackendMatchesGoldmarkPartiallyConsumedDelimiterRuleOfThree(t *testing.T) {
+	tests := []struct {
+		name   string
+		source []byte
+	}{
+		{name: "exact round 55 artifact", source: []byte("*0 **0*~*~")},
+		{name: "no residual opener", source: []byte("*0 *0*~*~")},
+		{name: "double tilde intermediate", source: []byte("*0 **0*~~*~~")},
+		{name: "residual opener with text before crossing closer", source: []byte("*0 **0*~x*~")},
+		{name: "underscore analogue", source: []byte("_0 __0_~_~")},
+		{name: "partially consumed star control", source: []byte("*a***b*")},
+		{name: "partially consumed underscore control", source: []byte("_!___!_ 00")},
+	}
+	candidate := native.New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
+			}
+		})
+	}
+}
+
+func TestM114CommonMark0312RuleOfThreeUsesOriginalDelimiterRunLength(t *testing.T) {
+	source := []byte("*0 **0*~*~")
+	observed, err := native.New().ParseDocument(source)
+	if err != nil {
+		t.Fatalf("ParseDocument() error = %v", err)
+	}
+	for _, node := range observed.Nodes {
+		if node.Kind == parser.KindStrikethrough {
+			t.Fatalf("ParseDocument() projected spurious strikethrough for %q: %+v", source, node)
+		}
+	}
+}
+
+func TestM114NativeBackendMatchesGoldmarkInlineHTMLProcessingInstructions(t *testing.T) {
+	tests := []struct {
+		name   string
+		source []byte
+	}{
+		{name: "exact round 53 artifact", source: []byte("0<?>")},
+		{name: "minimal overlapping close", source: []byte("<?>")},
+		{name: "explicit empty body", source: []byte("<??>")},
+		{name: "ordinary body", source: []byte("<?x?>")},
+		{name: "ordinary body after text", source: []byte("0<?x?>")},
+		{name: "artifact with trailing text", source: []byte("0<?>x")},
+		{name: "unclosed prefix", source: []byte("0<?")},
+		{name: "body without question close", source: []byte("0<?x>")},
+		{name: "space without question close", source: []byte("0<? >")},
+		{name: "across lf", source: []byte("0<?x\n?>")},
+		{name: "across isolated cr", source: []byte("0<?x\r?>")},
+		{name: "across crlf", source: []byte("0<?x\r\n?>")},
+		{name: "across lf owns delimiters", source: []byte("0<?x\n*0*?>")},
+		{name: "across isolated cr owns delimiters", source: []byte("0<?x\r*0*?>")},
+		{name: "across crlf owns delimiters", source: []byte("0<?x\r\n*0*?>")},
+	}
+	candidate := native.New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -179,17 +429,185 @@ func TestM114NativeBackendMatchesGoldmarkMixedLineEndings(t *testing.T) {
 		{name: "isolated cr terminator", source: []byte("*\r")},
 		{name: "two isolated cr boundaries", source: []byte("\r\r*\r")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
+			}
+		})
+	}
+}
+
+func TestM114M104NestedFootnoteDefinitionAmbiguityFailsClosed(t *testing.T) {
+	backend := native.New()
+	tests := []struct {
+		name   string
+		source []byte
+		want   int
+	}{
+		{name: "round 58 ordered container definition", source: []byte("[^0]:0) [^0]:")},
+		{name: "bullet nested definition", source: []byte("[^0]:- [^1]:")},
+		{name: "direct nested definition", source: []byte("[^0]: [^1]:")},
+		{name: "ordered reference token is ordinary body", source: []byte("[^0]:0) [^0]"), want: 1},
+		{name: "plain body", source: []byte("[^0]:0) plain"), want: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := backend.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if len(got.FootnoteDefinitions) != tt.want {
+				t.Fatalf("footnote definitions = %+v, want %d", got.FootnoteDefinitions, tt.want)
+			}
+		})
+	}
+}
+func TestM114M104FootnoteDefinitionsRemainTopLevel(t *testing.T) {
+	backend := native.New()
+	tests := []struct {
+		name   string
+		source []byte
+		want   int
+	}{
+		{name: "top level", source: []byte("[^a]: note\n"), want: 1},
+		{name: "three leading spaces", source: []byte("   [^a]: note\n"), want: 1},
+		{name: "blockquote", source: []byte("> [^a]: note\n")},
+		{name: "bullet list", source: []byte("- [^a]: note\n")},
+		{name: "ordered list", source: []byte("1. [^a]: note\n")},
+		{name: "nested containers", source: []byte("- > [^a]: note\n")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := backend.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if len(got.FootnoteDefinitions) != tt.want {
+				t.Fatalf("footnote definitions = %+v, want %d", got.FootnoteDefinitions, tt.want)
+			}
+		})
+	}
+}
+func TestM114M104FootnoteCaretPrecedence(t *testing.T) {
+	backend := native.New()
+	tests := []struct {
+		name             string
+		source           []byte
+		wantFootnoteRefs int
+	}{
+		{name: "original M104 caret conflict", source: []byte("foot[^n] [normal][^n]\n\n[^n]: note\n"), wantFootnoteRefs: 2},
+		{name: "round 59 multiline conflict", source: []byte("[^n]\n\n[^n]:\n0"), wantFootnoteRefs: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := backend.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if len(got.FootnoteDefinitions) != 1 || len(got.FootnoteReferences) != tt.wantFootnoteRefs {
+				t.Fatalf("footnote observations = definitions %+v references %+v", got.FootnoteDefinitions, got.FootnoteReferences)
+			}
+			for _, usage := range got.LinkUsages {
+				if usage.Reference == "^n" {
+					t.Fatalf("caret source leaked as ordinary GFM relationship: %+v", usage)
+				}
+			}
+			for _, usage := range got.UnresolvedReferenceUsages {
+				if usage.Reference == "^n" {
+					t.Fatalf("caret source leaked as unresolved GFM relationship: %+v", usage)
+				}
+			}
+		})
+	}
+}
+func TestM114NativeBackendMatchesGoldmarkFootnoteReferenceOverlayProjection(t *testing.T) {
+	tests := []struct {
+		name   string
+		source []byte
+	}{
+		{name: "exact round 59 multiline destination", source: []byte("[^n]\n\n[^n]:\n0")},
+		{name: "multiline slash destination", source: []byte("[^n]\n\n[^n]:\n/target")},
+		{name: "multiline destination full reference", source: []byte("[text][^n]\n\n[^n]:\n/target")},
+		{name: "multiline destination crlf", source: []byte("[^n]\r\n\r\n[^n]:\r\n0")},
+		{name: "same line destination is suppressed", source: []byte("[^n]\n\n[^n]: /target")},
+		{name: "same line destination full reference suppressed", source: []byte("[text][^n]\n\n[^n]: /target")},
+		{name: "ordinary reference remains", source: []byte("[^n] [ok][docs]\n\n[^n]: note\n\n[docs]: /target")},
+		{name: "definition without gfm destination", source: []byte("[^n]\n\n[^n]:")},
+	}
+	candidate := native.New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
+			}
+		})
+	}
+}
+
+func TestM114NativeNestedFootnoteInputsRemainSourceBound(t *testing.T) {
+	tests := []struct {
+		name   string
+		source []byte
+	}{
+		{name: "exact round 58 artifact", source: []byte("[^0]:0) [^0]:")},
+		{name: "ordered nested other label", source: []byte("[^0]:0) [^1]:")},
+		{name: "ordered nested definition with body", source: []byte("[^0]:0) [^1]: child")},
+		{name: "dot ordered nested definition", source: []byte("[^0]:1. [^1]:")},
+		{name: "bullet nested definition", source: []byte("[^0]:- [^1]:")},
+		{name: "bullet nested definition with body", source: []byte("[^0]:- [^1]: child")},
+		{name: "ordered reference token remains valid", source: []byte("[^0]:0) [^0]")},
+		{name: "ordered plain body remains valid", source: []byte("[^0]:0) x")},
+		{name: "immediate plain body remains valid", source: []byte("[^0]:x")},
+		{name: "direct nested definition remains rejected", source: []byte("[^0]: [^1]:")},
+		{name: "top level ordered container definition remains valid", source: []byte("0) [^0]:")},
+		{name: "top level bullet container definition remains valid", source: []byte("- [^0]: body")},
+	}
+	candidate := native.New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -210,17 +628,24 @@ func TestM114NativeBackendMatchesGoldmarkFootnoteLabelWhitespace(t *testing.T) {
 		{name: "embedded space", source: []byte("[^a b]:")},
 		{name: "nul", source: []byte{'[', '^', 0, ']', ':'}},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -239,17 +664,24 @@ func TestM114NativeBackendMatchesGoldmarkLooseTaskMarkers(t *testing.T) {
 		{name: "loose marker with reference definition", source: []byte("- [X]\n\n-\n\n[X]: /target")},
 		{name: "tight marker with trailing space", source: []byte("- [X] \n- next")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -271,17 +703,24 @@ func TestM114NativeBackendMatchesGoldmarkReferenceLabelWhitespace(t *testing.T) 
 		{name: "nul", source: []byte{'[', 0, ']', ':', '0'}},
 		{name: "line break only", source: []byte("[\n]:0")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -300,17 +739,67 @@ func TestM114NativeBackendMatchesGoldmarkExtendedEmailTrailingDots(t *testing.T)
 		{name: "internal empty domain label", source: []byte("0@00..000")},
 		{name: "domain only dots", source: []byte("0@...")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
+			}
+		})
+	}
+}
+
+func TestM114NativeBackendMatchesGoldmarkExtendedEmailDomainSuffixes(t *testing.T) {
+	tests := []struct {
+		name   string
+		source []byte
+	}{
+		{name: "exact round 51 artifact", source: []byte("0@0.0._")},
+		{name: "terminal underscore", source: []byte("0@0.0_")},
+		{name: "terminal hyphen", source: []byte("0@0.0-")},
+		{name: "dot hyphen suffix", source: []byte("0@0.0.-")},
+		{name: "double underscore suffix", source: []byte("0@0.0.__")},
+		{name: "underscore then letter", source: []byte("0@0.0._x")},
+		{name: "letter then underscore", source: []byte("0@0.0.x_")},
+		{name: "letter then hyphen", source: []byte("0@0.0.x-")},
+		{name: "suffix before comma", source: []byte("0@0.0._,")},
+		{name: "double dot before underscore", source: []byte("0@0.0.._")},
+		{name: "valid internal underscore", source: []byte("0@a_b.0")},
+		{name: "internal empty label", source: []byte("0@0..0")},
+		{name: "mailto control", source: []byte("mailto:0@0.0._")},
+		{name: "xmpp control", source: []byte("xmpp:0@0.0._/r")},
+	}
+	candidate := native.New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -348,17 +837,83 @@ func TestM114NativeBackendMatchesGoldmarkExtendedEmailLocalPunctuation(t *testin
 		{name: "xmpp broad punctuation rejected", source: []byte("xmpp:0!@0.0/resource")},
 		{name: "xmpp gfm punctuation accepted", source: []byte("xmpp:0+@0.0/resource")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
+			}
+		})
+	}
+}
+
+func TestM114NativeBackendMatchesGoldmarkContainerLazyContinuation(t *testing.T) {
+	tests := []struct {
+		name   string
+		source []byte
+	}{
+		{name: "exact round 52 artifact", source: []byte("><A>\n0")},
+		{name: "complete tag spaced", source: []byte("> <A>\n0")},
+		{name: "named tag", source: []byte("> <div>\n0")},
+		{name: "comment", source: []byte("> <!--x-->\n0")},
+		{name: "processing instruction", source: []byte("> <?x?>\n0")},
+		{name: "declaration", source: []byte("> <!A>\n0")},
+		{name: "cdata", source: []byte("> <![CDATA[x]]>\n0")},
+		{name: "raw tag", source: []byte("> <script></script>\n0")},
+		{name: "complete tag after paragraph", source: []byte("> x\n> <A>\n0")},
+		{name: "named tag after paragraph", source: []byte("> x\n> <div>\n0")},
+		{name: "complete html block remains open", source: []byte("> <A>\n> y\n0")},
+		{name: "unmarked complete tag continues paragraph", source: []byte("> x\n<A>\n0")},
+		{name: "unmarked named tag interrupts paragraph", source: []byte("> x\n<div>\n0")},
+		{name: "nested blockquote html block", source: []byte("> > <A>\n0")},
+		{name: "list item html block", source: []byte("> - <A>\n0")},
+		{name: "list item paragraph", source: []byte("> - x\n0")},
+		{name: "unclosed fenced code", source: []byte("> ```\n> code\n0")},
+		{name: "closed fenced code", source: []byte("> ```\n> code\n> ```\n0")},
+		{name: "table leaf", source: []byte("> a | b\n> - | -\n0")},
+		{name: "table at eof", source: []byte("> a | b\n> - | -")},
+		{name: "table with body then outside", source: []byte("> a | b\n> - | -\n> x | y\n0")},
+		{name: "table with long delimiters", source: []byte("> a | b\n> --- | ---\n0")},
+		{name: "table before blank", source: []byte("> a | b\n> - | -\n>\n0")},
+		{name: "list paragraph before marked blank", source: []byte("> - x\n>\n0")},
+		{name: "list reference before marked blank", source: []byte("> - [a]: /url\n>\n0")},
+		{name: "pipe table with body", source: []byte("> | A | B |\n> | - | - |\n> | x | y |\n0")},
+		{name: "list nested table", source: []byte("- a | b\n  - | -\n  x | y")},
+		{name: "top level ambiguous delimiter", source: []byte("a | b\n- | -")},
+		{name: "top level pipe delimiter", source: []byte("| a | b |\n| - | - |")},
+		{name: "reference definition leaf", source: []byte("> [a]: /url\n0")},
+	}
+	candidate := native.New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -397,23 +952,30 @@ func TestM114NativeBackendMatchesGoldmarkBlockquoteTabPadding(t *testing.T) {
 		{name: "spaced nested two spaces tab", source: []byte("> >  \t0")},
 		{name: "triple nested two spaces tab", source: []byte(">>>  \t0")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
 }
 
-func TestM114NativeBackendMatchesGoldmarkBlockquoteStructuralTabPadding(t *testing.T) {
+func TestM114NativeBlockquoteStructuralTabPaddingRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -433,6 +995,13 @@ func TestM114NativeBackendMatchesGoldmarkBlockquoteStructuralTabPadding(t *testi
 		{name: "two spaces then tab ordered", source: []byte(">  \t1. x")},
 		{name: "space then tab nested quote", source: []byte("> \t> x")},
 		{name: "space then tab fence", source: []byte("> \t```\nx\n```")},
+		{name: "consumed tab fence exact round 56", source: []byte(">\t```")},
+		{name: "consumed tab tilde fence", source: []byte(">\t~~~")},
+		{name: "consumed tab fence newline", source: []byte(">\t```\n")},
+		{name: "consumed tab fence body", source: []byte(">\t```\n> x\n> ```")},
+		{name: "one leading space consumed tab fence", source: []byte(" >\t```")},
+		{name: "two leading spaces consumed tab fence", source: []byte("  >\t```")},
+		{name: "three leading spaces consumed tab fence", source: []byte("   >\t```")},
 		{name: "space then tab text", source: []byte("> \ttext")},
 		{name: "one leading space space then tab empty heading", source: []byte(" > \t#")},
 		{name: "two leading spaces space then tab empty heading", source: []byte("  > \t#")},
@@ -443,18 +1012,34 @@ func TestM114NativeBackendMatchesGoldmarkBlockquoteStructuralTabPadding(t *testi
 		{name: "one leading space tab padding empty heading", source: []byte(" >\t#")},
 		{name: "two leading spaces tab padding empty heading", source: []byte("  >\t#")},
 		{name: "three leading spaces tab padding empty heading", source: []byte("   >\t#")},
+		{name: "one leading space two spaces tab empty heading", source: []byte(" >  \t#")},
+		{name: "two leading spaces two spaces tab empty heading", source: []byte("  >  \t#")},
+		{name: "three leading spaces two spaces tab empty heading exact round 57", source: []byte("   >  \t#")},
+		{name: "one leading space three spaces tab empty heading", source: []byte(" >   \t#")},
+		{name: "two leading spaces three spaces tab empty heading", source: []byte("  >   \t#")},
+		{name: "three leading spaces three spaces tab empty heading", source: []byte("   >   \t#")},
+		{name: "three leading spaces two spaces tab heading text", source: []byte("   >  \t# x")},
+		{name: "three leading spaces two spaces tab level two empty heading", source: []byte("   >  \t##")},
+		{name: "three leading spaces two spaces tab ordinary text", source: []byte("   >  \ttext")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -473,17 +1058,24 @@ func TestM114NativeBackendMatchesGoldmarkNestedListTabPadding(t *testing.T) {
 		{name: "nested marker two spaces tab", source: []byte("* *  \t0")},
 		{name: "ordinary nested list", source: []byte("* - child")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -506,17 +1098,71 @@ func TestM114NativeBackendMatchesGoldmarkEmptyListSiblingAfterBlank(t *testing.T
 		{name: "ordered same punctuation", source: []byte("1.\n\n   2. 0")},
 		{name: "ordered different punctuation", source: []byte("1.\n\n   2) 0")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
+			}
+		})
+	}
+}
+
+func TestM114NativeBackendMatchesGoldmarkNestedListWidePaddingContinuationBoundary(t *testing.T) {
+	tests := []struct {
+		name   string
+		source []byte
+	}{
+		{name: "artifact isolated cr", source: []byte("*\n\n+\r  *     0\n  0")},
+		{name: "artifact lf", source: []byte("*\n\n+\n  *     0\n  0")},
+		{name: "artifact crlf", source: []byte("*\n\n+\r\n  *     0\n  0")},
+		{name: "no preceding list", source: []byte("+\r  *     0\n  0")},
+		{name: "same preceding marker", source: []byte("*\n\n*\r  *     0\n  0")},
+		{name: "nested padding one", source: []byte("*\n\n+\r  * 0\n  0")},
+		{name: "nested padding two", source: []byte("*\n\n+\r  *  0\n  0")},
+		{name: "nested padding three", source: []byte("*\n\n+\r  *   0\n  0")},
+		{name: "nested padding four", source: []byte("*\n\n+\r  *    0\n  0")},
+		{name: "nested padding five", source: []byte("*\n\n+\r  *     0\n  0")},
+		{name: "nested padding six", source: []byte("*\n\n+\r  *      0\n  0")},
+		{name: "final indent zero", source: []byte("*\n\n+\r  *     0\n0")},
+		{name: "final indent one", source: []byte("*\n\n+\r  *     0\n 0")},
+		{name: "final indent two", source: []byte("*\n\n+\r  *     0\n  0")},
+		{name: "final indent three", source: []byte("*\n\n+\r  *     0\n   0")},
+		{name: "final indent four", source: []byte("*\n\n+\r  *     0\n    0")},
+		{name: "alternate nested marker", source: []byte("*\n\n+\r  -     0\n  0")},
+		{name: "alternate outer marker", source: []byte("+\n\n*\r  +     0\n  0")},
+	}
+	candidate := native.New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -546,17 +1192,24 @@ func TestM114NativeBackendMatchesGoldmarkListReferenceDefinitionLineEndings(t *t
 		{name: "ordinary paragraph then reference text", source: []byte("- first\n  [0]:0")},
 		{name: "reference then nested list", source: []byte("- [0]:0\n  - child")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -582,17 +1235,24 @@ func TestM114NativeBackendMatchesGoldmarkWhitespaceOnlyMultilineCodeSpanProjecti
 		{name: "double backtick spaces", source: []byte("``  \n``")},
 		{name: "second line text", source: []byte("`  \n x`")},
 	}
-	oracle := goldmarkparser.New()
 	candidate := native.New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
 			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", tt.source, got, want)
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
 			}
 		})
 	}
@@ -632,7 +1292,7 @@ func FuzzM114NativeBackendObservationsRemainSourceBound(f *testing.F) {
 	})
 }
 
-func FuzzM114NativeBackendMatchesGoldmark(f *testing.F) {
+func FuzzM114NativeBackendLegacyDifferentialCorpusRemainsSourceBound(f *testing.F) {
 	for _, seed := range [][]byte{
 		[]byte("plain\n"),
 		[]byte("# *head* `code`\n"),
@@ -707,13 +1367,24 @@ func FuzzM114NativeBackendMatchesGoldmark(f *testing.F) {
 		[]byte("_0[*_ ]"),
 		[]byte("_[*_ \r]"),
 		[]byte("0<!A0>"),
+		[]byte("00000000000000000000000000<!A\r*0*>"),
 		[]byte(" > \t#"),
+		[]byte("*\n\n+\r  *     0\n  0"),
 		[]byte("*\n\n   * 0"),
 		[]byte("`  \n`"),
 		[]byte("[^0]:0\n[0]:0"),
 		[]byte("[\xf5\r0\n# 00]:0"),
 		[]byte("__[*_ 0]"),
 		[]byte("0!@0.0"),
+		[]byte("0@0.0._"),
+		[]byte("><A>\n0"),
+		[]byte("0<?>"),
+		[]byte("www.000"),
+		[]byte("*0 **0*~*~"),
+		[]byte(">\t```"),
+		[]byte("   >  \t#"),
+		[]byte("[^0]:0) [^0]:"),
+		[]byte("[^n]\n\n[^n]:\n0"),
 	} {
 		f.Add(seed)
 	}
@@ -722,13 +1393,21 @@ func FuzzM114NativeBackendMatchesGoldmark(f *testing.F) {
 		if len(source) > 16<<10 {
 			return
 		}
-		want, wantErr := goldmarkparser.New().ParseDocument(source)
-		got, gotErr := native.New().ParseDocument(source)
-		if (gotErr != nil) != (wantErr != nil) {
-			t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
+		before := bytes.Clone(source)
+		first, err := native.New().ParseDocument(source)
+		if err != nil {
+			t.Fatalf("ParseDocument() error = %v", err)
 		}
-		if gotErr == nil && !reflect.DeepEqual(got, want) {
-			t.Fatalf("backend observations differ\nsource=%q\nnative=%#v\nGoldmark=%#v", source, got, want)
+		if !bytes.Equal(source, before) {
+			t.Fatal("ParseDocument() mutated fuzz source")
+		}
+		assertM114ObservationsSourceBound(t, first, len(source))
+		second, err := native.New().ParseDocument(source)
+		if err != nil {
+			t.Fatalf("second ParseDocument() error = %v", err)
+		}
+		if !reflect.DeepEqual(first, second) {
+			t.Fatal("ParseDocument() is nondeterministic for legacy differential corpus fuzz source")
 		}
 	})
 }

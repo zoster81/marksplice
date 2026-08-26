@@ -90,6 +90,77 @@ func TestAdapterFootnotesSupersedeConflictingGFMReferenceSemantics(t *testing.T)
 	}
 }
 
+func TestAdapterFootnoteClaimSuppressesMultilineGFMReferenceConflict(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("[^n]\n\n[^n]:\n0")
+	got, err := New().ParseDocument(source)
+	if err != nil {
+		t.Fatalf("ParseDocument() error = %v", err)
+	}
+	if len(got.FootnoteDefinitions) != 1 || len(got.FootnoteReferences) != 1 {
+		t.Fatalf("footnote observations = definitions %+v references %+v, want one each", got.FootnoteDefinitions, got.FootnoteReferences)
+	}
+	for _, usage := range got.LinkUsages {
+		if usage.Reference == "^n" {
+			t.Fatalf("caret source leaked as ordinary GFM relationship: %+v", usage)
+		}
+	}
+}
+
+func TestAdapterFootnoteDefinitionsRemainTopLevel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source []byte
+		want   int
+	}{
+		{name: "top level", source: []byte("[^a]: note\n"), want: 1},
+		{name: "three leading spaces", source: []byte("   [^a]: note\n"), want: 1},
+		{name: "blockquote", source: []byte("> [^a]: note\n")},
+		{name: "bullet list", source: []byte("- [^a]: note\n")},
+		{name: "ordered list", source: []byte("1. [^a]: note\n")},
+		{name: "nested containers", source: []byte("- > [^a]: note\n")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := New().ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if len(got.FootnoteDefinitions) != tt.want {
+				t.Fatalf("footnote definitions = %+v, want %d", got.FootnoteDefinitions, tt.want)
+			}
+		})
+	}
+}
+func TestAdapterNestedFootnoteDefinitionAmbiguityFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source []byte
+		want   int
+	}{
+		{name: "round 58 ordered container definition", source: []byte("[^0]:0) [^0]:")},
+		{name: "bullet nested definition", source: []byte("[^0]:- [^1]:")},
+		{name: "direct nested definition", source: []byte("[^0]: [^1]:")},
+		{name: "ordered reference token is ordinary body", source: []byte("[^0]:0) [^0]"), want: 1},
+		{name: "plain body", source: []byte("[^0]:0) plain"), want: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := New().ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if len(got.FootnoteDefinitions) != tt.want {
+				t.Fatalf("footnote definitions = %+v, want %d", got.FootnoteDefinitions, tt.want)
+			}
+		})
+	}
+}
 func TestAdapterCollectsLinkUsagesInsideFootnoteDefinitions(t *testing.T) {
 	t.Parallel()
 

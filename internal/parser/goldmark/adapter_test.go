@@ -34,7 +34,7 @@ func TestDefaultProfileIsGFMOnly(t *testing.T) {
 	}
 }
 
-func TestGFM029SpecCompatibilityGuards(t *testing.T) {
+func TestMarkdownProfileCompatibilityGuards(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -49,9 +49,10 @@ func TestGFM029SpecCompatibilityGuards(t *testing.T) {
 		{name: "bare mailto protocol is an extended GFM autolink", source: "mailto:foo@bar.baz\n", kind: ast.KindAutoLink, want: 1},
 		{name: "bare xmpp resource is an extended GFM autolink", source: "xmpp:foo@bar.baz/txt@bin.com\n", kind: ast.KindAutoLink, want: 1},
 		{name: "valid HTML comment", source: "foo <!-- valid comment -->\n", kind: ast.KindRawHTML, want: 1},
-		{name: "comment containing double hyphen is literal", source: "foo <!-- not a comment -- two hyphens -->\n", kind: ast.KindRawHTML, want: 0},
-		{name: "comment text starting with greater-than is literal", source: "foo <!--> foo -->\n", kind: ast.KindRawHTML, want: 0},
-		{name: "comment text ending with hyphen is literal", source: "foo <!-- foo--->\n", kind: ast.KindRawHTML, want: 0},
+		{name: "CommonMark 0.31.2 comment permits double hyphen text", source: "foo <!-- not a comment -- two hyphens -->\n", kind: ast.KindRawHTML, want: 1},
+		{name: "CommonMark 0.31.2 short comment", source: "foo <!--> foo -->\n", kind: ast.KindRawHTML, want: 1},
+		{name: "CommonMark 0.31.2 short hyphen comment", source: "foo <!---> foo -->\n", kind: ast.KindRawHTML, want: 1},
+		{name: "CommonMark 0.31.2 body may end in hyphen before closer", source: "foo <!-- foo--->\n", kind: ast.KindRawHTML, want: 1},
 	}
 	for _, tt := range tests {
 		tt := tt

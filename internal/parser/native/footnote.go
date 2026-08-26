@@ -13,7 +13,7 @@ type nativeFootnoteDefinition struct {
 }
 
 func nativeFootnoteObservations(source []byte, blocks blockParseResult) ([]parser.FootnoteDefinitionObservation, []parser.FootnoteReferenceObservation, []parser.LinkUsage) {
-	parsed := appendNativeContainerFootnoteDefinitions(source, scanNativeFootnoteDefinitions(source), blocks.nodes)
+	parsed := scanNativeFootnoteDefinitions(source)
 	definitions := make([]parser.FootnoteDefinitionObservation, len(parsed))
 	for index := range parsed {
 		definitions[index] = parsed[index].observation
@@ -34,11 +34,15 @@ func scanNativeFootnoteDefinitions(source []byte) []nativeFootnoteDefinition {
 			continue
 		}
 		childLines, next := nativeFootnoteChildLines(source, lines, index, bodyStart)
-		if nativeFootnoteHasNestedDefinition(source, childLines) {
+		if nativeFootnoteHasDirectNestedDefinition(source, childLines) {
 			index = next
 			continue
 		}
 		child := parseBlockLines(source, childLines, false)
+		if nativeFootnoteHasNestedContainerDefinition(source, childLines, child.nodes) {
+			index = next
+			continue
+		}
 		bodyRanges := normalizeNativeFootnoteBodyRanges(source, child.semantic)
 		result = append(result, nativeFootnoteDefinition{
 			observation: parser.FootnoteDefinitionObservation{
@@ -53,96 +57,11 @@ func scanNativeFootnoteDefinitions(source []byte) []nativeFootnoteDefinition {
 	return result
 }
 
-func appendNativeContainerFootnoteDefinitions(source []byte, definitions []nativeFootnoteDefinition, nodes []parser.Node) []nativeFootnoteDefinition {
-	seen := make(map[int]struct{}, len(definitions))
-	for _, definition := range definitions {
-		seen[definition.observation.Anchor] = struct{}{}
-	}
-	for _, node := range nodes {
-		if !nativeFootnoteContainerAnchorCandidate(node) {
-			continue
-		}
-		if _, exists := seen[node.Range.Start]; exists {
-			continue
-		}
-		definition, ok := nativeContainerFootnoteDefinitionAt(source, node.Range.Start)
-		if !ok {
-			continue
-		}
-		definitions = append(definitions, definition)
-		seen[definition.observation.Anchor] = struct{}{}
-	}
-	sort.SliceStable(definitions, func(left, right int) bool {
-		return definitions[left].observation.Anchor < definitions[right].observation.Anchor
-	})
-	return definitions
-}
-
-func nativeFootnoteContainerAnchorCandidate(node parser.Node) bool {
+func nativeFootnoteNestedDefinitionCandidate(node parser.Node) bool {
 	if node.Kind == parser.KindListItem {
 		return true
 	}
 	return node.Kind == parser.KindReferenceDefinition && len(node.Label) >= 2 && node.Label[0] == '^'
-}
-
-func nativeContainerFootnoteDefinitionAt(source []byte, anchor int) (nativeFootnoteDefinition, bool) {
-	if anchor < 0 || anchor >= len(source) {
-		return nativeFootnoteDefinition{}, false
-	}
-	lines, openingIndex := nativeContainerFootnoteLines(source, anchor)
-	if openingIndex < 0 {
-		return nativeFootnoteDefinition{}, false
-	}
-	opening := lines[openingIndex]
-	definitionAnchor, label, bodyStart, ok := nativeFootnoteOpening(source, opening)
-	if !ok || definitionAnchor != anchor {
-		return nativeFootnoteDefinition{}, false
-	}
-	childLines, _ := nativeFootnoteChildLines(source, lines, openingIndex, bodyStart)
-	if nativeFootnoteHasNestedDefinition(source, childLines) {
-		return nativeFootnoteDefinition{}, false
-	}
-	child := parseBlockLines(source, childLines, false)
-	return nativeFootnoteDefinition{
-		observation: parser.FootnoteDefinitionObservation{
-			Anchor:     anchor,
-			Label:      label,
-			BodyRanges: normalizeNativeFootnoteBodyRanges(source, child.semantic),
-		},
-		bodyBlocks: append([]inlineBlock(nil), child.inlines...),
-	}, true
-}
-
-func nativeContainerFootnoteLines(source []byte, anchor int) ([]physicalLine, int) {
-	lines := physicalLines(source)
-	openingIndex := sort.Search(len(lines), func(index int) bool { return lines[index].next > anchor })
-	if openingIndex >= len(lines) || anchor < lines[openingIndex].physicalStart || anchor > lines[openingIndex].end {
-		return nil, -1
-	}
-	containerIndent := nativeFootnoteListContainerIndent(source, lines[openingIndex], anchor)
-	lines[openingIndex] = advancePhysicalLineStart(source, lines[openingIndex], anchor, 0)
-	if containerIndent == 0 {
-		return lines, openingIndex
-	}
-	for index := openingIndex + 1; index < len(lines); index++ {
-		if blankLine(source, lines[index]) {
-			continue
-		}
-		_, columns := leadingIndent(source, lines[index])
-		if columns < containerIndent {
-			return lines[:index], openingIndex
-		}
-		lines[index] = stripIndentColumns(source, lines[index], containerIndent)
-	}
-	return lines, openingIndex
-}
-
-func nativeFootnoteListContainerIndent(source []byte, line physicalLine, anchor int) int {
-	marker, ok := parseListMarker(source, line)
-	if !ok || marker.contentStart > anchor {
-		return 0
-	}
-	return marker.contentIndent
 }
 
 func nativeFootnoteOpening(source []byte, line physicalLine) (int, string, int, bool) {
@@ -218,13 +137,35 @@ func nativeFootnoteChildLines(source []byte, lines []physicalLine, index, bodySt
 	return children, next
 }
 
-func nativeFootnoteHasNestedDefinition(source []byte, lines []physicalLine) bool {
+func nativeFootnoteHasDirectNestedDefinition(source []byte, lines []physicalLine) bool {
 	for _, line := range lines {
 		if _, _, _, ok := nativeFootnoteOpening(source, line); ok {
 			return true
 		}
 	}
 	return false
+}
+
+func nativeFootnoteHasNestedContainerDefinition(source []byte, lines []physicalLine, nodes []parser.Node) bool {
+	for _, node := range nodes {
+		if nativeFootnoteNestedDefinitionCandidate(node) && nativeFootnoteOpeningAtAnchor(source, lines, node.Range.Start) {
+			return true
+		}
+	}
+	return false
+}
+
+func nativeFootnoteOpeningAtAnchor(source []byte, lines []physicalLine, anchor int) bool {
+	index := sort.Search(len(lines), func(index int) bool { return lines[index].next > anchor })
+	if index >= len(lines) || anchor < lines[index].start || anchor >= lines[index].end {
+		return false
+	}
+	line := lines[index]
+	if anchor > line.start {
+		line = advancePhysicalLineStart(source, line, anchor, 0)
+	}
+	definitionAnchor, _, _, ok := nativeFootnoteOpening(source, line)
+	return ok && definitionAnchor == anchor
 }
 
 func normalizeNativeFootnoteBodyRanges(source []byte, ranges []parser.Range) []parser.Range {
@@ -409,38 +350,9 @@ func reconcileNativeFootnotes(source []byte, nodes []parser.Node, usages []parse
 	for _, definition := range definitions {
 		caretKeys[ReferenceLabelKey("^"+definition.Label)] = struct{}{}
 	}
-	filteredNodes := make([]parser.Node, 0, len(nodes))
-	for _, node := range nodes {
-		if nativeRangeInsideAny(node.Range, claims) {
-			continue
-		}
-		filteredNodes = append(filteredNodes, node)
-	}
-	filteredUsages := make([]parser.LinkUsage, 0, len(usages)+len(bodyUsages))
-	suppressedNodeAnchors := make(map[constructionSemanticKey]struct{})
-	for _, usage := range usages {
-		if nativeOffsetInsideAny(usage.Anchor, claims) {
-			continue
-		}
-		if usage.Form != parser.LinkUsageDirect {
-			if _, suppressed := caretKeys[ReferenceLabelKey(usage.Reference)]; suppressed {
-				suppressedNodeAnchors[constructionSemanticKey{kind: usage.Kind, syntax: parser.Range{Start: usage.Anchor, End: usage.Anchor}}] = struct{}{}
-				continue
-			}
-		}
-		filteredUsages = append(filteredUsages, usage)
-	}
-	if len(suppressedNodeAnchors) != 0 {
-		kept := filteredNodes[:0]
-		for _, node := range filteredNodes {
-			key := constructionSemanticKey{kind: node.Kind, syntax: parser.Range{Start: node.Anchor, End: node.Anchor}}
-			if _, suppressed := suppressedNodeAnchors[key]; suppressed {
-				continue
-			}
-			kept = append(kept, node)
-		}
-		filteredNodes = kept
-	}
+	filteredNodes := filterNativeFootnoteConflictNodes(nodes, claims, definitions)
+	filteredUsages, suppressedNodeAnchors := filterNativeFootnoteConflictUsages(usages, claims, caretKeys)
+	filteredNodes = removeNativeSuppressedReferenceNodes(filteredNodes, suppressedNodeAnchors)
 	filteredUsages = append(filteredUsages, bodyUsages...)
 	sort.SliceStable(filteredUsages, func(left, right int) bool { return filteredUsages[left].Anchor < filteredUsages[right].Anchor })
 	filteredUsages = deduplicateNativeLinkUsages(filteredUsages)
@@ -451,6 +363,54 @@ func reconcileNativeFootnotes(source []byte, nodes []parser.Node, usages []parse
 		}
 	}
 	return filteredNodes, filteredUsages, filteredUnresolved
+}
+
+func filterNativeFootnoteConflictNodes(nodes []parser.Node, claims []parser.Range, definitions []parser.FootnoteDefinitionObservation) []parser.Node {
+	anchors := make(map[int]struct{}, len(definitions))
+	for _, definition := range definitions {
+		anchors[definition.Anchor] = struct{}{}
+	}
+	filtered := make([]parser.Node, 0, len(nodes))
+	for _, node := range nodes {
+		_, claimedAnchor := anchors[node.Range.Start]
+		if nativeRangeInsideAny(node.Range, claims) || node.Kind == parser.KindReferenceDefinition && claimedAnchor {
+			continue
+		}
+		filtered = append(filtered, node)
+	}
+	return filtered
+}
+
+func filterNativeFootnoteConflictUsages(usages []parser.LinkUsage, claims []parser.Range, caretKeys map[string]struct{}) ([]parser.LinkUsage, map[constructionSemanticKey]struct{}) {
+	filtered := make([]parser.LinkUsage, 0, len(usages))
+	suppressedAnchors := make(map[constructionSemanticKey]struct{})
+	for _, usage := range usages {
+		if nativeOffsetInsideAny(usage.Anchor, claims) {
+			continue
+		}
+		if usage.Form != parser.LinkUsageDirect {
+			if _, suppressed := caretKeys[ReferenceLabelKey(usage.Reference)]; suppressed {
+				suppressedAnchors[constructionSemanticKey{kind: usage.Kind, syntax: parser.Range{Start: usage.Anchor, End: usage.Anchor}}] = struct{}{}
+				continue
+			}
+		}
+		filtered = append(filtered, usage)
+	}
+	return filtered, suppressedAnchors
+}
+
+func removeNativeSuppressedReferenceNodes(nodes []parser.Node, suppressed map[constructionSemanticKey]struct{}) []parser.Node {
+	if len(suppressed) == 0 {
+		return nodes
+	}
+	filtered := nodes[:0]
+	for _, node := range nodes {
+		key := constructionSemanticKey{kind: node.Kind, syntax: parser.Range{Start: node.Anchor, End: node.Anchor}}
+		if _, remove := suppressed[key]; !remove {
+			filtered = append(filtered, node)
+		}
+	}
+	return filtered
 }
 
 func deduplicateNativeLinkUsages(usages []parser.LinkUsage) []parser.LinkUsage {

@@ -179,8 +179,19 @@ func TestReplaceInlineHTMLCommentPreservesDelimitersPaddingAndCRLF(t *testing.T)
 	if !bytes.Equal(got, want) {
 		t.Fatalf("result bytes differ\n got: %q\nwant: %q", got, want)
 	}
-	if _, err := doc.PrepareReplaceHTMLComment(comments[0].ID, []byte("bad -- split")); !errors.Is(err, ErrInvalidReplacement) {
-		t.Fatalf("PrepareReplaceHTMLComment(double hyphen) error = %v, want ErrInvalidReplacement", err)
+	doubleHyphen, err := doc.PrepareReplaceHTMLComment(comments[0].ID, []byte("valid -- double hyphen"))
+	if err != nil {
+		t.Fatalf("PrepareReplaceHTMLComment(double hyphen) error = %v", err)
+	}
+	doubleHyphenSource, err := doubleHyphen.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply(double hyphen) error = %v", err)
+	}
+	if !bytes.Contains(doubleHyphenSource, []byte("<!--  valid -- double hyphen  -->")) {
+		t.Fatalf("double-hyphen comment result = %q", doubleHyphenSource)
+	}
+	if _, err := doc.PrepareReplaceHTMLComment(comments[0].ID, []byte("bad --> split")); !errors.Is(err, ErrInvalidReplacement) {
+		t.Fatalf("PrepareReplaceHTMLComment(embedded terminator) error = %v, want ErrInvalidReplacement", err)
 	}
 }
 
