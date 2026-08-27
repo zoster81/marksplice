@@ -18,10 +18,10 @@ Marksplice does not crawl your filesystem, fetch URLs, render HTML/PDF, or silen
 
 ## Install
 
-Marksplice requires Go 1.26 or newer. The current published beta is `v0.1.0-beta.1`:
+Marksplice requires Go 1.26 or newer. The current published beta is `v0.1.0-beta.2`:
 
 ```sh
-go get github.com/zoster81/marksplice@v0.1.0-beta.1
+go get github.com/zoster81/marksplice@v0.1.0-beta.2
 ```
 
 ## Try a real file

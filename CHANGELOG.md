@@ -6,6 +6,8 @@ The project uses Semantic Versioning-compatible Go module tags. Until v1, the pu
 
 ## Unreleased
 
+## v0.1.0-beta.2 — 2026-08-27
+
 - Add source-proven footnote and mathematical-expression capabilities, generalized opaque YAML/TOML front-matter envelope reading, and syntax-independent knowledge-document indexing over explicit document graphs.
 - Complete fuzz/pathological/performance hardening and stabilize the public API contract before third-party extensibility work.
 - Replace the ambiguous four-value `WorkspaceDiagnostic.UnresolvedReference` result with typed immutable `UnresolvedReference` data; document concurrent-read safety for immutable public models, serialized build-time resolvers, caller-bounded operations, `errors.Is` error classification, and the closed core `Kind` namespace. This accessor change is intentionally source-incompatible during the v0 beta period.
@@ -14,6 +16,7 @@ The project uses Semantic Versioning-compatible Go module tags. Until v1, the pu
 - Complete the Native parser transition: implement and harden the full CommonMark/GFM backend, switch production parsing and construction proof to Native, freeze parser-neutral conformance fixtures tied to the approved external specification inputs, and remove the Goldmark adapter, differential scaffolding, and `github.com/yuin/goldmark` module dependency.
 - Add a task-oriented module guide and an exhaustive exported-callable API reference, with documentation audits that keep the reference synchronized with the public Go declarations.
 - Refactor the public documentation into one clear README entry point, a first-use Getting Started path, goal-oriented recipes, a concise current capability matrix, and runnable file-based examples for inspection, editing, construction, querying, workspaces, and read-only extensions; keep milestone/parser history in advanced historical records instead of the normal user journey.
+- Document the approved path to stable v1.0: filesystem-backed workspace discovery, Native semantic rendering, HTML/source mapping, canonical Markdown, and a dedicated M124 stabilization/profile gate; defer PDF work to the planned v1.5 line.
 
 ## v0.1.0-beta.1 — 2026-08-23
 

@@ -31,7 +31,7 @@ Marksplice has two deliberately separate core paths:
 
 Existing documents are immutable source snapshots. Ordinary edits use minimal source-bound patches and never authorize normalization of untouched source. New documents may use deterministic canonical GFM because there is no author formatting to preserve. New-document writing must never be substituted for the existing-document edit path.
 
-M0 is the green repository-bootstrap baseline and M1–M115 are complete. Detailed milestone chronology, feature contracts, and verification evidence live in `docs/milestones/`; this document records only architecture that remains durable across those milestones.
+M0 is the green repository-bootstrap baseline and M1–M115 are complete. The approved post-M115 sequence is maintained in `docs/roadmap.md`: M116–M124 lead to the v1.0 stability gate, while M125–M126 are the deferred v1.5 PDF line. Detailed completed-milestone chronology, feature contracts, and verification evidence live in `docs/milestones/`; this document records only architecture that remains durable across those milestones.
 
 ## Package boundaries
 
@@ -45,6 +45,8 @@ M0 is the green repository-bootstrap baseline and M1–M115 are complete. Detail
 - root package `marksplice` owns reviewed public types and operations. It may wrap internal implementation values but must not expose parser-internal or `internal/*` types.
 
 The public package deliberately remains at the Go module root because the canonical import path is `github.com/zoster81/marksplice`. Moving that package under a top-level `src/` directory would change the natural import path to `github.com/zoster81/marksplice/src` or require a forwarding facade whose only purpose is repository cosmetics. Root Go filenames are therefore grouped by responsibility instead: `api*.go` owns parsed-document/read/edit APIs and `builder*.go` owns new-document construction plus its package-private proof/writer helpers. Longer-form documentation stays under `docs/`, while external-style public API tests stay out of the root under `internal/publictest/`.
+
+The approved post-M115 architecture adds two separate layers without weakening those boundaries. M116 introduces a filesystem-facing package, provisionally `workspacefs`, that accepts caller-provided `fs.FS` authority and feeds already-existing graph/workspace APIs without adding filesystem traversal to the root document core. M118 introduces an on-demand internal semantic walk owned by Native syntax decisions; HTML and canonical-Markdown writers consume that semantic stream without reparsing Markdown delimiters or retaining a second rendering AST in every `Document`. PDF remains deferred to the v1.5 line and is expected to consume HTML through a separately reviewed backend boundary rather than adding browser/font/network/command authority to the parser/editing core.
 
 Keep orchestration separate from syntax-specific proof. Shared plumbing may centralize target lookup, patch transforms, candidate assembly, and candidate parsing, while lexical/source mappers and semantic validators remain feature-specific when their safety invariants differ. Reuse focused lexical primitives rather than duplicating scanners across families.
 
@@ -274,7 +276,7 @@ Construction proof reuses the same parser-independent source mappings and semant
 
 Where semantic observations are insufficient for lossless source work, Marksplice may perform bounded lexical scans tied to the immutable source snapshot. Such scans remain parser-independent and internal; semantic recognition does not by itself grant mutation ownership.
 
-YAML/TOML front matter remains a separate document-envelope layer, not an additional Markdown dialect. HTML rendering is not a product capability; if rendering is later added, GFM rendering-specific requirements such as tag filtering become explicit acceptance criteria.
+YAML/TOML front matter remains a separate document-envelope layer, not an additional Markdown dialect. HTML rendering is not yet a shipped product capability, but it is approved for the M118–M124 v1.0 roadmap through an on-demand semantic rendering layer. Before Marksplice claims GFM HTML-rendering conformance, rendering-specific requirements such as tag filtering become mandatory acceptance criteria. Canonical Markdown rendering is likewise an explicit export path and must never replace ordinary source-preserving edits.
 
 ### Core capability and third-party extensibility boundary
 

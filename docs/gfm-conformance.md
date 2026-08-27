@@ -92,9 +92,9 @@ Historical M111–M114 records document the staged parser-substitution work and 
 
 ## Rendering boundary
 
-Semantic Markdown parsing and HTML rendering are separate responsibilities. Marksplice core does not expose HTML rendering as a product capability and current conformance gates do not require a renderer dependency.
+Semantic Markdown parsing and HTML rendering are separate responsibilities. Marksplice does not yet expose HTML rendering in the current shipped capability set, so the active parser-conformance gate remains independent of renderer code.
 
-If Marksplice later exposes HTML rendering, GFM `tagfilter` behavior and every other rendering-specific requirement become mandatory acceptance criteria for that feature before it can claim GFM rendering conformance.
+The approved post-M115 roadmap adds an on-demand semantic walk and HTML renderer before the v1.0 gate. Renderer conformance must use the specification's expected HTML as normative evidence where applicable rather than treating Native output as its own oracle. GFM `tagfilter` behavior and every other rendering-specific requirement become mandatory acceptance criteria before Marksplice can claim GFM HTML-rendering conformance. Parser conformance remains a separate gate even after rendering exists.
 
 ## Compatibility monitoring
 

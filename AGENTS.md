@@ -10,6 +10,7 @@ Keep responsibilities separated and link rather than duplicate details:
 - `docs/getting-started.md` owns the first-use journey. `docs/guide.md` routes users by goal, `docs/recipes/` owns focused workflows, and `examples/` owns runnable file-based examples used by those workflows.
 - `docs/api-reference.md` must cover every exported callable and remains the exhaustive signature/reference document rather than the learning path. Exported API changes update it plus every affected getting-started/guide/recipe/example surface in the same change.
 - `docs/capabilities.md` owns the concise current product-facing read/edit/create boundary. It must describe present capability and deliberate limitations, not milestone chronology or development history.
+- `docs/roadmap.md` owns the approved post-M115 product/engineering sequence and release targets. Keep planned work there instead of presenting future capability as already shipped.
 - `docs/README.md` is the documentation map for readers who already know what they need. It separates user documentation, advanced/maintainer documentation, and historical records; it is not a second public home page.
 - `docs/architecture.md` owns durable architecture, API-boundary, source-preservation, security, dependency, performance, and complexity decisions.
 - `docs/gfm-conformance.md` owns the normative Markdown profile, GFM source hierarchy, conformance gate, and specification-update policy.
@@ -62,7 +63,7 @@ On Windows, when PowerShell is required, use `pwsh` (PowerShell 7+) whenever it 
 
 ## Scope
 
-M0 is the green repository-bootstrap baseline and M1–M115 are complete engineering milestones. The native-parser replacement roadmap is complete at M115. Detailed milestone contracts and historical evidence live only in the milestone records; current product status belongs in `docs/capabilities.md`.
+M0 is the green repository-bootstrap baseline and M1–M115 are complete engineering milestones. The native-parser replacement roadmap is complete at M115. The approved post-M115 sequence is M116–M124 toward `v1.0.0`, with M125–M126 queued for the `v1.5.0` PDF line; `docs/roadmap.md` owns that future sequence. Detailed completed-milestone contracts and historical evidence live only in the milestone records; current shipped product status belongs in `docs/capabilities.md`.
 
 Future work must extend, not bypass, the established invariants: source preservation, parser isolation, snapshot-bound identity and stale-source safety, explicit source ownership, mapped-capability promotion, host/candidate validation for structural edits, compact derived adjacency instead of redundant persistent indexes, canonical writing only for new source, parser/model proof of generated source, deterministic failure on ambiguous shapes, and bounded complexity.
 

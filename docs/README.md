@@ -20,6 +20,7 @@ Normal users should not need milestone records or parser-transition documentatio
 Use these when changing Marksplice itself or when you need the design rationale behind a boundary:
 
 - [Architecture](architecture.md) — durable package, source-preservation, mutation, construction, performance, and authority decisions.
+- [Roadmap](roadmap.md) — approved M116–M126 development sequence, refactor/profiling cadence, and v1.0/v1.5 release targets.
 - [Markdown Conformance Policy](gfm-conformance.md) — normative CommonMark/GFM hierarchy, pinned external specification inputs, and update procedure.
 - [Capability and Third-Party Extensibility Strategy](extension-strategy.md) — what belongs in core versus independent read-only extensions.
 - [Release and Versioning Policy](releasing.md) — public module/release procedure.

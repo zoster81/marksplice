@@ -85,21 +85,22 @@ The following concepts are useful examples for future third-party packages rathe
 
 This is not a prohibition on those features existing in the Marksplice ecosystem. It is a boundary: independent packages may recognize them through the M110 opt-in read-only overlay unless a later explicit core decision establishes that a concept has become sufficiently general.
 
-## Rendering and integration ideas outside core
+## Rendering and integration boundary
 
-The following remain outside the source-preserving engine unless a separate renderer/integration project is explicitly approved:
+A renderer layer is now explicitly approved for the post-M115 roadmap, but it remains separate from the source-preserving parser/editing path. M118–M124 add an on-demand semantic walk, HTML rendering, optional source mapping, and canonical Markdown output before the v1.0 gate. Canonical rendering is never ordinary existing-source mutation, and renderer code must consume Native semantic decisions rather than become a second Markdown parser.
 
-- syntax highlighting;
-- PDF output;
-- HTML presentation helpers;
-- LaTeX/MathML/KaTeX/MathJax rendering;
-- Telegram rendering;
-- Mermaid/D2/Pikchr/chart rendering;
+PDF is intentionally deferred to M125–M126 for the v1.5 line and must use a separately reviewed backend/resource-authority boundary. The following remain outside the approved core/rendering roadmap unless separately justified:
+
+- syntax highlighting engines;
+- LaTeX/MathML/KaTeX/MathJax execution/rendering engines;
+- Telegram/product-specific presentation;
+- Mermaid/D2/Pikchr/chart execution/rendering;
 - base64 image rewriting;
 - YouTube/media embeds;
-- network-backed enclave/embed behavior.
+- network-backed enclave/embed behavior;
+- site-generation/template systems.
 
-Marksplice may understand the surrounding Markdown structure while treating those payloads/targets as data. Core must not gain network, filesystem, command-execution, or renderer authority from them.
+Marksplice may understand the surrounding Markdown structure while treating those payloads/targets as data. The parser/editing core must not gain network, implicit filesystem-write, command-execution, browser, or renderer-backend authority from them.
 
 ## M110 third-party extensibility boundary
 
