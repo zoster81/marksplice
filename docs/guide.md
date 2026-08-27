@@ -1,447 +1,136 @@
 # Marksplice User Guide
 
-Marksplice is a Pure-Go library for creating, understanding, querying, and source-preservingly editing GitHub Flavored Markdown. It uses a Marksplice-owned Native CommonMark/GFM parser and never requires callers to work with parser-specific AST types.
+Use this page to choose the shortest path to the task you have. If this is your first time using Marksplice, start with [Getting Started](getting-started.md).
 
-This guide is task-oriented. For the complete callable surface, including every exported function and method, see [`api-reference.md`](api-reference.md). Executable examples also live in the root [`example_test.go`](../example_test.go) and are published by pkg.go.dev.
+## I want to...
 
-## Install and import
+| Goal | Start here | Runnable example |
+| --- | --- | --- |
+| Load a Markdown file and inspect its structure | [Inspect a document](recipes/inspect-document.md) | `go run ./examples/inspect` |
+| Rename, replace, check, remove, insert, move, or combine edits | [Edit an existing document](recipes/edit-existing-document.md) | `go run ./examples/edit` |
+| Create Markdown from structured Go values | [Create a document](recipes/create-document.md) | `go run ./examples/build` |
+| Work with list hierarchies, sections, or GFM tables | [Lists, sections, and tables](recipes/lists-sections-tables.md) | `go run ./examples/query` |
+| Resolve fragments, inspect links, build backlinks, or validate a document set | [Links and workspaces](recipes/links-workspaces.md) | `go run ./examples/workspace` |
+| Observe application-specific syntax without changing core GFM | [Read-only extensions](recipes/extensions.md) | `go run ./examples/extensions` |
+| Check whether a feature is supported | [Capability matrix](capabilities.md) | — |
+| Find an exact function or method signature | [API Reference](api-reference.md) | — |
 
-Marksplice requires Go 1.26 or newer. The currently published beta can be installed explicitly:
+## The model in one minute
 
-```text
-go get github.com/zoster81/marksplice@v0.1.0-beta.1
-```
+Marksplice deliberately separates two jobs.
 
-Import the root package:
+### Existing Markdown: `Parse` → inspect → `Prepare...` → `Apply`
 
-```go
-import "github.com/zoster81/marksplice"
-```
+A parsed `Document` is immutable and owns an exact source snapshot. Existing-document operations prepare narrow `ChangeSet` values against that snapshot. Applying a change to different bytes fails with `ErrSourceConflict`.
 
-Marksplice is pre-v1 software, so review the changelog when moving between v0 releases.
+This is the path to use when author formatting matters.
 
-## The three core concepts
+### New Markdown: `DocumentBuilder` → `Markdown`
 
-Most applications can be designed around three values:
+A `DocumentBuilder` represents construction intent. It writes deterministic canonical GFM because there is no existing author source to preserve.
 
-1. `Document` is an immutable parsed source snapshot. It owns a copy of the input, source-mapped public nodes, semantic relationships, and reviewed higher-level views.
-2. `ChangeSet` is an opaque mutation prepared against one exact `Document` snapshot. Applying it to different bytes fails with `ErrSourceConflict`.
-3. `DocumentBuilder` creates new canonical GFM from reviewed structured intent. It is separate from existing-document editing so Marksplice never needs to normalize an existing document just to change one element.
+Do not use the builder to round-trip an existing document when your goal is a small edit.
 
-The separation is intentional: **parse to understand, prepare a minimal change to edit, use a builder to create new source**.
+## Reading a parsed document
 
-## Parse and read Markdown
+The public API exposes several levels of detail:
 
-`Parse` copies the input and returns an immutable snapshot:
+- `Nodes()` gives source-ordered promoted structural summaries.
+- Typed accessors such as `Heading`, `Task`, `TableCell`, `FencedCode`, `InlineLink`, and `ReferenceDefinition` expose operation-specific detail.
+- Higher-level views such as `Sections`, `FencedBlocks`, `Alerts`, `MathExpressions`, `FootnoteDefinitions`, and `FrontMatter` expose reviewed semantics that do not always imply mutation authority.
+- `QueryNodes` and `QuerySections` provide bounded structural selection.
+- `HeadingAnchors`, `ResolveFragment`, and `LinkRelationships` provide navigation and relationship intelligence.
 
-```go
-source := []byte("# Title\n\nBody.\n")
-doc, err := marksplice.Parse(source)
-if err != nil {
-    return err
-}
+A public `Range` always means exactly what the accessor documents. Marksplice intentionally does not define one universal "full node range" for every construct.
 
-for _, node := range doc.Nodes() {
-    if node.Kind() != marksplice.KindHeading {
-        continue
-    }
-    heading, ok := doc.Heading(node.ID())
-    if !ok {
-        continue
-    }
-    text, ok := doc.SourceRange(heading.Range())
-    if !ok {
-        return errors.New("heading range is not readable")
-    }
-    fmt.Printf("level=%d text=%s\n", heading.Level(), text)
-}
-```
+## Editing existing source
 
-`Nodes` intentionally returns only promoted public node kinds. `Node(id)` retrieves one summary; typed accessors such as `Heading`, `Paragraph`, `ListItem`, `Task`, `Table`, `TableRow`, `TableCell`, `FencedCode`, `CodeSpan`, `Emphasis`, `Strong`, `Strikethrough`, `InlineLink`, `Image`, `AutoLink`, `ReferenceDefinition`, `ThematicBreak`, and `Blockquote` expose the operation-specific detail that Marksplice can prove safely.
+Most mutation APIs are named `Prepare...`. Typical families include:
 
-A `Range` is a half-open byte range `[Start, End)`. Use `SourceRange` to obtain a caller-owned copy. `NodeID` values are deterministic only for the exact snapshot and must not be treated as durable IDs across arbitrary reparses.
+- paragraph, heading, task, fenced-code, inline, link/image/autolink, reference-definition, front-matter, HTML, footnote, math, and table-cell replacements;
+- section replacement/removal/insertion/movement/child append;
+- list-item content/subtree replacement, removal, sibling insertion/movement, and child append;
+- table row, alignment, and complete-column operations;
+- thematic-break and complete-blockquote removal;
+- managed TOC synchronization;
+- `ComposeChanges` for independent operations prepared from the same snapshot.
 
-## Read broader semantic/source views
+The exact supported shapes are deliberately conservative. If Marksplice cannot prove the source ownership or surviving structure required by an operation, it returns an error instead of rewriting a wider region.
 
-Some useful information is intentionally broader than ordinary mutation authority.
+See [Edit an existing document](recipes/edit-existing-document.md).
 
-### Blockquotes and alerts
+## Creating new Markdown
 
-`Blockquote` exposes a complete promoted top-level blockquote. For multiline, lazy-continuation, nested, or multi-block source, use `BlockquoteContentRanges` rather than assuming one contiguous editable payload.
+`DocumentBuilder` supports reviewed GFM construction for common document families, including:
 
-GitHub alerts are a semantic overlay on those blockquotes:
+- headings and paragraphs;
+- typed inline text, code, emphasis, strong, strikethrough, links, images, autolinks, references, footnote references, and reviewed math forms;
+- ordered/unordered lists and task lists, including reviewed homogeneous nesting;
+- tables and alignments;
+- fenced code;
+- blockquotes and GitHub alerts;
+- reference and footnote definitions;
+- YAML/TOML front-matter envelopes;
+- thematic breaks and mathematical blocks.
 
-```go
-doc, _ := marksplice.Parse([]byte("> [!WARNING]\n> Back up first.\n"))
-for _, alert := range doc.Alerts() {
-    marker, _ := doc.SourceRange(alert.MarkerRange())
-    bodyRanges, _ := doc.AlertBodyRanges(alert.ID())
-    fmt.Printf("marker=%s body-parts=%d\n", marker, len(bodyRanges))
-}
-```
+Generated content is reparsed and checked against construction expectations before `Markdown()` returns it.
 
-`Alert(id)` retrieves one alert; `Alert.Kind`, `MarkerRange`, `Range`, and `ID` describe its source-backed identity and marker.
+See [Create a document](recipes/create-document.md).
 
-### Fenced blocks
+## Navigation and multi-document work
 
-`FencedBlocks` is the broad read-only fenced-container view. `FencedBlock` exposes opening/closing delimiter ranges and lengths, indentation, info string, language token, closure state, complete range, and per-line payload ranges through `FencedBlockContentRanges`.
+Marksplice can understand document relationships without owning your filesystem or URL policy.
 
-`FencedCode` is deliberately narrower: it exists only when Marksplice can prove one contiguous payload suitable for `PrepareReplaceFencedCode`.
+For one document:
 
-### Front matter
+- derive GitHub-compatible heading anchors;
+- resolve local fragments;
+- generate and conservatively synchronize managed TOCs;
+- enumerate semantic link/image/autolink relationships.
 
-`FrontMatter` recognizes a document-leading YAML or TOML envelope without pretending Marksplice is a general YAML/TOML parser:
+For several documents that your application already loaded:
 
-```go
-doc, _ := marksplice.Parse([]byte("---\ntags:\n  - docs\n---\n\n# Guide\n"))
-front, ok := doc.FrontMatter()
-if ok {
-    raw, _ := doc.SourceRange(front.Range())
-    fmt.Printf("format=%v bytes=%d\n", front.Format(), len(raw))
-}
-```
+- `BuildDocumentGraph` creates an immutable graph over explicit caller keys;
+- a caller resolver decides which non-local relationships map to which already-supplied documents;
+- graph queries expose outgoing edges, backlinks, reachability, and related documents;
+- `ValidateWorkspace` adds deterministic link/fragment/reference/orphan/managed-TOC diagnostics and conservative repair planning;
+- `BuildKnowledgeIndex` adds caller-declared aliases, tags, and logical references without inventing Markdown syntax.
 
-`FrontMatterField(id)` is the narrower editable subset for unique simple top-level scalar fields. Complex or duplicate metadata can remain readable through the envelope while no unsafe field mutation is promoted.
+See [Links and workspaces](recipes/links-workspaces.md).
 
-### Footnotes and mathematics
+## Extensions
 
-`FootnoteDefinitions`, `FootnoteDefinition`, `FootnoteDefinitionBodyRanges`, and `FootnoteReferences` expose reviewed source-backed footnote relationships. `PrepareRenameFootnote` performs an atomic definition-plus-reference rename; `PrepareReplaceFootnoteDefinitionBody` is limited to the simple editable body subset.
+`ParseWithOptions` can attach namespaced read-only observations produced by caller-linked recognizers. Extension nodes cannot replace core GFM nodes or gain generic editing, construction, graph, filesystem, network, or command authority.
 
-`MathExpressions`, `MathExpression`, and `MathExpressionPayloadRanges` expose reviewed `$...$`, dollar-backtick, one-line `$$...$$`, and exact-info `math` fenced forms. The payload is opaque; Marksplice does not parse or render LaTeX.
-
-### HTML anchors/comments
-
-`HTMLComment` and `HTMLAnchor` expose only conservative source-proven forms. Their `Range` values are the exact payload/value spans accepted by `PrepareReplaceHTMLComment` and `PrepareReplaceHTMLAnchor`.
-
-## Query nodes and sections
-
-Use `QueryNodes` when you want bounded source-ordered structural selection without writing your own filter loop:
-
-```go
-matches, err := doc.QueryNodes(marksplice.NodeQuery{
-    Kinds: []marksplice.Kind{marksplice.KindHeading, marksplice.KindParagraph},
-    Limit: 100,
-})
-```
-
-`Limit` must be positive. `Kinds` may be empty to select all promoted kinds. `Within` can restrict matches to an existing snapshot-local range. `NodeMatch.Node()` returns the summary and `NodeMatch.Range()` returns the already-reviewed typed range; it does not invent generic mutation authority.
-
-`Sections` derives heading-governed section trees. `Section(id)` returns one section, `SectionChildHeadingIDs` returns direct child headings, and `QuerySections` supports bounded level/range filtering. `Section.Range()` owns the complete subtree while `BodyRange()` is only the direct body before the first child section.
-
-## Source-preserving edits
-
-Every ordinary existing-document edit follows the same pattern:
-
-1. parse exact bytes;
-2. select a promoted target;
-3. call a named `Prepare...` operation;
-4. apply the returned `ChangeSet` to the **same** source bytes.
-
-Example:
-
-```go
-source := []byte("##  Old title  ##\n\nBody.\n")
-doc, _ := marksplice.Parse(source)
-
-var heading marksplice.Heading
-for _, node := range doc.Nodes() {
-    if node.Kind() == marksplice.KindHeading {
-        heading, _ = doc.Heading(node.ID())
-        break
-    }
-}
-
-change, err := doc.PrepareRenameHeading(heading.ID(), []byte("New title"))
-if err != nil {
-    return err
-}
-updated, err := change.Apply(source)
-if err != nil {
-    return err
-}
-```
-
-The result preserves the original heading style, surrounding spaces, optional closing ATX markers, line endings, and unrelated source.
-
-### Scalar/content replacements
-
-The public replacement family includes:
-
-- `PrepareRenameHeading`;
-- `PrepareReplaceParagraph`;
-- `PrepareSetTaskChecked`;
-- `PrepareReplaceFencedCode`;
-- `PrepareReplaceCodeSpan`, `PrepareReplaceEmphasis`, `PrepareReplaceStrong`, `PrepareReplaceStrikethrough`;
-- `PrepareReplaceInlineLinkDestination`, `PrepareReplaceImageDestination`, `PrepareReplaceAutoLink`;
-- `PrepareReplaceReferenceDefinitionDestination`, `PrepareReplaceReferenceDefinitionTitle`;
-- `PrepareReplaceFrontMatterValue`;
-- `PrepareReplaceHTMLComment`, `PrepareReplaceHTMLAnchor`;
-- `PrepareReplaceFootnoteDefinitionBody`, `PrepareRenameFootnote`;
-- `PrepareReplaceMathExpression`;
-- `PrepareReplaceTableCell` and `PrepareReplaceTableRow`.
-
-Each operation validates its own source/semantic contract and fails closed when the requested replacement would change unsupported structure.
-
-### Atomic composition
-
-Independent changes prepared against the same snapshot can be combined:
-
-```go
-rename, _ := doc.PrepareRenameHeading(headingID, []byte("New title"))
-replace, _ := doc.PrepareReplaceParagraph(paragraphID, []byte("New body."))
-combined, err := doc.ComposeChanges(rename, replace)
-if err != nil {
-    return err
-}
-updated, err := combined.Apply(source)
-```
-
-`ComposeChanges` rejects byte overlap and semantic/model interactions. It does not expose a generic raw-patch batching API.
-
-## Structural list operations
-
-`ListItem` exposes ordered/unordered marker information, parent/child identities, and a complete `SubtreeRange` only when every semantic descendant belongs to the supported model.
-
-Supported structural operations are explicit:
-
-- `PrepareReplaceListItem` changes only one promoted item content span;
-- `PrepareReplaceListItemSubtree` replaces a complete supported subtree;
-- `PrepareRemoveListItem` removes a complete subtree;
-- `PrepareInsertListItemBefore` / `PrepareInsertListItemAfter` insert a caller-provided complete sibling subtree;
-- `PrepareAppendListItemChild` appends a complete direct child subtree;
-- `PrepareMoveListItemBefore` / `PrepareMoveListItemAfter` move a complete supported subtree.
-
-The fragment is reparsed and must satisfy the required sibling/parent/container shape. Marksplice does not silently reindent arbitrary malformed fragments.
-
-## Structural section operations
-
-Section editing follows the same complete-subtree model:
-
-- `PrepareReplaceSectionBody` edits only the direct body;
-- `PrepareReplaceSection` replaces the complete governed section;
-- `PrepareRemoveSection` removes it;
-- `PrepareInsertSectionBefore` / `PrepareInsertSectionAfter` insert a sibling section;
-- `PrepareAppendSectionChild` appends a direct child section;
-- `PrepareMoveSectionBefore` / `PrepareMoveSectionAfter` move a same-level section subtree.
-
-Use `Section`, `Sections`, `SectionChildHeadingIDs`, and `QuerySections` to inspect the hierarchy first.
-
-## Tables
-
-`Table`, `TableRow`, and `TableCell` form the public source-backed table model. Useful navigation/accessors include:
-
-- `TableAlignments`;
-- `TableHeaderCellIDs`;
-- `TableRowIDs`;
-- `TableRowCellIDs` and `TableRowHeaderCellIDs`;
-- `TableRowAlignments`;
-- `TableCell.TableID` / `RowID`;
-- `TableRow.TableID`, `PreviousID`, and `NextID`.
-
-Mutation operations include row replacement/insertion/append/removal/move, single/all-column alignment changes, and complete column insertion/removal/move:
-
-```go
-change, err := doc.PrepareSetTableColumnAlignment(
-    table.ID(), 1, marksplice.TableAlignmentRight,
-)
-```
-
-Column operations require complete source proof for the header, delimiter, and every semantic body row. Empty/unpromoted cells never receive fabricated identities.
-
-## Thematic breaks and blockquote removal
-
-`ThematicBreak` exposes the complete owned physical line and `PrepareRemoveThematicBreak` removes it only when candidate parsing proves surrounding Markdown remains acceptable.
-
-`PrepareRemoveBlockquote` removes one complete promoted top-level blockquote container, not merely a guessed marker span.
-
-## Anchors, fragments, and TOCs
-
-`HeadingAnchors` derives GitHub-compatible anchors with duplicate disambiguation. `HeadingAnchor(id)` returns one heading-derived anchor.
-
-`ResolveFragment` resolves an optional-leading-`#` fragment against heading-derived and supported explicit HTML anchors. `ValidateFragment` is the boolean convenience form; ambiguous or missing targets fail closed.
-
-`GenerateTOC` returns deterministic Markdown for the current section hierarchy. `TOCStale` and `PrepareSyncTOC` work only on explicitly designated bodies that match the conservative managed-TOC shape; arbitrary content is never overwritten as a guessed TOC.
-
-## Link intelligence
-
-`LinkRelationships` returns source-ordered immutable relationships for parser-resolved links, images, references, and autolinks. `LinkRelationship` exposes:
-
-- semantic destination and optional title;
-- relationship kind;
-- reference value/form when applicable;
-- source offset and optional promoted source `NodeID`;
-- optional owning reference-definition ID;
-- email-autolink classification;
-- local fragment status and target.
-
-The relationship surface is semantic intelligence, not a generic mutation range.
-
-## Build a document graph
-
-`BuildDocumentGraph` combines only documents that the caller explicitly supplies:
-
-```go
-index, _ := marksplice.Parse([]byte("# Index\n\n[guide](guide.md#guide)\n"))
-guide, _ := marksplice.Parse([]byte("# Guide\n"))
-
-graph, err := marksplice.BuildDocumentGraph([]marksplice.GraphDocument{
-    {Key: "index", Document: index},
-    {Key: "guide", Document: guide},
-}, func(_ marksplice.DocumentKey, rel marksplice.LinkRelationship) (marksplice.DocumentResolution, bool) {
-    if rel.Destination() == "guide.md#guide" {
-        return marksplice.DocumentResolution{Target: "guide", Fragment: "#guide"}, true
-    }
-    return marksplice.DocumentResolution{}, false
-})
-```
-
-Marksplice performs no filesystem or network discovery. `DocumentKey` is opaque caller data. The resolver runs synchronously during the build and is never retained.
-
-Graph queries are `Document`, `DocumentKeys`, `Edges`, `Outgoing`, `Backlinks`, `ReachableFrom`, and `RelatedDocuments`. `GraphEdge` exposes source/target document keys, the originating relationship, and optional fragment resolution.
-
-## Validate an explicit workspace
-
-`ValidateWorkspace` adds deterministic diagnostics and conservative repair planning over a caller-provided document set. A `WorkspaceResolver` classifies non-local relationships as ignored, resolved to an already-supplied document, or expected-but-missing.
-
-`WorkspaceValidationOptions` can provide root documents for orphan/reachability diagnostics and caller-designated `ManagedTOC` targets.
-
-```go
-report, err := marksplice.ValidateWorkspace(
-    []marksplice.GraphDocument{{Key: "guide", Document: doc}},
-    nil,
-    marksplice.WorkspaceValidationOptions{},
-)
-```
-
-Use `WorkspaceReport.Diagnostics`, `Graph`, and `RepairPlan`. `WorkspaceDiagnostic` accessors expose only metadata meaningful for each `WorkspaceDiagnosticKind`; `UnresolvedReference()` returns typed conservative full/collapsed reference metadata. A `WorkspaceRepair` contains a target `DocumentKey` and an ordinary source-bound `ChangeSet`.
-
-## Add syntax-independent knowledge metadata
-
-`BuildKnowledgeIndex` layers caller-declared aliases, tags, and direct logical references on an existing `DocumentGraph`:
-
-```go
-knowledge, err := marksplice.BuildKnowledgeIndex(graph, []marksplice.KnowledgeDocument{
-    {Document: "index", Aliases: []marksplice.KnowledgeAlias{"home"}, Tags: []marksplice.KnowledgeTag{"docs"}},
-    {Document: "guide", Tags: []marksplice.KnowledgeTag{"docs"}, References: []marksplice.DocumentKey{"index"}},
-})
-```
-
-It does not infer wikilinks, hashtags, paths, front matter, or URLs. Queries include `ResolveAlias`, `Aliases`, `Tags`, `DocumentsWithTag`, `References`, `ReferencesFrom`, `ReferencedBy`, combined `ReachableFrom`, and combined `RelatedDocuments`.
-
-## Create new Markdown with DocumentBuilder
-
-`NewDocumentBuilder` returns a mutable builder; the zero value is also usable. `Markdown()` returns caller-owned canonical LF GFM.
-
-A simple document:
-
-```go
-builder := marksplice.NewDocumentBuilder()
-_ = builder.AppendHeadingContent(1, marksplice.TextInline("Marksplice"))
-_ = builder.AppendParagraphContent(
-    marksplice.TextInline("See "),
-    marksplice.LinkInline("https://example.com", marksplice.TextInline("the guide")),
-)
-source, err := builder.Markdown()
-```
-
-### Block construction
-
-Builder block APIs include:
-
-- `AppendHeading` / `AppendHeadingContent`;
-- `AppendParagraph` / `AppendParagraphContent`;
-- `AppendThematicBreak`;
-- `AppendFencedCode`;
-- flat `AppendUnorderedList`, `AppendOrderedList`, `AppendUnorderedTaskList`, `AppendOrderedTaskList`;
-- homogeneous nested `AppendNestedUnorderedList`, `AppendNestedOrderedList`, `AppendNestedUnorderedTaskList`, `AppendNestedOrderedTaskList` using structured depth inputs;
-- `AppendBlockquote`, `AppendBlockquoteContent`, `AppendNestedBlockquote`, `AppendNestedBlockquoteContent`, and `AppendBlockquoteBlocks`;
-- `AppendAlert`, `AppendAlertContent`, and `AppendAlertBlocks`;
-- `AppendTable` / `AppendTableWithAlignments`;
-- `AppendReferenceDefinition` / `AppendReferenceDefinitionWithTitle`;
-- `AppendFootnoteDefinition` and `AppendMathBlock`;
-- `SetYAMLFrontMatter` / `SetTOMLFrontMatter`.
-
-Construction fails with `ErrInvalidConstruction` when generated source cannot be reparsed and proven to match the requested structure.
-
-### Typed inline construction
-
-Prefer typed inline constructors when the caller owns semantic content rather than raw inline GFM:
-
-- `TextInline` escapes punctuation so plain text cannot accidentally become Markdown syntax;
-- `CodeInline` creates adaptive-backtick code spans;
-- `EmphasisInline`, `StrongInline`, `StrikethroughInline` support the reviewed bounded nesting model;
-- `LinkInline` / `LinkInlineWithTitle` and `ImageInline` / `ImageInlineWithTitle` create direct links/images;
-- `AutoLinkInline` creates angle autolinks and `BareAutoLinkInline` requests a parser-proven GFM extended autolink token;
-- `MathInline` and `MathBacktickInline` create reviewed inline math forms;
-- `FootnoteReferenceInline` targets an immediate or deferred footnote definition.
-
-### Reference links and deferred definitions
-
-`ReferenceLinkInline` and `ReferenceImageInline` require an already-appended exact definition. `ForwardReferenceLinkInline` and `ForwardReferenceImageInline` resolve only against definitions explicitly scheduled with `DeferReferenceDefinition` or `DeferReferenceDefinitionWithTitle`.
-
-`CollapsedReferenceLinkInline`, `ShortcutReferenceLinkInline`, `CollapsedReferenceImageInline`, and `ShortcutReferenceImageInline` use the emitted label and require exactly one normalized available definition.
-
-Footnotes have the analogous `DeferFootnoteDefinition` plus `FootnoteReferenceInline` flow.
-
-## Third-party read-only extensions
-
-`ParseWithOptions` lets caller-linked Go code add **read-only** extension observations after the core parse succeeds. Extensions cannot reclassify core nodes or gain mutation, construction, graph, filesystem, network, or command authority.
-
-```go
-wiki := marksplice.Extension{
-    ID: "example.org/wiki",
-    Recognize: func(source marksplice.ExtensionSource) ([]marksplice.ExtensionMatch, error) {
-        text := source.Text()
-        // Recognize extension-specific syntax and return exact ranges.
-        _ = text
-        return nil, nil
-    },
-}
-
-doc, err := marksplice.ParseWithOptions(input, marksplice.ParseOptions{
-    Extensions: []marksplice.Extension{wiki},
-    ExtensionLimits: marksplice.ExtensionLimits{
-        MaxNodes: 100,
-        MaxMetadataBytes: 16 << 10,
-    },
-})
-```
-
-`ExtensionNodes` returns validated caller-owned observations. `ExtensionNode` exposes `ExtensionID`, extension-local `Kind`, exact `Range`, `Attributes`, and `Attribute(name)`. Recognizers run synchronously and serially and are not retained. They are ordinary application code: Marksplice bounds retained observations but does not sandbox a recognizer's own CPU, memory, goroutines, filesystem, network, or command behavior.
+Use this for product-specific syntax such as a private `[[wikilink]]` convention when observation is enough. See [Read-only extensions](recipes/extensions.md).
 
 ## Errors
 
-Use `errors.Is` with the public sentinel families:
+Use `errors.Is` with public sentinel families rather than comparing messages:
 
-- `ErrNodeNotFound`;
-- `ErrInvalidReplacement`;
-- `ErrInvalidTargetKind`;
-- `ErrSourceConflict`;
-- `ErrInvalidConstruction`;
-- `ErrInvalidQuery`;
-- `ErrInvalidGraph`;
-- `ErrInvalidWorkspace`;
-- `ErrInvalidKnowledge`;
-- `ErrInvalidExtension`.
+- `ErrNodeNotFound`
+- `ErrInvalidReplacement`
+- `ErrInvalidTargetKind`
+- `ErrSourceConflict`
+- `ErrInvalidConstruction`
+- `ErrInvalidQuery`
+- `ErrInvalidGraph`
+- `ErrInvalidWorkspace`
+- `ErrInvalidKnowledge`
+- `ErrInvalidExtension`
 
-Do not compare diagnostic error strings.
+Diagnostic strings are not compatibility contracts.
 
 ## Concurrency and ownership
 
-A successfully parsed `Document` and immutable `DocumentGraph`, `KnowledgeIndex`, `WorkspaceReport`, and prepared `ChangeSet` values may be read/queried concurrently. Public variable-length results are caller-owned unless an API explicitly states otherwise.
+Successfully built immutable `Document`, `DocumentGraph`, `KnowledgeIndex`, `WorkspaceReport`, and prepared `ChangeSet` values may be read concurrently.
 
-`DocumentBuilder` is mutable and requires caller synchronization for concurrent use. Graph/workspace resolver callbacks and extension recognizers are invoked synchronously and are never retained after their build/parse call returns.
+`DocumentBuilder` is mutable and requires caller synchronization for concurrent use. Resolver and extension callbacks are invoked synchronously and are not retained after the build/parse call returns.
 
-Callers must not concurrently mutate byte slices while passing them to an operation.
+Public variable-length results are caller-owned unless an API explicitly states otherwise.
 
-## Boundedness and I/O authority
+## What Marksplice does not own
 
-Core operations are synchronous. Marksplice performs no implicit filesystem, network, or command I/O. `QueryNodes` and `QuerySections` require positive limits. Graph/workspace/knowledge operations are bounded by the explicit document collections supplied by the caller.
+Marksplice performs no implicit filesystem, network, or command I/O. It does not render HTML/PDF, execute fenced languages, serialize arbitrary YAML/TOML, render LaTeX, or normalize an existing document as a side effect of a structural edit.
 
-## What Marksplice deliberately does not do
-
-Marksplice does not provide HTML/PDF rendering, embedded-language execution, filesystem crawling, network resolution, YAML/TOML serialization, LaTeX rendering, or arbitrary Markdown normalization. Dialect-specific syntax can be observed by opt-in third-party read-only extensions without changing the core CommonMark/GFM contract.
-
-## Complete API reference
-
-The complete exported callable surface is documented in [`api-reference.md`](api-reference.md). That reference includes every top-level function, every `Document`/`DocumentBuilder`/graph/workspace/knowledge method, and every exported value-object accessor, with the exact current Go signature and public GoDoc explanation.
+Those boundaries are summarized in [Capabilities](capabilities.md). Architecture and conformance rationale live in the [advanced documentation](README.md#advanced-and-maintainer-documentation).

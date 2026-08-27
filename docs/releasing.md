@@ -82,11 +82,11 @@ The public GitHub repository and `origin` remote already exist. Ordinary develop
 
 The first public beta, `v0.1.0-beta.1`, is already published. For each later beta, after the release commit exists on the public `main` branch, wait for every GitHub Actions run associated with that exact commit to complete successfully. Do not create the release tag while any run is queued/in progress or if any run concludes unsuccessfully. This commit-level workflow gate is mandatory even when the same tree already passed the stricter local maintainer gate.
 
-Only after all workflows for the exact release commit are green, create and push an annotated immutable tag:
+Only after all workflows for the exact release commit are green, create and push an annotated immutable tag. The examples below use `v0.1.0-beta.2`; replace it with the actual new version being released:
 
 ```text
-git tag -a v0.1.0-beta.1 -m "Marksplice v0.1.0-beta.1"
-git push origin v0.1.0-beta.1
+git tag -a v0.1.0-beta.2 -m "Marksplice v0.1.0-beta.2"
+git push origin v0.1.0-beta.2
 ```
 
 Because the public CI also runs on tag pushes, wait for every GitHub Actions run associated with the tag's target commit/ref to complete successfully before creating the GitHub pre-release or advertising the module as published. A GitHub pre-release may then be created from that exact tag using the matching `CHANGELOG.md` notes.
@@ -94,32 +94,32 @@ Because the public CI also runs on tag pushes, wait for every GitHub Actions run
 Prompt the public Go proxy to discover the version and verify that the exact tag resolves:
 
 ```text
-GOPROXY=https://proxy.golang.org go list -m github.com/zoster81/marksplice@v0.1.0-beta.1
+GOPROXY=https://proxy.golang.org go list -m github.com/zoster81/marksplice@v0.1.0-beta.2
 ```
 
 On PowerShell:
 
 ```powershell
 $env:GOPROXY = 'https://proxy.golang.org'
-go list -m github.com/zoster81/marksplice@v0.1.0-beta.1
+go list -m github.com/zoster81/marksplice@v0.1.0-beta.2
 ```
 
 After proxy resolution succeeds, verify the package documentation at:
 
 ```text
-https://pkg.go.dev/github.com/zoster81/marksplice@v0.1.0-beta.1
+https://pkg.go.dev/github.com/zoster81/marksplice@v0.1.0-beta.2
 ```
 
 Consumers can then install the beta explicitly:
 
 ```text
-go get github.com/zoster81/marksplice@v0.1.0-beta.1
+go get github.com/zoster81/marksplice@v0.1.0-beta.2
 ```
 
 or depend on it directly in `go.mod`:
 
 ```text
-require github.com/zoster81/marksplice v0.1.0-beta.1
+require github.com/zoster81/marksplice v0.1.0-beta.2
 ```
 
 Because pre-release versions are not preferred over normal releases by default, callers should specify the beta version explicitly.

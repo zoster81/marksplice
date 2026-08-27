@@ -13,6 +13,7 @@ The project uses Semantic Versioning-compatible Go module tags. Until v1, the pu
 - Freeze the complete internal parser-backend substitution contract and add a reusable differential harness over the same pinned GFM corpus plus focused Marksplice semantic/source-position regressions, keeping Goldmark only as the temporary oracle for the native-parser transition.
 - Complete the Native parser transition: implement and harden the full CommonMark/GFM backend, switch production parsing and construction proof to Native, freeze parser-neutral conformance fixtures tied to the approved external specification inputs, and remove the Goldmark adapter, differential scaffolding, and `github.com/yuin/goldmark` module dependency.
 - Add a task-oriented module guide and an exhaustive exported-callable API reference, with documentation audits that keep the reference synchronized with the public Go declarations.
+- Refactor the public documentation into one clear README entry point, a first-use Getting Started path, goal-oriented recipes, a concise current capability matrix, and runnable file-based examples for inspection, editing, construction, querying, workspaces, and read-only extensions; keep milestone/parser history in advanced historical records instead of the normal user journey.
 
 ## v0.1.0-beta.1 — 2026-08-23
 

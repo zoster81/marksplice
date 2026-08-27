@@ -1,12 +1,50 @@
 # Public API Reference
 
-This reference describes every exported top-level function and exported method in the `github.com/zoster81/marksplice` package. It is a documentation snapshot of the public Go API; the Go source and pkg.go.dev remain the canonical signatures. For task-oriented examples, start with [`guide.md`](guide.md).
+This is the exhaustive exported callable reference for `github.com/zoster81/marksplice`. Go source and pkg.go.dev remain canonical for signatures. If you are learning the library, start with [Getting Started](getting-started.md); if you already know the task, use the goal index below before dropping into the alphabetical type/method reference.
+
+## Find the API by goal
+
+### Read and inspect a document
+
+Start with [`Parse`](#parse), then use [`Document` methods](#document-methods). Common typed receivers include [`Heading`](#heading-methods), [`ListItem`](#listitem-methods), [`Task`](#task-methods), [`Table`](#table-methods), [`TableRow`](#tablerow-methods), [`TableCell`](#tablecell-methods), [`FencedBlock`](#fencedblock-methods), [`FootnoteDefinition`](#footnotedefinition-methods), [`MathExpression`](#mathexpression-methods), and [`FrontMatter`](#frontmatter-methods).
+
+Recipe: [Inspect a document](recipes/inspect-document.md).
+
+### Edit an existing document
+
+Existing-document mutation is prepared through the `Prepare...` methods under [`Document`](#document-methods), optionally combined with `ComposeChanges`, then applied through [`ChangeSet.Apply`](#changeset-methods).
+
+Recipe: [Edit an existing document](recipes/edit-existing-document.md).
+
+### Create a new document
+
+Use [`NewDocumentBuilder`](#newdocumentbuilder), [`DocumentBuilder` methods](#documentbuilder-methods), and the package-level typed inline constructors in [Package functions](#package-functions).
+
+Recipe: [Create a document](recipes/create-document.md).
+
+### Lists, sections, and tables
+
+Use [`Document` methods](#document-methods) for queries/navigation/mutations, with typed detail from [`ListItem`](#listitem-methods), [`Task`](#task-methods), [`Section`](#section-methods), [`Table`](#table-methods), [`TableRow`](#tablerow-methods), and [`TableCell`](#tablecell-methods).
+
+Recipe: [Lists, sections, and tables](recipes/lists-sections-tables.md).
+
+### Links, navigation, and workspaces
+
+Single-document navigation/relationship methods live under [`Document`](#document-methods). Cross-document APIs start with [`BuildDocumentGraph`](#builddocumentgraph) and [`ValidateWorkspace`](#validateworkspace), with results on [`DocumentGraph`](#documentgraph-methods), [`GraphEdge`](#graphedge-methods), [`WorkspaceReport`](#workspacereport-methods), and [`WorkspaceDiagnostic`](#workspacediagnostic-methods). Knowledge metadata starts with [`BuildKnowledgeIndex`](#buildknowledgeindex) and [`KnowledgeIndex`](#knowledgeindex-methods).
+
+Recipe: [Links and workspaces](recipes/links-workspaces.md).
+
+### Read-only extensions
+
+Start with [`ParseWithOptions`](#parsewithoptions), `Extension`, `ParseOptions`, and `ExtensionLimits`; read retained observations through [`Document.ExtensionNodes`](#document-methods) and [`ExtensionNode`](#extensionnode-methods).
+
+Recipe: [Read-only extensions](recipes/extensions.md).
 
 ## Error model
 
 Public operations classify failure families with `errors.Is`. The exported sentinels are `ErrNodeNotFound`, `ErrInvalidReplacement`, `ErrInvalidTargetKind`, `ErrSourceConflict`, `ErrInvalidConstruction`, `ErrInvalidQuery`, `ErrInvalidGraph`, `ErrInvalidWorkspace`, `ErrInvalidKnowledge`, and `ErrInvalidExtension`. Diagnostic strings are not compatibility contracts.
 
-## Exported types
+## Type index (alphabetical)
 
 - `Alert` — Alert is immutable semantic detail layered over one promoted top-level blockquote. Its ID is the underlying blockquote NodeID; alerts do not introduce a second identity namespace.
 - `AlertKind` — AlertKind identifies one reviewed GitHub alert semantic kind.

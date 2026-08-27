@@ -1,10 +1,10 @@
 # Contributing to Marksplice
 
-Marksplice has passed its source-preserving editing feasibility gate, completed the M1–M115 parser/product roadmap, and is in its public v0 beta series. Contributions should continue to favor correctness, deterministic behavior, and narrow evidence-backed changes over API breadth. Until v1, public APIs remain under active review and compatibility-breaking changes must be called out explicitly in the changelog and release notes.
+Marksplice is in its public v0 beta series. Contributions should favor correctness, deterministic behavior, source preservation, and narrow evidence-backed changes over API breadth. Until v1, public APIs remain under active review and compatibility-breaking changes must be called out explicitly in the changelog and release notes.
 
 ## Before changing code
 
-Read `AGENTS.md`, `docs/architecture.md`, `docs/gfm-conformance.md`, and the relevant milestone records under `docs/milestones/`. Inspect the relevant implementation and tests before editing. Public API changes must update `docs/api-reference.md` and the relevant task-oriented material in `docs/guide.md` in the same change.
+Read `AGENTS.md` first, then the source-of-truth documents relevant to the change. Architecture/parser/conformance work normally requires `docs/architecture.md` and `docs/gfm-conformance.md`; consult milestone records when their historical contract or evidence is relevant, not as a prerequisite for unrelated work. Inspect the relevant implementation and tests before editing. Public API changes must update `docs/api-reference.md` plus every affected getting-started, guide, recipe, capability, and runnable-example surface in the same change.
 
 For substantive changes, document the four engineering phases in the working discussion: requirements/edge cases, architecture/test strategy, devil's advocate risks, and implementation/verification.
 
@@ -47,6 +47,20 @@ git status --short
 Do not claim a check passed unless it was actually executed. A skipped check should be reported with the reason.
 
 The black-box public API suite lives in `internal/publictest` and imports `github.com/zoster81/marksplice` like an external consumer. Consequently, `go test . -cover` measures only the root package's local examples and is not a meaningful project coverage figure. Maintainer coverage gates must instrument the module packages across package boundaries; normal functional verification remains `go test ./...`.
+
+## Documentation changes
+
+The repository `README.md` is the single public entry point. Keep learning material progressively disclosed instead of duplicating it:
+
+- `docs/getting-started.md` owns the first successful workflow;
+- `docs/guide.md` routes by user goal;
+- `docs/recipes/` owns focused workflows;
+- `examples/` owns runnable file-based examples and tracked Markdown fixtures;
+- `docs/capabilities.md` describes current capability, not development chronology;
+- `docs/api-reference.md` remains exhaustive and secondary to task-oriented learning;
+- advanced architecture/conformance/release documents and `docs/milestones/` retain the detail/history needed by maintainers.
+
+When changing documentation, check relative links, run every affected example, preserve fixture files, and run `git diff --check`. New examples should prefer real tracked `.md` inputs over toy Markdown embedded in Go strings when the example is teaching a file/document workflow.
 
 ## Repository layout
 

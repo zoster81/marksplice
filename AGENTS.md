@@ -6,19 +6,23 @@ This repository contains the public `github.com/zoster81/marksplice` Go library.
 
 Keep responsibilities separated and link rather than duplicate details:
 
+- `README.md` is the single public entry point. Keep it short: what Marksplice is, why to use it, installation, a minimal flow, and clear links onward.
+- `docs/getting-started.md` owns the first-use journey. `docs/guide.md` routes users by goal, `docs/recipes/` owns focused workflows, and `examples/` owns runnable file-based examples used by those workflows.
+- `docs/api-reference.md` must cover every exported callable and remains the exhaustive signature/reference document rather than the learning path. Exported API changes update it plus every affected getting-started/guide/recipe/example surface in the same change.
+- `docs/capabilities.md` owns the concise current product-facing read/edit/create boundary. It must describe present capability and deliberate limitations, not milestone chronology or development history.
+- `docs/README.md` is the documentation map for readers who already know what they need. It separates user documentation, advanced/maintainer documentation, and historical records; it is not a second public home page.
 - `docs/architecture.md` owns durable architecture, API-boundary, source-preservation, security, dependency, performance, and complexity decisions.
 - `docs/gfm-conformance.md` owns the normative Markdown profile, GFM source hierarchy, conformance gate, and specification-update policy.
-- `docs/capabilities.md` owns the current product-facing read/edit/create capability matrix and completed M92–M115 roadmap record; it does not supersede architecture, conformance, parser/source ownership, or milestone evidence.
-- `docs/goldmark-capability-matrix.md` records the historical pre-M115 Goldmark-versus-Marksplice ownership transition and the completed Native cutover context; current parser architecture is owned by `docs/architecture.md` and `docs/gfm-conformance.md`.
-- `docs/extension-strategy.md` owns selection of broadly useful core capabilities from wider Markdown ecosystem ideas, the reviewed third-party extensibility/SPI boundary, and the completed Native-parser cutover strategy.
-- Each `docs/milestones/mNN-*.md` file owns the detailed contract, design record, verification evidence, and exit decision for that milestone. Historical gate results in milestone files remain historical evidence and should not be rewritten merely because a later gate becomes stricter.
-- Milestone families are grouped only for navigation: M0 bootstrap; M1–M11 feasibility/public mapped capabilities; M12–M17 sections; M18–M34 list hierarchy plus section-child navigation; M35–M43 table row/cell model; M44–M62 new-document construction; M63–M70 public table/alignment/column editing; M71–M74 thematic-break/simple-blockquote promotion and removal; M75–M79 typed-inline construction; M80 front-matter construction; M81–M82 broader single-paragraph blockquote construction; M83–M86 multi-block/recursive blockquote construction; M87 typed link/image title construction; M88 bounded structured typed-inline nesting; M89 typed full-reference link/image construction; M90 first-public-beta readiness; M91 repository-layout hardening; M92 structured link/image label/alt composition; M93 reference/autolink completion and reference-definition lifecycle; M94 existing-source blockquote completion; M95 structural mutation composition; M96 single-document read/edit/create audit; M97 structural query surface; M98 anchors/fragments/TOC; M99 single-document link intelligence; M100 explicit multi-document graph; M101 workspace validation and repair planning; M102 semantic block patterns; M103 fenced-block semantics; M104 footnotes; M105 mathematical expressions; M106 metadata/front-matter generalization; M107 syntax-independent knowledge-document primitives; M108 fuzz/pathological/performance hardening; M109 public API coherence/stabilization; M110 third-party read-only extension SPI; M111 native parser contract and differential harness; M112 native block parser; M113 native inline parser; M114 full native conformance and parser hardening; M115 Goldmark removal and final cutover.
+- `docs/extension-strategy.md` owns selection of broadly useful core capabilities from wider Markdown ecosystem ideas and the reviewed third-party extensibility/SPI boundary.
+- Each `docs/milestones/mNN-*.md` file owns its historical contract, design record, verification evidence, and exit decision. Historical gate results remain historical evidence and should not be rewritten merely because a later gate becomes stricter.
+- `docs/goldmark-capability-matrix.md` is historical pre-M115 parser-transition evidence; current parser architecture belongs to `docs/architecture.md` and `docs/gfm-conformance.md`.
 - `go.mod` and `go.sum` own exact Go dependency versions.
 - `LICENSE` and `NOTICE` own licensing and project attribution.
-- `CONTRIBUTING.md` owns contributor workflow and the current local verification commands.
-- `docs/README.md` owns the tracked documentation index and repository-layout map. `docs/guide.md` is the task-oriented public module guide and `docs/api-reference.md` must cover every exported callable; exported API changes update the reference and relevant guide examples in the same change.
+- `CONTRIBUTING.md` owns contributor workflow and current local verification commands.
 - `docs/releasing.md` owns public module versioning, beta-release policy, release readiness, and publication verification.
 - `CHANGELOG.md` owns public release notes; `SECURITY.md` owns vulnerability-reporting guidance.
+
+Documentation should reveal complexity progressively. Do not copy milestone-by-milestone development history into README, Getting Started, recipes, or the capability matrix. Preserve that history in the milestone/advanced records and link to it only when it helps the reader's current task.
 
 Private operator state and private toolchain details are not repository content and must never be copied or linked into tracked documentation.
 
