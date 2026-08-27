@@ -39,9 +39,8 @@ func nativeMathBefore(left, right parser.MathExpressionObservation) bool {
 func nativeInlineDollarMathObservations(source []byte, analyses []inlineAnalysis) []parser.MathExpressionObservation {
 	result := make([]parser.MathExpressionObservation, 0)
 	for _, analysis := range analyses {
-		exclusions := relationshipExclusions(analysis.block, analysis.owners, analysis.delimiters.composites)
 		boundaries := nativeDelimiterTextBoundaries(analysis.block, analysis.delimiters.matches)
-		result = append(result, scanNativeInlineDollarRuns(source, analysis.block, exclusions, boundaries)...)
+		result = append(result, scanNativeInlineDollarRuns(source, analysis.block, analysis.relationshipExclusions, boundaries)...)
 	}
 	return result
 }

@@ -2,8 +2,9 @@ package native
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/zoster81/marksplice/internal/parser"
 )
@@ -22,7 +23,7 @@ func (*Backend) ParseDocument(source []byte) (parser.DocumentObservations, error
 	blocks := parseBlockLines(source, physicalLines(source), true)
 	analyses := analyzeInlineBlocks(source, blocks.inlines, blocks.references)
 	completeBackendBlockFacts(source, blocks.nodes, analyses)
-	inline := mergeInlineAnalyses(analyses)
+	inline := mergeInlineAnalyses(analyses, len(blocks.nodes))
 	mathExpressions := nativeMathExpressionObservations(source, blocks, analyses, inline.nodes)
 	nodes := removeNativeMathGFMConflicts(mergeDocumentNodes(blocks.nodes, inline.nodes), mathExpressions)
 	footnoteDefinitions, footnoteReferences, footnoteUsages := nativeFootnoteObservations(source, blocks)
@@ -66,23 +67,91 @@ func nonNilUnresolvedReferences(usages []parser.UnresolvedReferenceUsage) []pars
 }
 
 func mergeDocumentNodes(blocks, inlines []parser.Node) []parser.Node {
+	if !documentNodesOrdered(blocks) || !documentNodesOrdered(inlines) {
+		return copyAndSortDocumentNodes(blocks, inlines)
+	}
+	total := len(blocks) + len(inlines)
+	if total == 0 {
+		return []parser.Node{}
+	}
+	if len(blocks) == 0 {
+		return inlines
+	}
+	if len(inlines) == 0 {
+		return blocks
+	}
+	var result []parser.Node
+	switch {
+	case cap(inlines) >= total:
+		result = inlines[:total]
+	case cap(blocks) >= total:
+		result = blocks[:total]
+	default:
+		result = make([]parser.Node, total)
+	}
+	return mergeOrderedDocumentNodes(result, blocks, inlines)
+}
+
+func documentNodesOrdered(nodes []parser.Node) bool {
+	for index := 1; index < len(nodes); index++ {
+		if documentNodeLess(nodes[index], nodes[index-1]) {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeOrderedDocumentNodes(result, blocks, inlines []parser.Node) []parser.Node {
+	blockIndex, inlineIndex := len(blocks)-1, len(inlines)-1
+	write := len(result) - 1
+	for blockIndex >= 0 && inlineIndex >= 0 {
+		if !documentNodeLess(inlines[inlineIndex], blocks[blockIndex]) {
+			result[write] = inlines[inlineIndex]
+			inlineIndex--
+		} else {
+			result[write] = blocks[blockIndex]
+			blockIndex--
+		}
+		write--
+	}
+	if blockIndex >= 0 {
+		copy(result[:write+1], blocks[:blockIndex+1])
+	} else if inlineIndex >= 0 {
+		copy(result[:write+1], inlines[:inlineIndex+1])
+	}
+	return result
+}
+
+func copyAndSortDocumentNodes(blocks, inlines []parser.Node) []parser.Node {
 	result := make([]parser.Node, 0, len(blocks)+len(inlines))
 	result = append(result, blocks...)
 	result = append(result, inlines...)
-	sort.SliceStable(result, func(left, right int) bool {
-		leftStart := documentNodeStart(result[left])
-		rightStart := documentNodeStart(result[right])
-		if leftStart != rightStart {
-			return leftStart < rightStart
-		}
-		leftBlock := documentBlockKind(result[left].Kind)
-		rightBlock := documentBlockKind(result[right].Kind)
-		if leftBlock != rightBlock {
-			return leftBlock
-		}
-		return result[left].Range.End > result[right].Range.End
-	})
+	if len(result) > 1 {
+		slices.SortStableFunc(result, func(left, right parser.Node) int {
+			if documentNodeLess(left, right) {
+				return -1
+			}
+			if documentNodeLess(right, left) {
+				return 1
+			}
+			return 0
+		})
+	}
 	return result
+}
+
+func documentNodeLess(left, right parser.Node) bool {
+	leftStart := documentNodeStart(left)
+	rightStart := documentNodeStart(right)
+	if leftStart != rightStart {
+		return leftStart < rightStart
+	}
+	leftBlock := documentBlockKind(left.Kind)
+	rightBlock := documentBlockKind(right.Kind)
+	if leftBlock != rightBlock {
+		return leftBlock
+	}
+	return left.Range.End > right.Range.End
 }
 
 func documentNodeStart(node parser.Node) int {
@@ -276,7 +345,7 @@ func parseConstructionState(source []byte, definitions []referenceDefinitionPars
 	runs := collectBacktickRuns(source, block)
 	nextSame := nextSameLengthRuns(runs)
 	spans := collectInlineSpans(source, block)
-	owners, _, barriers := resolvePrimaryInlineOwners(source, block, runs, nextSame, spans)
+	owners, barriers := resolvePrimaryInlineOwners(source, block, runs, nextSame, spans)
 	delimiters := parseDelimiterObservations(source, block, owners, barriers, definitions)
 	semantics := collectConstructionSemantics(owners, delimiters)
 	state := constructionState{
@@ -339,12 +408,12 @@ func constructionInlineBlock(source []byte) (inlineBlock, error) {
 func collectConstructionSemantics(owners []inlineSpan, delimiters delimiterParseResult) []constructionSemantic {
 	result := make([]constructionSemantic, 0, len(owners)+len(delimiters.composites)+len(delimiters.matches))
 	for _, owner := range owners {
-		switch owner.node.Kind {
+		switch owner.kind {
 		case parser.KindCodeSpan, parser.KindRawHTML, parser.KindAutoLink:
 			result = append(result, constructionSemantic{
-				kind:    owner.node.Kind,
+				kind:    owner.kind,
 				syntax:  parser.Range{Start: owner.start, End: owner.end},
-				content: owner.node.Range,
+				content: owner.content,
 				parent:  -1,
 			})
 		}
@@ -377,12 +446,14 @@ func collectConstructionSemantics(owners []inlineSpan, delimiters delimiterParse
 			parent:  -1,
 		})
 	}
-	sort.SliceStable(result, func(left, right int) bool {
-		if result[left].syntax.Start != result[right].syntax.Start {
-			return result[left].syntax.Start < result[right].syntax.Start
-		}
-		return result[left].syntax.End > result[right].syntax.End
-	})
+	if len(result) > 1 {
+		slices.SortStableFunc(result, func(left, right constructionSemantic) int {
+			if order := cmp.Compare(left.syntax.Start, right.syntax.Start); order != 0 {
+				return order
+			}
+			return cmp.Compare(right.syntax.End, left.syntax.End)
+		})
+	}
 	return result
 }
 

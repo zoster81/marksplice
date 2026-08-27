@@ -55,6 +55,32 @@ func TestM114CommonMark0312BlockquoteTabStructures(t *testing.T) {
 	}
 }
 
+func TestM114CommonMark0312EmptyListItemMayOwnIndentedNestedList(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		source    []byte
+		wantRoots int
+	}{
+		{name: "empty plus item owns nested star list", source: []byte("+\n  *     0\n  0"), wantRoots: 1},
+		{name: "preceding incompatible list remains separate", source: []byte("*\n\n+\r  *     0\n  0"), wantRoots: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseBlockLines(tt.source, physicalLines(tt.source), true)
+			if len(result.roots) != tt.wantRoots {
+				t.Fatalf("top-level roots = %#v, want %d; nodes = %#v", result.roots, tt.wantRoots, result.nodes)
+			}
+			for _, root := range result.roots {
+				if root.kind != rootBlockList {
+					t.Fatalf("top-level root = %#v, want list", root)
+				}
+			}
+		})
+	}
+}
+
 func TestM114CommonMark0312LazyBlockquoteContinuationRequiresParagraphLeaf(t *testing.T) {
 	t.Parallel()
 

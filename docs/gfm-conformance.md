@@ -32,17 +32,21 @@ Conformance tests read externally provisioned snapshots of the official CommonMa
 
 `internal/testutil/commonmarkspec/corpus.go` owns the approved CommonMark 0.31.2 snapshot SHA-256 and extracts its 652 numbered examples. `internal/testutil/gfmspec/corpus.go` continues to own the approved published GFM snapshot SHA-256 and extension-section classification. Do not duplicate either hash in documentation or configuration. Both loaders fail closed on changed bytes.
 
-Set `MARKSPLICE_COMMONMARK_SPEC_HTML` to the approved CommonMark snapshot and `MARKSPLICE_GFM_SPEC_HTML` to the approved GFM snapshot. The CommonMark loader gate is:
+Set `MARKSPLICE_COMMONMARK_SPEC_HTML` to the approved CommonMark snapshot and `MARKSPLICE_GFM_SPEC_HTML` to the approved GFM snapshot. M114's parser-side normative chain is:
 
 ```text
 go test ./internal/testutil/commonmarkspec -run '^TestPublishedCommonMark0312Corpus$' -count=1
+go test ./internal/parser/goldmark -run '^TestCommonMark0312PublishedSpecificationAudit$' -count=1
+go test ./internal/parser/differential -run '^TestNativeBackendMatchesPublishedCommonMark0312DifferentialCorpus$' -count=1
+go test ./internal/parser/goldmark -run '^TestGFM029PublishedExtensionConformance$' -count=1
 ```
 
-The historical GFM/parser-differential commands remain useful compatibility evidence while M114 replaces Goldmark-first parity with specification-first gates:
+Marksplice does not expose an HTML renderer. The CommonMark acceptance chain therefore first proves the temporary reference renderer against all 652 official expected HTML examples, then requires the Native backend to match the complete parser-neutral `DocumentObservations` contract on those same 652 inputs. Goldmark remains evidence in the first step, not the normative source: any differential mismatch must still be classified against the specification hierarchy before implementation changes.
+
+The inherited published-GFM corpus remains compatibility/regression evidence and includes the normative extension cases:
 
 ```text
-go test ./internal/parser/goldmark -run '^TestGFM029PublishedExtensionConformance$' -count=1
-go test ./internal/parser/differential -run '^TestGoldmarkBackendsMatchPublishedGFMDifferentialCorpus$' -count=1
+go test ./internal/parser/differential -run '^TestNativeBackendMatchesPublishedGFMDifferentialCorpus$' -count=1
 go test ./internal/parser/differential -run '^TestNativeBlockParserMatchesPublishedGFMBlockProjection$' -count=1
 go test ./internal/parser/differential -run '^TestNativeInlineParserMatchesPublishedGFMInlineProjection$' -count=1
 go test ./internal/parser/differential -run '^TestNativeInlineRelationshipMatchesPublishedGFMAllParserExamples$' -count=1
@@ -80,7 +84,7 @@ Rules:
 - ordinary existing-document edits must never depend on serializing a Goldmark AST back to Markdown;
 - Marksplice continues to own exact source mapping, lexical trivia, source fingerprints, and minimal byte patches.
 
-Historical M111–M113 evidence shows parity with the Goldmark-backed production parser across the applicable published GFM 0.29 corpus. M114 is recertifying that work under the specification-first hierarchy above because legacy GFM-core/Goldmark parity is not sufficient when CommonMark 0.31.2 differs. Goldmark remains the temporary production backend until the explicit M115 cutover, but no M114 correctness decision may be justified solely by matching it.
+Historical M111–M113 evidence established parity with the Goldmark-backed production parser across the applicable published GFM 0.29 corpus. M114 completes the specification-first recertification: the full 652-example CommonMark chain, explicit GFM extension gate, focused Marksplice contract tests, and Native invariant fuzzing are authoritative acceptance evidence. Historical differential-fuzz rounds are discovery history only; retained inputs without an independent specification/Marksplice contract are source-bound/determinism invariants, not semantic authority. Goldmark remains the temporary production backend until the explicit M115 cutover, but no correctness decision is justified solely by matching it.
 
 ## Rendering boundary
 

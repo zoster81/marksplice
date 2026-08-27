@@ -11,6 +11,52 @@ import (
 	"github.com/zoster81/marksplice/internal/parser/native"
 )
 
+func assertM114NativeCorpusStable(t *testing.T, tests []struct {
+	name   string
+	source []byte
+}) {
+	t.Helper()
+	candidate := native.New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := bytes.Clone(tt.source)
+			first, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			if !bytes.Equal(before, tt.source) {
+				t.Fatal("ParseDocument() mutated source")
+			}
+			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			second, err := candidate.ParseDocument(tt.source)
+			if err != nil {
+				t.Fatalf("second ParseDocument() error = %v", err)
+			}
+			if !reflect.DeepEqual(first, second) {
+				t.Fatal("ParseDocument() is not deterministic")
+			}
+		})
+	}
+}
+
+func m114StringCases(pairs ...string) []struct {
+	name   string
+	source []byte
+} {
+	if len(pairs)%2 != 0 {
+		panic("m114StringCases requires name/source pairs")
+	}
+	result := make([]struct {
+		name   string
+		source []byte
+	}, len(pairs)/2)
+	for index := range result {
+		result[index].name = pairs[index*2]
+		result[index].source = []byte(pairs[index*2+1])
+	}
+	return result
+}
+
 func TestM114CommonMark0312InlineHTMLGrammar(t *testing.T) {
 	backend := native.New()
 	tests := []struct {
@@ -123,7 +169,7 @@ func TestM114NativeBackendPathologicalInputsRemainSourceBound(t *testing.T) {
 	}
 }
 
-func TestM114NativeBackendMatchesGoldmarkPathologicalSubset(t *testing.T) {
+func TestM114NativeBackendSecondaryDifferentialPathologicalSubset(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -149,7 +195,7 @@ func TestM114NativeBackendMatchesGoldmarkPathologicalSubset(t *testing.T) {
 	}
 }
 
-func TestM114NativeBackendMatchesGoldmarkBracketedDelimiterContent(t *testing.T) {
+func TestM114NativeBracketedDelimiterCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -182,30 +228,11 @@ func TestM114NativeBackendMatchesGoldmarkBracketedDelimiterContent(t *testing.T)
 		{name: "single underscore crossing direct link", source: []byte("_0[*_](x)")},
 		{name: "single underscore crossing reference link", source: []byte("_0[*_][r]\n[r]:x")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkInlineHTMLDeclarations(t *testing.T) {
+func TestM114NativeInlineHTMLDeclarationCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -232,30 +259,11 @@ func TestM114NativeBackendMatchesGoldmarkInlineHTMLDeclarations(t *testing.T) {
 		{name: "unclosed declaration", source: []byte("0<!A")},
 		{name: "cdata remains independent", source: []byte("0<![CDATA[x]]>")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkExtendedWWWAutolinks(t *testing.T) {
+func TestM114NativeExtendedWWWAutolinkCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -293,30 +301,11 @@ func TestM114NativeBackendMatchesGoldmarkExtendedWWWAutolinks(t *testing.T) {
 		{name: "www punctuation after numeric tld", source: []byte("www.000,")},
 		{name: "www alphabetic tld path", source: []byte("www.example.com/path")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkPartiallyConsumedDelimiterRuleOfThree(t *testing.T) {
+func TestM114NativePartiallyConsumedDelimiterCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -329,26 +318,34 @@ func TestM114NativeBackendMatchesGoldmarkPartiallyConsumedDelimiterRuleOfThree(t
 		{name: "partially consumed star control", source: []byte("*a***b*")},
 		{name: "partially consumed underscore control", source: []byte("_!___!_ 00")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
+	assertM114NativeCorpusStable(t, tests)
+
+}
+
+func TestM114CommonMark0312FailedLinkRemovalPreservesOuterEmphasis(t *testing.T) {
+	backend := native.New()
+	for _, source := range [][]byte{
+		[]byte("_[*_ \r]"),
+		[]byte("_[*_ \n]"),
+		[]byte("_[*_ \r\n]"),
+		[]byte("*[_* \r]"),
+	} {
+		observed, err := backend.ParseDocument(source)
+		if err != nil {
+			t.Fatalf("ParseDocument(%q) error = %v", source, err)
+		}
+		emphasis := 0
+		for _, node := range observed.Nodes {
+			if node.Kind == parser.KindEmphasis {
+				emphasis++
 			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
+		}
+		if emphasis != 1 {
+			t.Fatalf("ParseDocument(%q) emphasis count = %d, want 1; nodes = %#v", source, emphasis, observed.Nodes)
+		}
+		if len(observed.LinkUsages) != 0 {
+			t.Fatalf("ParseDocument(%q) produced link usages for failed link syntax: %#v", source, observed.LinkUsages)
+		}
 	}
 }
 
@@ -365,7 +362,7 @@ func TestM114CommonMark0312RuleOfThreeUsesOriginalDelimiterRunLength(t *testing.
 	}
 }
 
-func TestM114NativeBackendMatchesGoldmarkInlineHTMLProcessingInstructions(t *testing.T) {
+func TestM114NativeInlineHTMLProcessingInstructionCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -386,70 +383,27 @@ func TestM114NativeBackendMatchesGoldmarkInlineHTMLProcessingInstructions(t *tes
 		{name: "across isolated cr owns delimiters", source: []byte("0<?x\r*0*?>")},
 		{name: "across crlf owns delimiters", source: []byte("0<?x\r\n*0*?>")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkMixedLineEndings(t *testing.T) {
-	tests := []struct {
-		name   string
-		source []byte
-	}{
-		{name: "isolated cr before crlf", source: []byte("\r*\r\n")},
-		{name: "isolated cr before lf", source: []byte("\r*\n")},
-		{name: "leading lf before crlf", source: []byte("\n*\r\n")},
-		{name: "leading crlf", source: []byte("\r\n*\r\n")},
-		{name: "bare bullet lf", source: []byte("*\n")},
-		{name: "bare bullet crlf", source: []byte("*\r\n")},
-		{name: "bare dash crlf", source: []byte("-\r\n")},
-		{name: "bare plus crlf", source: []byte("+\r\n")},
-		{name: "bare ordered crlf", source: []byte("1.\r\n")},
-		{name: "spaced bullet crlf", source: []byte("* \r\n")},
-		{name: "spaced dash crlf", source: []byte("- \r\n")},
-		{name: "spaced ordered crlf", source: []byte("1. \r\n")},
-		{name: "isolated cr terminator", source: []byte("*\r")},
-		{name: "two isolated cr boundaries", source: []byte("\r\r*\r")},
-	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+func TestM114NativeMixedLineEndingCorpusRemainsSourceBound(t *testing.T) {
+	assertM114NativeCorpusStable(t, m114StringCases(
+		"isolated cr before crlf", "\r*\r\n",
+		"isolated cr before lf", "\r*\n",
+		"leading lf before crlf", "\n*\r\n",
+		"leading crlf", "\r\n*\r\n",
+		"bare bullet lf", "*\n",
+		"bare bullet crlf", "*\r\n",
+		"bare dash crlf", "-\r\n",
+		"bare plus crlf", "+\r\n",
+		"bare ordered crlf", "1.\r\n",
+		"spaced bullet crlf", "* \r\n",
+		"spaced dash crlf", "- \r\n",
+		"spaced ordered crlf", "1. \r\n",
+		"isolated cr terminator", "*\r",
+		"two isolated cr boundaries", "\r\r*\r",
+	))
 }
 
 func TestM114M104NestedFootnoteDefinitionAmbiguityFailsClosed(t *testing.T) {
@@ -535,7 +489,7 @@ func TestM114M104FootnoteCaretPrecedence(t *testing.T) {
 		})
 	}
 }
-func TestM114NativeBackendMatchesGoldmarkFootnoteReferenceOverlayProjection(t *testing.T) {
+func TestM114NativeFootnoteReferenceOverlayCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -549,27 +503,8 @@ func TestM114NativeBackendMatchesGoldmarkFootnoteReferenceOverlayProjection(t *t
 		{name: "ordinary reference remains", source: []byte("[^n] [ok][docs]\n\n[^n]: note\n\n[docs]: /target")},
 		{name: "definition without gfm destination", source: []byte("[^n]\n\n[^n]:")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
 func TestM114NativeNestedFootnoteInputsRemainSourceBound(t *testing.T) {
@@ -590,30 +525,11 @@ func TestM114NativeNestedFootnoteInputsRemainSourceBound(t *testing.T) {
 		{name: "top level ordered container definition remains valid", source: []byte("0) [^0]:")},
 		{name: "top level bullet container definition remains valid", source: []byte("- [^0]: body")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkFootnoteLabelWhitespace(t *testing.T) {
+func TestM114NativeFootnoteLabelWhitespaceCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -628,30 +544,11 @@ func TestM114NativeBackendMatchesGoldmarkFootnoteLabelWhitespace(t *testing.T) {
 		{name: "embedded space", source: []byte("[^a b]:")},
 		{name: "nul", source: []byte{'[', '^', 0, ']', ':'}},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkLooseTaskMarkers(t *testing.T) {
+func TestM114NativeLooseTaskMarkerCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -664,30 +561,11 @@ func TestM114NativeBackendMatchesGoldmarkLooseTaskMarkers(t *testing.T) {
 		{name: "loose marker with reference definition", source: []byte("- [X]\n\n-\n\n[X]: /target")},
 		{name: "tight marker with trailing space", source: []byte("- [X] \n- next")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkReferenceLabelWhitespace(t *testing.T) {
+func TestM114NativeReferenceLabelWhitespaceCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -703,30 +581,11 @@ func TestM114NativeBackendMatchesGoldmarkReferenceLabelWhitespace(t *testing.T) 
 		{name: "nul", source: []byte{'[', 0, ']', ':', '0'}},
 		{name: "line break only", source: []byte("[\n]:0")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkExtendedEmailTrailingDots(t *testing.T) {
+func TestM114NativeExtendedEmailTrailingDotCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -739,73 +598,30 @@ func TestM114NativeBackendMatchesGoldmarkExtendedEmailTrailingDots(t *testing.T)
 		{name: "internal empty domain label", source: []byte("0@00..000")},
 		{name: "domain only dots", source: []byte("0@...")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkExtendedEmailDomainSuffixes(t *testing.T) {
-	tests := []struct {
-		name   string
-		source []byte
-	}{
-		{name: "exact round 51 artifact", source: []byte("0@0.0._")},
-		{name: "terminal underscore", source: []byte("0@0.0_")},
-		{name: "terminal hyphen", source: []byte("0@0.0-")},
-		{name: "dot hyphen suffix", source: []byte("0@0.0.-")},
-		{name: "double underscore suffix", source: []byte("0@0.0.__")},
-		{name: "underscore then letter", source: []byte("0@0.0._x")},
-		{name: "letter then underscore", source: []byte("0@0.0.x_")},
-		{name: "letter then hyphen", source: []byte("0@0.0.x-")},
-		{name: "suffix before comma", source: []byte("0@0.0._,")},
-		{name: "double dot before underscore", source: []byte("0@0.0.._")},
-		{name: "valid internal underscore", source: []byte("0@a_b.0")},
-		{name: "internal empty label", source: []byte("0@0..0")},
-		{name: "mailto control", source: []byte("mailto:0@0.0._")},
-		{name: "xmpp control", source: []byte("xmpp:0@0.0._/r")},
-	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+func TestM114NativeExtendedEmailDomainSuffixCorpusRemainsSourceBound(t *testing.T) {
+	assertM114NativeCorpusStable(t, m114StringCases(
+		"exact round 51 artifact", "0@0.0._",
+		"terminal underscore", "0@0.0_",
+		"terminal hyphen", "0@0.0-",
+		"dot hyphen suffix", "0@0.0.-",
+		"double underscore suffix", "0@0.0.__",
+		"underscore then letter", "0@0.0._x",
+		"letter then underscore", "0@0.0.x_",
+		"letter then hyphen", "0@0.0.x-",
+		"suffix before comma", "0@0.0._,",
+		"double dot before underscore", "0@0.0.._",
+		"valid internal underscore", "0@a_b.0",
+		"internal empty label", "0@0..0",
+		"mailto control", "mailto:0@0.0._",
+		"xmpp control", "xmpp:0@0.0._/r",
+	))
 }
 
-func TestM114NativeBackendMatchesGoldmarkExtendedEmailLocalPunctuation(t *testing.T) {
+func TestM114NativeExtendedEmailLocalPunctuationCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -837,30 +653,11 @@ func TestM114NativeBackendMatchesGoldmarkExtendedEmailLocalPunctuation(t *testin
 		{name: "xmpp broad punctuation rejected", source: []byte("xmpp:0!@0.0/resource")},
 		{name: "xmpp gfm punctuation accepted", source: []byte("xmpp:0+@0.0/resource")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkContainerLazyContinuation(t *testing.T) {
+func TestM114NativeContainerLazyContinuationCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -896,30 +693,11 @@ func TestM114NativeBackendMatchesGoldmarkContainerLazyContinuation(t *testing.T)
 		{name: "top level pipe delimiter", source: []byte("| a | b |\n| - | - |")},
 		{name: "reference definition leaf", source: []byte("> [a]: /url\n0")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkBlockquoteTabPadding(t *testing.T) {
+func TestM114NativeBlockquoteTabPaddingCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -952,27 +730,8 @@ func TestM114NativeBackendMatchesGoldmarkBlockquoteTabPadding(t *testing.T) {
 		{name: "spaced nested two spaces tab", source: []byte("> >  \t0")},
 		{name: "triple nested two spaces tab", source: []byte(">>>  \t0")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
 func TestM114NativeBlockquoteStructuralTabPaddingRemainsSourceBound(t *testing.T) {
@@ -1022,30 +781,11 @@ func TestM114NativeBlockquoteStructuralTabPaddingRemainsSourceBound(t *testing.T
 		{name: "three leading spaces two spaces tab level two empty heading", source: []byte("   >  \t##")},
 		{name: "three leading spaces two spaces tab ordinary text", source: []byte("   >  \ttext")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkNestedListTabPadding(t *testing.T) {
+func TestM114NativeNestedListTabPaddingCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -1058,30 +798,11 @@ func TestM114NativeBackendMatchesGoldmarkNestedListTabPadding(t *testing.T) {
 		{name: "nested marker two spaces tab", source: []byte("* *  \t0")},
 		{name: "ordinary nested list", source: []byte("* - child")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkEmptyListSiblingAfterBlank(t *testing.T) {
+func TestM114NativeEmptyListSiblingAfterBlankCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -1098,164 +819,73 @@ func TestM114NativeBackendMatchesGoldmarkEmptyListSiblingAfterBlank(t *testing.T
 		{name: "ordered same punctuation", source: []byte("1.\n\n   2. 0")},
 		{name: "ordered different punctuation", source: []byte("1.\n\n   2) 0")},
 	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+	assertM114NativeCorpusStable(t, tests)
+
 }
 
-func TestM114NativeBackendMatchesGoldmarkNestedListWidePaddingContinuationBoundary(t *testing.T) {
-	tests := []struct {
-		name   string
-		source []byte
-	}{
-		{name: "artifact isolated cr", source: []byte("*\n\n+\r  *     0\n  0")},
-		{name: "artifact lf", source: []byte("*\n\n+\n  *     0\n  0")},
-		{name: "artifact crlf", source: []byte("*\n\n+\r\n  *     0\n  0")},
-		{name: "no preceding list", source: []byte("+\r  *     0\n  0")},
-		{name: "same preceding marker", source: []byte("*\n\n*\r  *     0\n  0")},
-		{name: "nested padding one", source: []byte("*\n\n+\r  * 0\n  0")},
-		{name: "nested padding two", source: []byte("*\n\n+\r  *  0\n  0")},
-		{name: "nested padding three", source: []byte("*\n\n+\r  *   0\n  0")},
-		{name: "nested padding four", source: []byte("*\n\n+\r  *    0\n  0")},
-		{name: "nested padding five", source: []byte("*\n\n+\r  *     0\n  0")},
-		{name: "nested padding six", source: []byte("*\n\n+\r  *      0\n  0")},
-		{name: "final indent zero", source: []byte("*\n\n+\r  *     0\n0")},
-		{name: "final indent one", source: []byte("*\n\n+\r  *     0\n 0")},
-		{name: "final indent two", source: []byte("*\n\n+\r  *     0\n  0")},
-		{name: "final indent three", source: []byte("*\n\n+\r  *     0\n   0")},
-		{name: "final indent four", source: []byte("*\n\n+\r  *     0\n    0")},
-		{name: "alternate nested marker", source: []byte("*\n\n+\r  -     0\n  0")},
-		{name: "alternate outer marker", source: []byte("+\n\n*\r  +     0\n  0")},
-	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+func TestM114NativeNestedListWidePaddingContinuationCorpusRemainsSourceBound(t *testing.T) {
+	assertM114NativeCorpusStable(t, m114StringCases(
+		"artifact isolated cr", "*\n\n+\r  *     0\n  0",
+		"artifact lf", "*\n\n+\n  *     0\n  0",
+		"artifact crlf", "*\n\n+\r\n  *     0\n  0",
+		"no preceding list", "+\r  *     0\n  0",
+		"same preceding marker", "*\n\n*\r  *     0\n  0",
+		"nested padding one", "*\n\n+\r  * 0\n  0",
+		"nested padding two", "*\n\n+\r  *  0\n  0",
+		"nested padding three", "*\n\n+\r  *   0\n  0",
+		"nested padding four", "*\n\n+\r  *    0\n  0",
+		"nested padding five", "*\n\n+\r  *     0\n  0",
+		"nested padding six", "*\n\n+\r  *      0\n  0",
+		"final indent zero", "*\n\n+\r  *     0\n0",
+		"final indent one", "*\n\n+\r  *     0\n 0",
+		"final indent two", "*\n\n+\r  *     0\n  0",
+		"final indent three", "*\n\n+\r  *     0\n   0",
+		"final indent four", "*\n\n+\r  *     0\n    0",
+		"alternate nested marker", "*\n\n+\r  -     0\n  0",
+		"alternate outer marker", "+\n\n*\r  +     0\n  0",
+	))
 }
 
-func TestM114NativeBackendMatchesGoldmarkListReferenceDefinitionLineEndings(t *testing.T) {
-	tests := []struct {
-		name   string
-		source []byte
-	}{
-		{name: "ordered lf", source: []byte("0) [0]:0\n0")},
-		{name: "ordered crlf", source: []byte("0) [0]:0\r\n0")},
-		{name: "ordered isolated cr", source: []byte("0) [0]:0\r0")},
-		{name: "bullet lf", source: []byte("- [0]:0\n0")},
-		{name: "bullet crlf", source: []byte("- [0]:0\r\n0")},
-		{name: "bullet isolated cr", source: []byte("- [0]:0\r0")},
-		{name: "top level lf", source: []byte("[0]:0\n0")},
-		{name: "top level crlf", source: []byte("[0]:0\r\n0")},
-		{name: "top level isolated cr", source: []byte("[0]:0\r0")},
-		{name: "ordered indented continuation lf", source: []byte("0) [0]:0\n   0")},
-		{name: "ordered indented continuation cr", source: []byte("0) [0]:0\r   0")},
-		{name: "tight ordinary paragraph", source: []byte("- first\n  second")},
-		{name: "reference without residual", source: []byte("- [0]:0")},
-		{name: "reference then indented residual", source: []byte("- [0]:0\n  residual")},
-		{name: "reference then multiline residual", source: []byte("- [0]:0\n  first\n  second")},
-		{name: "two references then residual", source: []byte("- [a]:0\n  [b]:1\n  residual")},
-		{name: "ordinary paragraph then reference text", source: []byte("- first\n  [0]:0")},
-		{name: "reference then nested list", source: []byte("- [0]:0\n  - child")},
-	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+func TestM114NativeListReferenceDefinitionLineEndingCorpusRemainsSourceBound(t *testing.T) {
+	assertM114NativeCorpusStable(t, m114StringCases(
+		"ordered lf", "0) [0]:0\n0",
+		"ordered crlf", "0) [0]:0\r\n0",
+		"ordered isolated cr", "0) [0]:0\r0",
+		"bullet lf", "- [0]:0\n0",
+		"bullet crlf", "- [0]:0\r\n0",
+		"bullet isolated cr", "- [0]:0\r0",
+		"top level lf", "[0]:0\n0",
+		"top level crlf", "[0]:0\r\n0",
+		"top level isolated cr", "[0]:0\r0",
+		"ordered indented continuation lf", "0) [0]:0\n   0",
+		"ordered indented continuation cr", "0) [0]:0\r   0",
+		"tight ordinary paragraph", "- first\n  second",
+		"reference without residual", "- [0]:0",
+		"reference then indented residual", "- [0]:0\n  residual",
+		"reference then multiline residual", "- [0]:0\n  first\n  second",
+		"two references then residual", "- [a]:0\n  [b]:1\n  residual",
+		"ordinary paragraph then reference text", "- first\n  [0]:0",
+		"reference then nested list", "- [0]:0\n  - child",
+	))
 }
 
-func TestM114NativeBackendMatchesGoldmarkWhitespaceOnlyMultilineCodeSpanProjection(t *testing.T) {
-	tests := []struct {
-		name   string
-		source []byte
-	}{
-		{name: "one space lf", source: []byte("` \n`")},
-		{name: "two spaces lf", source: []byte("`  \n`")},
-		{name: "three spaces lf", source: []byte("`   \n`")},
-		{name: "four spaces lf", source: []byte("`    \n`")},
-		{name: "two spaces crlf", source: []byte("`  \r\n`")},
-		{name: "two spaces isolated cr", source: []byte("`  \r`")},
-		{name: "space tab lf", source: []byte("` \t\n`")},
-		{name: "tab only lf", source: []byte("`\t\n`")},
-		{name: "space tab text lf", source: []byte("` \t0\n`")},
-		{name: "tab text lf", source: []byte("`\t0\n`")},
-		{name: "space text lf", source: []byte("` 0\n`")},
-		{name: "two spaces text lf", source: []byte("`  0\n`")},
-		{name: "double backtick spaces", source: []byte("``  \n``")},
-		{name: "second line text", source: []byte("`  \n x`")},
-	}
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			before := bytes.Clone(tt.source)
-			first, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("ParseDocument() error = %v", err)
-			}
-			if !bytes.Equal(before, tt.source) {
-				t.Fatal("ParseDocument() mutated source")
-			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
-			second, err := candidate.ParseDocument(tt.source)
-			if err != nil {
-				t.Fatalf("second ParseDocument() error = %v", err)
-			}
-			if !reflect.DeepEqual(first, second) {
-				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
+func TestM114NativeWhitespaceOnlyMultilineCodeSpanCorpusRemainsSourceBound(t *testing.T) {
+	assertM114NativeCorpusStable(t, m114StringCases(
+		"one space lf", "` \n`",
+		"two spaces lf", "`  \n`",
+		"three spaces lf", "`   \n`",
+		"four spaces lf", "`    \n`",
+		"two spaces crlf", "`  \r\n`",
+		"two spaces isolated cr", "`  \r`",
+		"space tab lf", "` \t\n`",
+		"tab only lf", "`\t\n`",
+		"space tab text lf", "` \t0\n`",
+		"tab text lf", "`\t0\n`",
+		"space text lf", "` 0\n`",
+		"two spaces text lf", "`  0\n`",
+		"double backtick spaces", "``  \n``",
+		"second line text", "`  \n x`",
+	))
 }
 
 func FuzzM114NativeBackendObservationsRemainSourceBound(f *testing.F) {
@@ -1412,7 +1042,7 @@ func FuzzM114NativeBackendLegacyDifferentialCorpusRemainsSourceBound(f *testing.
 	})
 }
 
-func FuzzM114NativeDirectLinkProofMatchesGoldmark(f *testing.F) {
+func FuzzM114NativeDirectLinkProofAcceptanceParity(f *testing.F) {
 	f.Add(uint8(0), uint16(0))
 	f.Add(uint8(1), uint16(3))
 	f.Add(uint8(2), uint16(12))
@@ -1446,7 +1076,7 @@ func FuzzM114NativeDirectLinkProofMatchesGoldmark(f *testing.F) {
 	})
 }
 
-func FuzzM114NativeReferenceProofMatchesGoldmark(f *testing.F) {
+func FuzzM114NativeReferenceProofAcceptanceParity(f *testing.F) {
 	f.Add(uint8(0), uint16(0))
 	f.Add(uint8(1), uint16(5))
 	f.Add(uint8(2), uint16(9))

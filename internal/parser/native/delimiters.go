@@ -1,6 +1,8 @@
 package native
 
 import (
+	"cmp"
+	"slices"
 	"sort"
 	"unicode"
 	"unicode/utf8"
@@ -53,8 +55,17 @@ type delimiterParseResult struct {
 }
 
 func parseDelimiterObservations(source []byte, block inlineBlock, owners []inlineSpan, barriers []backtickRun, definitions []referenceDefinitionParse) delimiterParseResult {
-	composites := collectCompositeInlines(source, block, owners, definitions)
-	exclusions := inlineOwnerExclusions(block, owners, composites)
+	return parseDelimiterObservationsIndexed(source, block, owners, barriers, basicReferenceDefinitions(definitions))
+}
+
+func parseDelimiterObservationsIndexed(source []byte, block inlineBlock, owners []inlineSpan, barriers []backtickRun, definitions referenceDefinitionIndex) delimiterParseResult {
+	ownerExclusions := inlineOwnerExclusions(block, owners, nil)
+	composites := collectCompositeInlinesIndexed(source, block, owners, definitions, ownerExclusions)
+	exclusions := appendCompositeDelimiterExclusions(ownerExclusions, block, composites)
+	return parseDelimiterObservationsWithExclusions(source, block, owners, barriers, composites, exclusions)
+}
+
+func parseDelimiterObservationsWithExclusions(source []byte, block inlineBlock, owners []inlineSpan, barriers []backtickRun, composites []compositeInline, exclusions [][]parser.Range) delimiterParseResult {
 	barriers = activeBacktickBarriers(barriers, exclusions)
 	runs := collectDelimiterRuns(source, block, exclusions)
 	matches := processDelimiters(runs)
@@ -80,12 +91,14 @@ func parseDelimiterObservations(source []byte, block inlineBlock, owners []inlin
 			nodes = append(nodes, parser.Node{Kind: parser.KindStrikethrough, Range: match.content})
 		}
 	}
-	sort.SliceStable(nodes, func(left, right int) bool {
-		if nodes[left].Range.Start != nodes[right].Range.Start {
-			return nodes[left].Range.Start < nodes[right].Range.Start
-		}
-		return nodes[left].Range.End < nodes[right].Range.End
-	})
+	if len(nodes) > 1 {
+		slices.SortStableFunc(nodes, func(left, right parser.Node) int {
+			if order := cmp.Compare(left.Range.Start, right.Range.Start); order != 0 {
+				return order
+			}
+			return cmp.Compare(left.Range.End, right.Range.End)
+		})
+	}
 	return delimiterParseResult{nodes: nodes, matches: matches, composites: composites}
 }
 
@@ -128,6 +141,14 @@ func inlineBlockExclusions(block inlineBlock) [][]parser.Range {
 			exclusions[segmentIndex] = append(exclusions[segmentIndex], parser.Range{Start: start, End: end})
 		}
 	}
+	return exclusions
+}
+
+func appendCompositeDelimiterExclusions(exclusions [][]parser.Range, block inlineBlock, composites []compositeInline) [][]parser.Range {
+	for _, composite := range composites {
+		appendCompositeExclusions(exclusions, block, composite)
+	}
+	normalizeInlineExclusions(exclusions)
 	return exclusions
 }
 
@@ -262,8 +283,7 @@ func delimiterRuneClass(rune_ rune) (bool, bool) {
 	return unicode.IsSpace(rune_), unicode.IsPunct(rune_) || unicode.IsSymbol(rune_)
 }
 
-func processDelimiters(input []delimiterRun) []delimiterMatch {
-	runs := cloneDelimiterRuns(input)
+func processDelimiters(runs []delimiterRun) []delimiterMatch {
 	index := openerIndex{active: make([]int, 0, len(runs))}
 	matches := make([]delimiterMatch, 0)
 	maxMatchedOpener := -1
@@ -288,15 +308,6 @@ func processDelimiters(input []delimiterRun) []delimiterMatch {
 		}
 	}
 	return matches
-}
-
-func cloneDelimiterRuns(input []delimiterRun) []delimiterRun {
-	runs := append([]delimiterRun(nil), input...)
-	for index := range runs {
-		runs[index].openActive = false
-		runs[index].openVersion = 0
-	}
-	return runs
 }
 
 func nearestDelimiterOpener(runs []delimiterRun, index *openerIndex, closer delimiterRun) int {
@@ -423,50 +434,89 @@ type delimiterContentKey struct {
 	end     int
 }
 
+type delimiterRunSegment struct {
+	start int
+	end   int
+}
+
 type delimiterRunIndex struct {
-	bySegment [][]parser.Range
+	segmentCount int
+	runs         []delimiterRun
+	single       delimiterRunSegment
+	bySegment    []delimiterRunSegment
 }
 
 func newDelimiterRunIndex(segmentCount int, runs []delimiterRun) delimiterRunIndex {
-	index := delimiterRunIndex{bySegment: make([][]parser.Range, segmentCount)}
-	for _, run := range runs {
+	if segmentCount <= 0 {
+		return delimiterRunIndex{runs: runs}
+	}
+	index := delimiterRunIndex{segmentCount: segmentCount, runs: runs}
+	if segmentCount > 1 {
+		index.bySegment = make([]delimiterRunSegment, segmentCount)
+	}
+	for runIndex, run := range runs {
 		if run.segment < 0 || run.segment >= segmentCount || run.start >= run.end {
 			continue
 		}
-		index.bySegment[run.segment] = append(index.bySegment[run.segment], parser.Range{Start: run.start, End: run.end})
+		segment := index.segmentSpan(run.segment)
+		if segment.start == segment.end {
+			segment.start = runIndex
+		}
+		segment.end = runIndex + 1
 	}
 	return index
 }
 
+func (index *delimiterRunIndex) segmentSpan(segment int) *delimiterRunSegment {
+	if index.segmentCount == 1 {
+		return &index.single
+	}
+	return &index.bySegment[segment]
+}
+
+func (index delimiterRunIndex) segmentRuns(segment int) []delimiterRun {
+	if segment < 0 || segment >= index.segmentCount {
+		return nil
+	}
+	span := index.single
+	if index.segmentCount > 1 {
+		span = index.bySegment[segment]
+	}
+	if span.end <= span.start {
+		return nil
+	}
+	return index.runs[span.start:span.end]
+}
+
 func (index delimiterRunIndex) preservesSingleTextChild(segment, start, end int) bool {
-	if segment < 0 || segment >= len(index.bySegment) || start >= end {
+	if start >= end {
 		return true
 	}
-	runs := index.bySegment[segment]
-	position := sort.Search(len(runs), func(position int) bool { return runs[position].Start >= start })
-	if position == len(runs) || runs[position].Start >= end {
+	runs := index.segmentRuns(segment)
+	position := sort.Search(len(runs), func(position int) bool { return runs[position].start >= start })
+	if position == len(runs) || runs[position].start >= end {
 		return true
 	}
-	return contiguousDelimiterRunsReach(runs, position, runs[position].Start, end)
+	return contiguousDelimiterRunsReach(runs, position, runs[position].start, end)
 }
 
 func (index delimiterRunIndex) coversRange(segment, start, end int) bool {
-	if segment < 0 || segment >= len(index.bySegment) || start >= end {
+	if start >= end {
 		return false
 	}
-	runs := index.bySegment[segment]
-	position := sort.Search(len(runs), func(position int) bool { return runs[position].Start >= start })
-	return position < len(runs) && runs[position].Start == start && contiguousDelimiterRunsReach(runs, position, start, end)
+	runs := index.segmentRuns(segment)
+	position := sort.Search(len(runs), func(position int) bool { return runs[position].start >= start })
+	return position < len(runs) && runs[position].start == start && contiguousDelimiterRunsReach(runs, position, start, end)
 }
 
-func contiguousDelimiterRunsReach(runs []parser.Range, position, start, end int) bool {
+func contiguousDelimiterRunsReach(runs []delimiterRun, position, start, end int) bool {
 	cursor := start
 	for position < len(runs) && cursor < end {
 		run := runs[position]
-		if run.Start != cursor || run.End > end {
+		if run.start != cursor || run.end > end {
 			return false
 		}
-		cursor = run.End
+		cursor = run.end
 		position++
 	}
 	return cursor == end

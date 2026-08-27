@@ -111,7 +111,7 @@ The overlay cannot suppress, replace, or reclassify core nodes and never consume
 
 Recognizers are ordinary caller-linked Go code. Marksplice can validate and bound only the observations it retains; it cannot sandbox or preempt an extension's own CPU, memory, goroutine, filesystem, network, or command behavior. Caller trust therefore governs recognizer execution, while Marksplice retains fail-closed ownership of its own document state.
 
-This parser-backend-independent public boundary was deliberately defined before native-parser work. M111 freezes the separate internal parser-substitution contract/differential harness, M112 completes the native block candidate, and M113 completes native inline/reference parsed-document observations beneath it without changing the SPI. M114–M115 must preserve the same M110 public overlay rather than coupling extensions to Goldmark or requiring a parser-specific SPI redesign.
+This parser-backend-independent public boundary was deliberately defined before native-parser work. M111 freezes the separate internal parser-substitution contract/differential harness, M112 completes the native block candidate, and M113 completes native inline/reference parsed-document observations beneath it without changing the SPI. M114 preserved the same M110 public overlay throughout hardening; M115 must preserve it during cutover rather than coupling extensions to either parser implementation.
 
 ## Goldmark exit strategy
 
@@ -124,14 +124,14 @@ The transition is staged:
 3. freeze the native parser observation/proof contract and differential harness in M111 (complete);
 4. implement native block parsing in M112 (complete);
 5. implement native inline parsing in M113 (complete);
-6. prove complete native conformance and hardening in M114;
+6. prove complete native conformance and hardening in M114 (complete);
 7. remove Goldmark and cut production over in M115.
 
-Goldmark is isolated behind the M111 parser-independent backend contract and remains only the temporary production backend and a secondary differential comparison while the replacement is developed. M112 and M113 historically matched its block/inline/reference projections across the legacy published-GFM corpus; M114 now recertifies those semantics against CommonMark 0.31.2 first, explicit GFM extension/correction rules second, and approved Marksplice-owned contracts for extra-GFM capabilities. A Goldmark mismatch is not itself a correctness verdict. No Goldmark upgrade or migration is part of this roadmap.
+Goldmark is isolated behind the M111 parser-independent backend contract and remains only the temporary production backend and a secondary differential comparator until M115. M114 has completed specification-first recertification against CommonMark 0.31.2, explicit GFM extension/correction rules, and approved Marksplice-owned contracts for extra-GFM capabilities, together with fuzz/resource/performance/cross-platform hardening. Historical fuzz-round inputs without independent normative authority remain invariants only. A Goldmark mismatch is not itself a correctness verdict. No Goldmark upgrade or migration is part of this roadmap.
 
 ## Native-parser cutover gate
 
-Before M115 removes Goldmark, the Marksplice-native parser must satisfy all of the following:
+M114 has satisfied the pre-cutover Native-parser gate:
 
 - the complete applicable pinned CommonMark 0.31.2 conformance corpus plus the normative explicit GFM extension corpus;
 - every focused parser-boundary and source-position regression required by Marksplice;
@@ -145,7 +145,7 @@ Before M115 removes Goldmark, the Marksplice-native parser must satisfy all of t
 - no parser-specific type leaking into public APIs;
 - compatibility with the reviewed M110 third-party SPI boundary.
 
-After this gate passes, M115 requires production cutover and removal of Goldmark from `go.mod`, `go.sum`, runtime code, active tests, and non-historical documentation paths.
+M115 now requires production cutover and removal of Goldmark from `go.mod`, `go.sum`, runtime code, active tests, and non-historical documentation paths, followed by the complete release-quality verification stack.
 
 ## Devil's advocate review
 

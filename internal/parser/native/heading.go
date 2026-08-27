@@ -2,7 +2,9 @@ package native
 
 import (
 	"bytes"
+	"cmp"
 	"html"
+	"slices"
 	"sort"
 	"strings"
 
@@ -74,10 +76,10 @@ func headingTerminals(source []byte, owners []inlineSpan) []headingTerminal {
 	result := make([]headingTerminal, 0, len(owners))
 	for _, owner := range owners {
 		terminal := headingTerminal{range_: parser.Range{Start: owner.start, End: owner.end}}
-		switch owner.node.Kind {
+		switch owner.kind {
 		case parser.KindCodeSpan:
 			terminal.kind = headingTerminalCode
-			terminal.content = owner.node.Range
+			terminal.content = owner.content
 		case parser.KindAutoLink, parser.KindRawHTML:
 			terminal.kind = headingTerminalOmit
 		default:
@@ -92,12 +94,14 @@ func headingTerminals(source []byte, owners []inlineSpan) []headingTerminal {
 		}
 		result = append(result, terminal)
 	}
-	sort.SliceStable(result, func(left, right int) bool {
-		if result[left].range_.Start != result[right].range_.Start {
-			return result[left].range_.Start < result[right].range_.Start
-		}
-		return result[left].range_.End > result[right].range_.End
-	})
+	if len(result) > 1 {
+		slices.SortStableFunc(result, func(left, right headingTerminal) int {
+			if order := cmp.Compare(left.range_.Start, right.range_.Start); order != 0 {
+				return order
+			}
+			return cmp.Compare(right.range_.End, left.range_.End)
+		})
+	}
 	return result
 }
 
@@ -132,11 +136,11 @@ func mergeHeadingRanges(ranges []parser.Range) []parser.Range {
 	if len(ranges) < 2 {
 		return ranges
 	}
-	sort.Slice(ranges, func(left, right int) bool {
-		if ranges[left].Start != ranges[right].Start {
-			return ranges[left].Start < ranges[right].Start
+	slices.SortFunc(ranges, func(left, right parser.Range) int {
+		if order := cmp.Compare(left.Start, right.Start); order != 0 {
+			return order
 		}
-		return ranges[left].End < ranges[right].End
+		return cmp.Compare(left.End, right.End)
 	})
 	merged := ranges[:1]
 	for _, current := range ranges[1:] {

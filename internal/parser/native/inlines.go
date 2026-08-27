@@ -2,7 +2,8 @@ package native
 
 import (
 	"bytes"
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/zoster81/marksplice/internal/parser"
 )
@@ -21,11 +22,13 @@ type backtickRun struct {
 }
 
 type inlineSpan struct {
-	segment    int
-	start      int
-	endSegment int
-	end        int
-	node       parser.Node
+	segment       int
+	start         int
+	endSegment    int
+	end           int
+	kind          parser.Kind
+	content       parser.Range
+	autoLinkEmail bool
 }
 
 type inlineParseResult struct {
@@ -35,22 +38,23 @@ type inlineParseResult struct {
 }
 
 type inlineAnalysis struct {
-	block      inlineBlock
-	owners     []inlineSpan
-	delimiters delimiterParseResult
-	parsed     inlineParseResult
+	block                  inlineBlock
+	owners                 []inlineSpan
+	delimiters             delimiterParseResult
+	relationshipExclusions [][]parser.Range
+	parsed                 inlineParseResult
 }
 
-// ParseInlines returns the parser-independent inline node observations owned by
-// the Marksplice-native inline parser. M113 fills this candidate family by family
-// while production parsing remains on the temporary Goldmark backend.
+// ParseInlines returns parser-independent inline node observations from the
+// completed Marksplice-native parser. Production selection remains on the temporary
+// Goldmark backend until the explicit M115 cutover.
 func ParseInlines(source []byte) ([]parser.Node, error) {
 	observed, err := ParseInlineObservations(source)
 	return observed.Nodes, err
 }
 
-// ParseInlineObservations returns the M113-owned inline document observations
-// without claiming the unrelated parser.Backend families that remain on Goldmark.
+// ParseInlineObservations returns the parser-independent inline observation subset.
+// The complete native parser.Backend is implemented separately by Backend.
 func ParseInlineObservations(source []byte) (parser.DocumentObservations, error) {
 	blocks := parseBlockLines(source, physicalLines(source), true)
 	inline := parseInlineBlocks(source, blocks.inlines, blocks.references)
@@ -109,6 +113,10 @@ func inlineLineRanges(source []byte, lines []physicalLine, first, last int) []pa
 }
 
 func parseInlineBlocks(source []byte, blocks []inlineBlock, definitions []referenceDefinitionParse) inlineParseResult {
+	return parseInlineBlocksIndexed(source, blocks, basicReferenceDefinitions(definitions))
+}
+
+func parseInlineBlocksIndexed(source []byte, blocks []inlineBlock, definitions referenceDefinitionIndex) inlineParseResult {
 	result := inlineParseResult{}
 	for _, block := range blocks {
 		appendInlineAnalysis(&result, analyzeInlineBlock(source, block, definitions))
@@ -118,15 +126,32 @@ func parseInlineBlocks(source []byte, blocks []inlineBlock, definitions []refere
 }
 
 func analyzeInlineBlocks(source []byte, blocks []inlineBlock, definitions []referenceDefinitionParse) []inlineAnalysis {
+	resolved := basicReferenceDefinitions(definitions)
 	analyses := make([]inlineAnalysis, len(blocks))
 	for index, block := range blocks {
-		analyses[index] = analyzeInlineBlock(source, block, definitions)
+		analyses[index] = analyzeInlineBlock(source, block, resolved)
 	}
 	return analyses
 }
 
-func mergeInlineAnalyses(analyses []inlineAnalysis) inlineParseResult {
-	result := inlineParseResult{}
+func mergeInlineAnalyses(analyses []inlineAnalysis, additionalNodeCapacity int) inlineParseResult {
+	if len(analyses) == 0 {
+		return inlineParseResult{}
+	}
+	if len(analyses) == 1 {
+		return analyses[0].parsed
+	}
+	nodeCount, usageCount, unresolvedCount := 0, 0, 0
+	for _, analysis := range analyses {
+		nodeCount += len(analysis.parsed.nodes)
+		usageCount += len(analysis.parsed.usages)
+		unresolvedCount += len(analysis.parsed.unresolved)
+	}
+	result := inlineParseResult{
+		nodes:      make([]parser.Node, 0, nodeCount+max(0, additionalNodeCapacity)),
+		usages:     make([]parser.LinkUsage, 0, usageCount),
+		unresolved: make([]parser.UnresolvedReferenceUsage, 0, unresolvedCount),
+	}
 	for _, analysis := range analyses {
 		appendInlineAnalysis(&result, analysis)
 	}
@@ -141,57 +166,134 @@ func appendInlineAnalysis(result *inlineParseResult, analysis inlineAnalysis) {
 }
 
 func sortInlineParseResult(result *inlineParseResult) {
-	sort.SliceStable(result.usages, func(left, right int) bool {
-		return result.usages[left].Anchor < result.usages[right].Anchor
-	})
-	sort.SliceStable(result.unresolved, func(left, right int) bool {
-		return result.unresolved[left].Anchor < result.unresolved[right].Anchor
-	})
+	if len(result.usages) > 1 {
+		slices.SortStableFunc(result.usages, func(left, right parser.LinkUsage) int {
+			return cmp.Compare(left.Anchor, right.Anchor)
+		})
+	}
+	if len(result.unresolved) > 1 {
+		slices.SortStableFunc(result.unresolved, func(left, right parser.UnresolvedReferenceUsage) int {
+			return cmp.Compare(left.Anchor, right.Anchor)
+		})
+	}
 }
 
-func analyzeInlineBlock(source []byte, block inlineBlock, definitions []referenceDefinitionParse) inlineAnalysis {
+func analyzeInlineBlock(source []byte, block inlineBlock, definitions referenceDefinitionIndex) inlineAnalysis {
 	runs := collectBacktickRuns(source, block)
 	spans := collectInlineSpans(source, block)
-	owners, nodes, barriers := resolvePrimaryInlineOwners(source, block, runs, nextSameLengthRuns(runs), spans)
-	delimiters := parseDelimiterObservations(source, block, owners, barriers, definitions)
-	nodes = filterPrimaryCompositeSyntaxNodes(block, nodes, delimiters.composites)
+	owners, barriers := resolvePrimaryInlineOwners(source, block, runs, nextSameLengthRuns(runs), spans)
+	ownerExclusions := inlineOwnerExclusions(block, owners, nil)
+	composites := collectCompositeInlinesIndexed(source, block, owners, definitions, ownerExclusions)
+	delimiterExclusions := appendCompositeDelimiterExclusions(ownerExclusions, block, composites)
+	delimiters := parseDelimiterObservationsWithExclusions(source, block, owners, barriers, composites, delimiterExclusions)
+	relationshipExclusions := promoteRelationshipExclusions(delimiterExclusions, block, composites)
+	nodes := primaryInlineOwnerObservations(source, block, owners, delimiters.composites)
 	nodes = append(nodes, projectCompositeObservations(source, block, owners, delimiters.composites, delimiters.matches)...)
 	nodes = append(nodes, delimiters.nodes...)
 	sortInlineNodes(nodes)
 	usages := compositeLinkUsages(delimiters.composites)
 	usages = append(usages, autoLinkUsages(nodes)...)
 	return inlineAnalysis{
-		block:      block,
-		owners:     owners,
-		delimiters: delimiters,
+		block:                  block,
+		owners:                 owners,
+		delimiters:             delimiters,
+		relationshipExclusions: relationshipExclusions,
 		parsed: inlineParseResult{
 			nodes:      nodes,
 			usages:     usages,
-			unresolved: unresolvedReferenceUsages(source, block, owners, delimiters.composites, delimiters.matches, definitions),
+			unresolved: unresolvedReferenceUsages(source, block, relationshipExclusions, delimiters.matches, definitions),
 		},
 	}
 }
 
 func sortInlineNodes(nodes []parser.Node) {
-	sort.SliceStable(nodes, func(left, right int) bool {
-		if nodes[left].Range.Start != nodes[right].Range.Start {
-			return nodes[left].Range.Start < nodes[right].Range.Start
+	if len(nodes) < 2 {
+		return
+	}
+	slices.SortStableFunc(nodes, func(left, right parser.Node) int {
+		if order := cmp.Compare(left.Range.Start, right.Range.Start); order != 0 {
+			return order
 		}
-		return nodes[left].Range.End < nodes[right].Range.End
+		return cmp.Compare(left.Range.End, right.Range.End)
 	})
 }
 
-func resolvePrimaryInlineOwners(source []byte, block inlineBlock, runs []backtickRun, nextSame []int, spans []inlineSpan) ([]inlineSpan, []parser.Node, []backtickRun) {
+func primaryInlineOwnerObservations(source []byte, block inlineBlock, owners []inlineSpan, composites []compositeInline) []parser.Node {
+	exclusions := activeCompositeSyntaxExclusions(block, composites)
+	count := 0
+	for _, owner := range owners {
+		if primaryInlineOwnerObservable(owner, exclusions) {
+			count++
+		}
+	}
+	if count == 0 {
+		return nil
+	}
+	nodes := make([]parser.Node, 0, count)
+	for _, owner := range owners {
+		if !primaryInlineOwnerObservable(owner, exclusions) {
+			continue
+		}
+		if node, ok := primaryInlineOwnerObservation(source, owner); ok {
+			nodes = append(nodes, node)
+		}
+	}
+	return nodes
+}
+
+func activeCompositeSyntaxExclusions(block inlineBlock, composites []compositeInline) [][]parser.Range {
+	for _, composite := range composites {
+		if composite.active {
+			return inlineOwnerExclusions(block, nil, composites)
+		}
+	}
+	return nil
+}
+
+func primaryInlineOwnerObservable(owner inlineSpan, exclusions [][]parser.Range) bool {
+	switch owner.kind {
+	case parser.KindCodeSpan, parser.KindRawHTML, parser.KindAutoLink:
+	default:
+		return false
+	}
+	if owner.segment < 0 || owner.segment >= len(exclusions) && exclusions != nil {
+		return false
+	}
+	return exclusions == nil || !inlineRangesContainPosition(exclusions[owner.segment], owner.start)
+}
+
+func primaryInlineOwnerObservation(source []byte, owner inlineSpan) (parser.Node, bool) {
+	if !owner.content.Valid(len(source)) || owner.content.Start >= owner.content.End {
+		return parser.Node{}, false
+	}
+	switch owner.kind {
+	case parser.KindCodeSpan:
+		return parser.Node{Kind: parser.KindCodeSpan, Range: owner.content, Anchor: owner.start}, true
+	case parser.KindRawHTML:
+		return parser.Node{Kind: parser.KindRawHTML, Range: owner.content}, true
+	case parser.KindAutoLink:
+		return parser.Node{
+			Kind:          parser.KindAutoLink,
+			Range:         owner.content,
+			Anchor:        owner.start,
+			Value:         string(source[owner.content.Start:owner.content.End]),
+			AutoLinkEmail: owner.autoLinkEmail,
+		}, true
+	default:
+		return parser.Node{}, false
+	}
+}
+
+func resolvePrimaryInlineOwners(source []byte, block inlineBlock, runs []backtickRun, nextSame []int, spans []inlineSpan) ([]inlineSpan, []backtickRun) {
+	if len(runs) == 0 {
+		return spans, nil
+	}
 	owners := make([]inlineSpan, 0, len(spans)+len(runs)/2)
-	nodes := make([]parser.Node, 0)
 	barriers := make([]backtickRun, 0)
 	for runIndex, spanIndex := 0, 0; runIndex < len(runs) || spanIndex < len(spans); {
 		if nextSpanBeforeRun(spans, spanIndex, runs, runIndex) {
 			span := spans[spanIndex]
 			owners = append(owners, span)
-			if span.node.Kind != parser.KindUnknown {
-				nodes = append(nodes, span.node)
-			}
 			runIndex = skipRunsBefore(runs, runIndex, span.endSegment, span.end)
 			spanIndex++
 			continue
@@ -212,14 +314,14 @@ func resolvePrimaryInlineOwners(source []byte, block inlineBlock, runs []backtic
 		closer := runs[closeIndex]
 		owner := inlineSpan{segment: opener.segment, start: opener.start, endSegment: closer.segment, end: closer.end}
 		if node, ok := codeSpanObservation(source, block, opener, closer); ok {
-			owner.node = node
-			nodes = append(nodes, node)
+			owner.kind = node.Kind
+			owner.content = node.Range
 		}
 		owners = append(owners, owner)
 		spanIndex = skipSpansBefore(spans, spanIndex, closer.segment, closer.end)
 		runIndex = closeIndex + 1
 	}
-	return owners, nodes, barriers
+	return owners, barriers
 }
 
 func nextSpanBeforeRun(spans []inlineSpan, spanIndex int, runs []backtickRun, runIndex int) bool {
@@ -361,13 +463,15 @@ func collectInlineSpans(source []byte, block inlineBlock) []inlineSpan {
 		}
 		if source[position] == '<' && !inlineByteEscaped(source, segment.Start, position) {
 			if node, end, ok := scanAngleAutolink(source, position, segment.End); ok {
-				spans = append(spans, sameSegmentInlineSpan(segmentIndex, position, end, node))
+				spans = append(spans, observedInlineSpan(segmentIndex, position, end, node))
 				position = end
 				continue
 			}
 			if end, ok := scanInlineHTML(source, position, segment.End); ok {
-				node := parser.Node{Kind: parser.KindRawHTML, Range: parser.Range{Start: position, End: end}}
-				spans = append(spans, sameSegmentInlineSpan(segmentIndex, position, end, node))
+				spans = append(spans, inlineSpan{
+					segment: segmentIndex, start: position, endSegment: segmentIndex, end: end,
+					kind: parser.KindRawHTML, content: parser.Range{Start: position, End: end},
+				})
 				position = end
 				continue
 			}
@@ -391,7 +495,7 @@ func collectInlineSpans(source []byte, block inlineBlock) []inlineSpan {
 			}
 		}
 		if node, end, ok := scanExtendedAutolink(source, position, segment.Start, segment.End); ok {
-			spans = append(spans, sameSegmentInlineSpan(segmentIndex, position, end, node))
+			spans = append(spans, observedInlineSpan(segmentIndex, position, end, node))
 			position = end
 			continue
 		}
@@ -400,8 +504,16 @@ func collectInlineSpans(source []byte, block inlineBlock) []inlineSpan {
 	return spans
 }
 
-func sameSegmentInlineSpan(segment, start, end int, node parser.Node) inlineSpan {
-	return inlineSpan{segment: segment, start: start, endSegment: segment, end: end, node: node}
+func observedInlineSpan(segment, start, end int, node parser.Node) inlineSpan {
+	return inlineSpan{
+		segment:       segment,
+		start:         start,
+		endSegment:    segment,
+		end:           end,
+		kind:          node.Kind,
+		content:       node.Range,
+		autoLinkEmail: node.AutoLinkEmail,
+	}
 }
 
 func scanExtendedAutolink(source []byte, start, segmentStart, limit int) (parser.Node, int, bool) {

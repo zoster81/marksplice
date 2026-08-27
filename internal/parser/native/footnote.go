@@ -2,6 +2,8 @@ package native
 
 import (
 	"bytes"
+	"cmp"
+	"slices"
 	"sort"
 
 	"github.com/zoster81/marksplice/internal/parser"
@@ -13,7 +15,13 @@ type nativeFootnoteDefinition struct {
 }
 
 func nativeFootnoteObservations(source []byte, blocks blockParseResult) ([]parser.FootnoteDefinitionObservation, []parser.FootnoteReferenceObservation, []parser.LinkUsage) {
+	if !bytes.Contains(source, []byte("[^")) {
+		return []parser.FootnoteDefinitionObservation{}, []parser.FootnoteReferenceObservation{}, []parser.LinkUsage{}
+	}
 	parsed := scanNativeFootnoteDefinitions(source)
+	if len(parsed) == 0 {
+		return []parser.FootnoteDefinitionObservation{}, []parser.FootnoteReferenceObservation{}, []parser.LinkUsage{}
+	}
 	definitions := make([]parser.FootnoteDefinitionObservation, len(parsed))
 	for index := range parsed {
 		definitions[index] = parsed[index].observation
@@ -185,15 +193,15 @@ func normalizeNativeFootnoteBodyRanges(source []byte, ranges []parser.Range) []p
 			result = append(result, range_)
 		}
 	}
-	sort.SliceStable(result, func(left, right int) bool {
-		if result[left].Start != result[right].Start {
-			return result[left].Start < result[right].Start
-		}
-		return result[left].End < result[right].End
-	})
 	if len(result) < 2 {
 		return result
 	}
+	slices.SortStableFunc(result, func(left, right parser.Range) int {
+		if order := cmp.Compare(left.Start, right.Start); order != 0 {
+			return order
+		}
+		return cmp.Compare(left.End, right.End)
+	})
 	deduplicated := result[:1]
 	for _, range_ := range result[1:] {
 		if deduplicated[len(deduplicated)-1] != range_ {
@@ -223,6 +231,7 @@ func nativeOrdinaryReferenceDefinitions(source []byte, definitions []referenceDe
 }
 
 func scanNativeFootnoteReferences(source []byte, blocks []inlineBlock, definitions []nativeFootnoteDefinition, ordinaryDefinitions []referenceDefinitionParse) []parser.FootnoteReferenceObservation {
+	ordinaryIndex := basicReferenceDefinitions(ordinaryDefinitions)
 	byLabel := make(map[string]int, len(definitions))
 	observations := make([]parser.FootnoteDefinitionObservation, len(definitions))
 	for index, definition := range definitions {
@@ -234,7 +243,7 @@ func scanNativeFootnoteReferences(source []byte, blocks []inlineBlock, definitio
 	claims := nativeFootnoteClaimedRanges(source, observations)
 	result := make([]parser.FootnoteReferenceObservation, 0)
 	for _, block := range blocks {
-		for _, reference := range scanNativeFootnoteReferenceBlock(source, block, byLabel, ordinaryDefinitions) {
+		for _, reference := range scanNativeFootnoteReferenceBlock(source, block, byLabel, ordinaryIndex) {
 			if !nativeRangeInsideAny(reference.Range, claims) {
 				result = append(result, reference)
 			}
@@ -242,10 +251,14 @@ func scanNativeFootnoteReferences(source []byte, blocks []inlineBlock, definitio
 	}
 	for _, definition := range definitions {
 		for _, block := range definition.bodyBlocks {
-			result = append(result, scanNativeFootnoteReferenceBlock(source, block, byLabel, ordinaryDefinitions)...)
+			result = append(result, scanNativeFootnoteReferenceBlock(source, block, byLabel, ordinaryIndex)...)
 		}
 	}
-	sort.SliceStable(result, func(left, right int) bool { return result[left].Range.Start < result[right].Range.Start })
+	if len(result) > 1 {
+		slices.SortStableFunc(result, func(left, right parser.FootnoteReferenceObservation) int {
+			return cmp.Compare(left.Range.Start, right.Range.Start)
+		})
+	}
 	result = deduplicateNativeFootnoteReferences(result)
 	occurrences := make(map[int]int, len(definitions))
 	for index := range result {
@@ -256,12 +269,12 @@ func scanNativeFootnoteReferences(source []byte, blocks []inlineBlock, definitio
 	return result
 }
 
-func scanNativeFootnoteReferenceBlock(source []byte, block inlineBlock, definitions map[string]int, ordinaryDefinitions []referenceDefinitionParse) []parser.FootnoteReferenceObservation {
+func scanNativeFootnoteReferenceBlock(source []byte, block inlineBlock, definitions map[string]int, ordinaryDefinitions referenceDefinitionIndex) []parser.FootnoteReferenceObservation {
 	runs := collectBacktickRuns(source, block)
 	nextSame := nextSameLengthRuns(runs)
 	spans := collectInlineSpans(source, block)
-	owners, _, barriers := resolvePrimaryInlineOwners(source, block, runs, nextSame, spans)
-	delimiters := parseDelimiterObservations(source, block, owners, barriers, ordinaryDefinitions)
+	owners, barriers := resolvePrimaryInlineOwners(source, block, runs, nextSame, spans)
+	delimiters := parseDelimiterObservationsIndexed(source, block, owners, barriers, ordinaryDefinitions)
 	exclusions := nativeFootnoteInlineExclusions(block, owners, delimiters.composites)
 	result := make([]parser.FootnoteReferenceObservation, 0)
 	for segmentIndex, segment := range block.segments {
@@ -332,12 +345,17 @@ func deduplicateNativeFootnoteReferences(references []parser.FootnoteReferenceOb
 }
 
 func nativeFootnoteBodyLinkUsages(source []byte, definitions []nativeFootnoteDefinition, ordinaryDefinitions []referenceDefinitionParse) []parser.LinkUsage {
+	resolved := basicReferenceDefinitions(ordinaryDefinitions)
 	result := make([]parser.LinkUsage, 0)
 	for _, definition := range definitions {
-		parsed := parseInlineBlocks(source, definition.bodyBlocks, ordinaryDefinitions)
+		parsed := parseInlineBlocksIndexed(source, definition.bodyBlocks, resolved)
 		result = append(result, parsed.usages...)
 	}
-	sort.SliceStable(result, func(left, right int) bool { return result[left].Anchor < result[right].Anchor })
+	if len(result) > 1 {
+		slices.SortStableFunc(result, func(left, right parser.LinkUsage) int {
+			return cmp.Compare(left.Anchor, right.Anchor)
+		})
+	}
 	return result
 }
 
@@ -354,7 +372,11 @@ func reconcileNativeFootnotes(source []byte, nodes []parser.Node, usages []parse
 	filteredUsages, suppressedNodeAnchors := filterNativeFootnoteConflictUsages(usages, claims, caretKeys)
 	filteredNodes = removeNativeSuppressedReferenceNodes(filteredNodes, suppressedNodeAnchors)
 	filteredUsages = append(filteredUsages, bodyUsages...)
-	sort.SliceStable(filteredUsages, func(left, right int) bool { return filteredUsages[left].Anchor < filteredUsages[right].Anchor })
+	if len(filteredUsages) > 1 {
+		slices.SortStableFunc(filteredUsages, func(left, right parser.LinkUsage) int {
+			return cmp.Compare(left.Anchor, right.Anchor)
+		})
+	}
 	filteredUsages = deduplicateNativeLinkUsages(filteredUsages)
 	filteredUnresolved := make([]parser.UnresolvedReferenceUsage, 0, len(unresolved))
 	for _, usage := range unresolved {
@@ -453,11 +475,11 @@ func normalizeNativeFootnoteClaims(claims []parser.Range) []parser.Range {
 	if len(claims) < 2 {
 		return claims
 	}
-	sort.Slice(claims, func(left, right int) bool {
-		if claims[left].Start != claims[right].Start {
-			return claims[left].Start < claims[right].Start
+	slices.SortFunc(claims, func(left, right parser.Range) int {
+		if order := cmp.Compare(left.Start, right.Start); order != 0 {
+			return order
 		}
-		return claims[left].End < claims[right].End
+		return cmp.Compare(left.End, right.End)
 	})
 	result := claims[:1]
 	for _, claim := range claims[1:] {

@@ -1,62 +1,91 @@
 package native
 
 import (
+	"cmp"
+	"slices"
 	"sort"
 
 	"github.com/zoster81/marksplice/internal/parser"
 )
 
 type inlineStartIndex struct {
-	bySegment [][]int
+	segmentCount int
+	single       []int
+	bySegment    [][]int
 }
 
 func newInlineStartIndex(segmentCount int) inlineStartIndex {
-	return inlineStartIndex{bySegment: make([][]int, segmentCount)}
+	if segmentCount <= 0 {
+		return inlineStartIndex{}
+	}
+	index := inlineStartIndex{segmentCount: segmentCount}
+	if segmentCount > 1 {
+		index.bySegment = make([][]int, segmentCount)
+	}
+	return index
 }
 
 func (index *inlineStartIndex) add(segment, offset int) {
-	if segment < 0 || segment >= len(index.bySegment) {
+	if segment < 0 || segment >= index.segmentCount {
+		return
+	}
+	if index.segmentCount == 1 {
+		index.single = append(index.single, offset)
 		return
 	}
 	index.bySegment[segment] = append(index.bySegment[segment], offset)
 }
 
 func (index *inlineStartIndex) finalize() {
+	if index.segmentCount == 1 {
+		index.single = normalizeInlineStarts(index.single)
+		return
+	}
 	for segment := range index.bySegment {
-		starts := index.bySegment[segment]
-		sort.Ints(starts)
-		if len(starts) < 2 {
-			continue
-		}
-		write := 1
-		for read := 1; read < len(starts); read++ {
-			if starts[read] == starts[write-1] {
-				continue
-			}
-			starts[write] = starts[read]
-			write++
-		}
-		clear(starts[write:])
-		index.bySegment[segment] = starts[:write]
+		index.bySegment[segment] = normalizeInlineStarts(index.bySegment[segment])
 	}
 }
 
+func normalizeInlineStarts(starts []int) []int {
+	sort.Ints(starts)
+	if len(starts) < 2 {
+		return starts
+	}
+	write := 1
+	for read := 1; read < len(starts); read++ {
+		if starts[read] == starts[write-1] {
+			continue
+		}
+		starts[write] = starts[read]
+		write++
+	}
+	clear(starts[write:])
+	return starts[:write]
+}
+
 func (index inlineStartIndex) anyIn(segment, start, end int) bool {
-	if segment < 0 || segment >= len(index.bySegment) || start >= end {
+	if start >= end {
 		return false
 	}
-	starts := index.bySegment[segment]
+	starts := index.starts(segment)
 	position := sort.SearchInts(starts, start)
 	return position < len(starts) && starts[position] < end
 }
 
 func (index inlineStartIndex) hasAt(segment, offset int) bool {
-	if segment < 0 || segment >= len(index.bySegment) {
-		return false
-	}
-	starts := index.bySegment[segment]
+	starts := index.starts(segment)
 	position := sort.SearchInts(starts, offset)
 	return position < len(starts) && starts[position] == offset
+}
+
+func (index inlineStartIndex) starts(segment int) []int {
+	if segment < 0 || segment >= index.segmentCount {
+		return nil
+	}
+	if index.segmentCount == 1 {
+		return index.single
+	}
+	return index.bySegment[segment]
 }
 
 type inlineInterval struct {
@@ -86,14 +115,16 @@ func (index *inlineIntervalIndex) add(segment, start, end int) {
 func (index *inlineIntervalIndex) finalize() {
 	for segment := range index.bySegment {
 		intervals := index.bySegment[segment]
-		sort.SliceStable(intervals, func(left, right int) bool {
-			if intervals[left].start != intervals[right].start {
-				return intervals[left].start < intervals[right].start
-			}
-			return intervals[left].end < intervals[right].end
-		})
 		if len(intervals) == 0 {
 			continue
+		}
+		if len(intervals) > 1 {
+			slices.SortStableFunc(intervals, func(left, right inlineInterval) int {
+				if order := cmp.Compare(left.start, right.start); order != 0 {
+					return order
+				}
+				return cmp.Compare(left.end, right.end)
+			})
 		}
 		suffix := make([]int, len(intervals))
 		minEnd := intervals[len(intervals)-1].end
@@ -125,12 +156,14 @@ func normalizeInlineExclusions(exclusions [][]parser.Range) {
 }
 
 func normalizeInlineRanges(ranges []parser.Range) []parser.Range {
-	sort.SliceStable(ranges, func(left, right int) bool {
-		if ranges[left].Start != ranges[right].Start {
-			return ranges[left].Start < ranges[right].Start
-		}
-		return ranges[left].End < ranges[right].End
-	})
+	if len(ranges) > 1 {
+		slices.SortStableFunc(ranges, func(left, right parser.Range) int {
+			if order := cmp.Compare(left.Start, right.Start); order != 0 {
+				return order
+			}
+			return cmp.Compare(left.End, right.End)
+		})
+	}
 	normalized := ranges[:0]
 	for _, range_ := range ranges {
 		if range_.Start >= range_.End {
@@ -153,16 +186,4 @@ func inlineRangesContainPosition(ranges []parser.Range, position int) bool {
 		return ranges[index].End > position
 	})
 	return index < len(ranges) && ranges[index].Start <= position
-}
-
-func flattenInlineExclusions(exclusions [][]parser.Range) []parser.Range {
-	total := 0
-	for _, ranges := range exclusions {
-		total += len(ranges)
-	}
-	flat := make([]parser.Range, 0, total)
-	for _, ranges := range exclusions {
-		flat = append(flat, ranges...)
-	}
-	return normalizeInlineRanges(flat)
 }

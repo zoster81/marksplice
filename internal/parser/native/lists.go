@@ -284,9 +284,6 @@ func collectListItem(source []byte, lines []physicalLine, index int, marker, lis
 			next++
 			continue
 		}
-		if collector.stopsEmptyItemAtIncompatibleListMarker(source, line, listStyle) {
-			break
-		}
 		_, columns := leadingIndent(source, line)
 		if columns >= marker.contentIndent {
 			if collector.consumeIndented(source, line, columns, marker, listStyle) {
@@ -323,14 +320,6 @@ func newListItemCollector(source []byte, line physicalLine, marker listMarker) l
 func (collector *listItemCollector) appendBlank(line physicalLine) {
 	collector.pendingBlank = append(collector.pendingBlank, line)
 	collector.item.childReady = false
-}
-
-func (collector *listItemCollector) stopsEmptyItemAtIncompatibleListMarker(source []byte, line physicalLine, listStyle listMarker) bool {
-	if collector.hasContent || len(collector.pendingBlank) != 0 {
-		return false
-	}
-	nextMarker, ok := parseListMarker(source, line)
-	return ok && !compatibleListMarker(listStyle, nextMarker)
 }
 
 func (collector *listItemCollector) consumeIndented(source []byte, line physicalLine, columns int, marker, listStyle listMarker) bool {
