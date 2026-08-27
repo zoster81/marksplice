@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/zoster81/marksplice/internal/parser"
-	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
 	"github.com/zoster81/marksplice/internal/parser/native"
 )
 
@@ -164,32 +163,6 @@ func TestM114NativeBackendPathologicalInputsRemainSourceBound(t *testing.T) {
 			}
 			if !reflect.DeepEqual(first, second) {
 				t.Fatal("ParseDocument() is not deterministic")
-			}
-		})
-	}
-}
-
-func TestM114NativeBackendSecondaryDifferentialPathologicalSubset(t *testing.T) {
-	tests := []struct {
-		name   string
-		source []byte
-	}{
-		{name: "large paragraph", source: []byte(strings.Repeat("x", 64<<10) + "\n")},
-		{name: "deep blockquote", source: []byte(strings.Repeat("> ", 1024) + "payload\n")},
-		{name: "dense delimiters", source: []byte(strings.Repeat("*_~`", 16<<10) + "\n")},
-		{name: "malformed links", source: []byte(strings.Repeat("[broken]( ", 1024) + "\n")},
-	}
-	oracle := goldmarkparser.New()
-	candidate := native.New()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			want, wantErr := oracle.ParseDocument(tt.source)
-			got, gotErr := candidate.ParseDocument(tt.source)
-			if (gotErr != nil) != (wantErr != nil) {
-				t.Fatalf("error parity mismatch: native=%v Goldmark=%v", gotErr, wantErr)
-			}
-			if gotErr == nil && !reflect.DeepEqual(got, want) {
-				t.Fatal("pathological backend observations differ from Goldmark")
 			}
 		})
 	}
@@ -1042,7 +1015,7 @@ func FuzzM114NativeBackendLegacyDifferentialCorpusRemainsSourceBound(f *testing.
 	})
 }
 
-func FuzzM114NativeDirectLinkProofAcceptanceParity(f *testing.F) {
+func FuzzM115NativeDirectLinkProofStability(f *testing.F) {
 	f.Add(uint8(0), uint16(0))
 	f.Add(uint8(1), uint16(3))
 	f.Add(uint8(2), uint16(12))
@@ -1065,18 +1038,19 @@ func FuzzM114NativeDirectLinkProofAcceptanceParity(f *testing.F) {
 		case 4:
 			want.Kind = parser.KindImage
 		}
-		compareM114ProofErrors(t,
-			func() error {
-				return goldmarkparser.New().ValidateConstructionLinkImages(source, []parser.ConstructionLinkImageExpectation{want})
-			},
-			func() error {
-				return native.New().ValidateConstructionLinkImages(source, []parser.ConstructionLinkImageExpectation{want})
-			},
-		)
+		before := bytes.Clone(source)
+		originalWant := want
+		firstErr := native.New().ValidateConstructionLinkImages(source, []parser.ConstructionLinkImageExpectation{want})
+		secondErr := native.New().ValidateConstructionLinkImages(source, []parser.ConstructionLinkImageExpectation{want})
+		if (firstErr == nil) != (secondErr == nil) {
+			t.Fatalf("construction link/image proof is nondeterministic: first=%v second=%v", firstErr, secondErr)
+		}
+		if !bytes.Equal(source, before) || want != originalWant {
+			t.Fatal("construction link/image proof mutated caller input")
+		}
 	})
 }
-
-func FuzzM114NativeReferenceProofAcceptanceParity(f *testing.F) {
+func FuzzM115NativeReferenceProofStability(f *testing.F) {
 	f.Add(uint8(0), uint16(0))
 	f.Add(uint8(1), uint16(5))
 	f.Add(uint8(2), uint16(9))
@@ -1104,17 +1078,18 @@ func FuzzM114NativeReferenceProofAcceptanceParity(f *testing.F) {
 		case 5:
 			want.StructuredLabel = true
 		}
-		compareM114ProofErrors(t,
-			func() error {
-				return goldmarkparser.New().ValidateConstructionReferenceInlines(source, []parser.ConstructionReferenceInlineExpectation{want})
-			},
-			func() error {
-				return native.New().ValidateConstructionReferenceInlines(source, []parser.ConstructionReferenceInlineExpectation{want})
-			},
-		)
+		before := bytes.Clone(source)
+		originalWant := want
+		firstErr := native.New().ValidateConstructionReferenceInlines(source, []parser.ConstructionReferenceInlineExpectation{want})
+		secondErr := native.New().ValidateConstructionReferenceInlines(source, []parser.ConstructionReferenceInlineExpectation{want})
+		if (firstErr == nil) != (secondErr == nil) {
+			t.Fatalf("construction reference proof is nondeterministic: first=%v second=%v", firstErr, secondErr)
+		}
+		if !bytes.Equal(source, before) || want != originalWant {
+			t.Fatal("construction reference proof mutated caller input")
+		}
 	})
 }
-
 func assertM114ObservationsSourceBound(t testing.TB, observations parser.DocumentObservations, total int) {
 	t.Helper()
 	for index, node := range observations.Nodes {
@@ -1164,14 +1139,5 @@ func assertM114ObservationsSourceBound(t testing.TB, observations parser.Documen
 		if !expression.Range.Valid(total) || !expression.PayloadRange.Valid(total) {
 			t.Fatalf("math expression %d is not source-bound: %#v", index, expression)
 		}
-	}
-}
-
-func compareM114ProofErrors(t testing.TB, oracleCall, nativeCall func() error) {
-	t.Helper()
-	oracleErr := oracleCall()
-	nativeErr := nativeCall()
-	if (oracleErr != nil) != (nativeErr != nil) {
-		t.Fatalf("proof acceptance mismatch: native=%v Goldmark=%v", nativeErr, oracleErr)
 	}
 }

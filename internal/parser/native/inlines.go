@@ -46,8 +46,7 @@ type inlineAnalysis struct {
 }
 
 // ParseInlines returns parser-independent inline node observations from the
-// completed Marksplice-native parser. Production selection remains on the temporary
-// Goldmark backend until the explicit M115 cutover.
+// completed Marksplice-native parser. Production selection uses the same Native backend.
 func ParseInlines(source []byte) ([]parser.Node, error) {
 	observed, err := ParseInlineObservations(source)
 	return observed.Nodes, err

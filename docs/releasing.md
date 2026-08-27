@@ -30,9 +30,9 @@ Official Go module references:
 - https://go.dev/doc/modules/release-workflow
 - https://go.dev/doc/modules/version-numbers
 
-## Public repository readiness
+## Public release readiness
 
-Before the first public push, verify that the repository contains and accurately describes:
+Before every public release, verify that the repository contains and accurately describes:
 
 - `go.mod` and `go.sum` with the canonical module path;
 - package documentation in `doc.go`;
@@ -45,7 +45,7 @@ Before the first public push, verify that the repository contains and accurately
 - a public GitHub Actions workflow covering supported Go versions and major operating systems;
 - dependency-update configuration for Go modules and GitHub Actions.
 
-Repository settings to configure when the GitHub repository is created or made public:
+Repository settings that should remain configured for the public GitHub repository:
 
 - default branch: `main`;
 - GitHub Actions enabled;
@@ -74,20 +74,13 @@ The project also maintains stricter local quality/security gates documented in `
 
 Before publication, test the module from a separate temporary consumer module. For an unpublished local checkout, use a `replace` directive that points to the checkout, then compile and test a small program importing `github.com/zoster81/marksplice`. Remove the temporary consumer after verification; it is not repository content.
 
-## First public push
+## Public repository status
 
-The repository currently has no requirement that publication be automated. The maintainer may create the GitHub repository and configure the remote explicitly:
+The public GitHub repository and `origin` remote already exist. Ordinary development/finalization work must not create or replace remotes, push commits, create tags, or publish releases unless that action is explicitly authorized. Release preparation therefore starts from an already-configured public repository and an exact reviewed local commit.
 
-```text
-git remote add origin https://github.com/zoster81/marksplice.git
-git push -u origin main
-```
+## Publishing a new beta module version
 
-Do not execute these commands until the release commit is reviewed and publication is explicitly authorized.
-
-## Publishing a beta module version
-
-After the release commit exists on the public `main` branch, wait for every GitHub Actions run associated with that exact commit to complete successfully. Do not create the release tag while any run is queued/in progress or if any run concludes unsuccessfully. This commit-level workflow gate is mandatory even when the same tree already passed the stricter local maintainer gate.
+The first public beta, `v0.1.0-beta.1`, is already published. For each later beta, after the release commit exists on the public `main` branch, wait for every GitHub Actions run associated with that exact commit to complete successfully. Do not create the release tag while any run is queued/in progress or if any run concludes unsuccessfully. This commit-level workflow gate is mandatory even when the same tree already passed the stricter local maintainer gate.
 
 Only after all workflows for the exact release commit are green, create and push an annotated immutable tag:
 

@@ -46,7 +46,7 @@ func TestMapSimpleCodeSpanRejectsNormalizedOrMismatchedShape(t *testing.T) {
 		anchor  int
 		content Range
 	}{
-		{name: "Goldmark-normalized surrounding spaces", source: []byte("` old `\n"), anchor: 0, content: Range{Start: 2, End: 5}},
+		{name: "parser-normalized surrounding spaces", source: []byte("` old `\n"), anchor: 0, content: Range{Start: 2, End: 5}},
 		{name: "mismatched closing run", source: []byte("``old`\n"), anchor: 0, content: Range{Start: 2, End: 5}},
 		{name: "content crosses line", source: []byte("`one\ntwo`\n"), anchor: 0, content: Range{Start: 1, End: 8}},
 	}

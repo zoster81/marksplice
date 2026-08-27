@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/zoster81/marksplice/internal/parser"
+	"github.com/zoster81/marksplice/internal/parser/native"
 )
 
 func TestParseWithBackendConsumesParserIndependentObservations(t *testing.T) {
@@ -34,6 +35,14 @@ func TestParseWithBackendRejectsNilBackend(t *testing.T) {
 
 	if document, err := parseWithBackend([]byte("text"), nil); err == nil || document != nil {
 		t.Fatalf("parseWithBackend(nil) = %+v, %v; want nil/error", document, err)
+	}
+}
+
+func TestDefaultParserBackendUsesNativeParser(t *testing.T) {
+	t.Parallel()
+
+	if _, ok := newParserBackend().(*native.Backend); !ok {
+		t.Fatalf("newParserBackend() = %T, want *native.Backend", newParserBackend())
 	}
 }
 

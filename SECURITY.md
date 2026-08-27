@@ -6,9 +6,9 @@ Marksplice is currently a pre-v1 beta. Security fixes are provided for the lates
 
 Do not disclose a suspected vulnerability in a public issue, discussion, pull request, or other public channel.
 
-When the public GitHub repository has private vulnerability reporting enabled, use the repository's **Security** tab to submit a private report. Include the affected Marksplice version, a minimal reproduction, impact, and any relevant environment details.
+Use the public repository's **Security** tab and GitHub private vulnerability reporting to submit a private report. Include the affected Marksplice version, a minimal reproduction, impact, and any relevant environment details.
 
-If private vulnerability reporting is temporarily unavailable, contact the maintainer through the GitHub account associated with this repository and request a private reporting channel without including vulnerability details in the public message.
+If GitHub private vulnerability reporting is temporarily unavailable, contact the maintainer through the GitHub account associated with this repository and request a private reporting channel without including vulnerability details in the public message.
 
 ## Response and disclosure
 

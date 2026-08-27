@@ -1,6 +1,6 @@
 # Capability and Third-Party Extensibility Strategy
 
-Status: source of truth for evaluating useful Markdown ecosystem ideas, deciding what belongs in Marksplice core, defining the future third-party extensibility boundary, and preserving the mandatory Goldmark exit plan.
+Status: source of truth for evaluating useful Markdown ecosystem ideas, deciding what belongs in Marksplice core, defining the third-party extensibility boundary, and recording the completed Native-parser cutover strategy.
 
 ## Core rule
 
@@ -52,7 +52,7 @@ Names such as `mermaid`, `geojson`, `topojson`, `stl`, `math`, `d2`, `pikchr`, o
 
 ### Footnotes
 
-M104 completes footnotes as a core capability because they add useful document relationships rather than presentation-only behavior. The reviewed contract is exact and case-sensitive: parser-backed references expose definition identity and occurrence order; top-level definitions require independent complete source ownership; multiline semantic body segments remain readable without becoming broad rewrite spans; simple bodies can be replaced source-preservingly; coordinated rename updates every parser-bound occurrence; canonical immediate/deferred definitions support typed references; and ordinary links inside footnote bodies participate in existing relationship/graph intelligence. The temporary backend uses an isolated footnote semantic pass rather than changing Marksplice's normative GFM profile or exposing a first-party extension mode.
+M104 completes footnotes as a core capability because they add useful document relationships rather than presentation-only behavior. The reviewed contract is exact and case-sensitive: parser-backed references expose definition identity and occurrence order; top-level definitions require independent complete source ownership; multiline semantic body segments remain readable without becoming broad rewrite spans; simple bodies can be replaced source-preservingly; coordinated rename updates every parser-bound occurrence; canonical immediate/deferred definitions support typed references; and ordinary links inside footnote bodies participate in existing relationship/graph intelligence. The Native backend integrates this reviewed footnote observation pass while keeping footnotes outside Marksplice's normative GFM grammar and outside any first-party extension mode.
 
 ### Mathematical expressions
 
@@ -111,27 +111,25 @@ The overlay cannot suppress, replace, or reclassify core nodes and never consume
 
 Recognizers are ordinary caller-linked Go code. Marksplice can validate and bound only the observations it retains; it cannot sandbox or preempt an extension's own CPU, memory, goroutine, filesystem, network, or command behavior. Caller trust therefore governs recognizer execution, while Marksplice retains fail-closed ownership of its own document state.
 
-This parser-backend-independent public boundary was deliberately defined before native-parser work. M111 freezes the separate internal parser-substitution contract/differential harness, M112 completes the native block candidate, and M113 completes native inline/reference parsed-document observations beneath it without changing the SPI. M114 preserved the same M110 public overlay throughout hardening; M115 must preserve it during cutover rather than coupling extensions to either parser implementation.
+This parser-backend-independent public boundary was deliberately defined before native-parser work. M111 froze the separate internal parser-substitution contract/differential harness, M112 completed the native block candidate, M113 completed native inline/reference parsed-document observations, and M114 hardened the complete Native backend beneath the unchanged SPI. M115 preserved that boundary during production cutover; extensions remain coupled only to the public read-only overlay, not to parser internals.
 
-## Goldmark exit strategy
+## Completed Goldmark exit strategy
 
-Goldmark is temporary. Marksplice will replace it with a native CommonMark/GFM parser and remove the dependency completely.
-
-The transition is staged:
+The transition completed at M115 without a Goldmark upgrade or migration:
 
 1. complete and harden the Marksplice product/source model;
 2. define the M110 third-party boundary;
-3. freeze the native parser observation/proof contract and differential harness in M111 (complete);
-4. implement native block parsing in M112 (complete);
-5. implement native inline parsing in M113 (complete);
-6. prove complete native conformance and hardening in M114 (complete);
-7. remove Goldmark and cut production over in M115.
+3. freeze the parser-independent observation/proof contract and historical differential harness in M111;
+4. implement Native block parsing in M112;
+5. implement Native inline parsing in M113;
+6. prove complete Native conformance and hardening in M114;
+7. switch the single production bridge to Native, preserve the accepted parser-neutral contract through a dual-proof transition gate, and remove Goldmark code/tests/module dependency in M115.
 
-Goldmark is isolated behind the M111 parser-independent backend contract and remains only the temporary production backend and a secondary differential comparator until M115. M114 has completed specification-first recertification against CommonMark 0.31.2, explicit GFM extension/correction rules, and approved Marksplice-owned contracts for extra-GFM capabilities, together with fuzz/resource/performance/cross-platform hardening. Historical fuzz-round inputs without independent normative authority remain invariants only. A Goldmark mismatch is not itself a correctness verdict. No Goldmark upgrade or migration is part of this roadmap.
+Goldmark now appears only in historical transition records. Current correctness is specification-first: CommonMark 0.31.2, explicit GFM extension/correction rules, and approved Marksplice-owned contracts govern Native behavior. Historical fuzz-round inputs without independent normative authority remain invariants only.
 
-## Native-parser cutover gate
+## Historical Native-parser pre-cutover gate
 
-M114 has satisfied the pre-cutover Native-parser gate:
+M114 satisfied the pre-cutover Native-parser gate:
 
 - the complete applicable pinned CommonMark 0.31.2 conformance corpus plus the normative explicit GFM extension corpus;
 - every focused parser-boundary and source-position regression required by Marksplice;
@@ -145,12 +143,12 @@ M114 has satisfied the pre-cutover Native-parser gate:
 - no parser-specific type leaking into public APIs;
 - compatibility with the reviewed M110 third-party SPI boundary.
 
-M115 now requires production cutover and removal of Goldmark from `go.mod`, `go.sum`, runtime code, active tests, and non-historical documentation paths, followed by the complete release-quality verification stack.
+M115 completes that cutover: production parsing and construction proof use Native, the former adapter/differential implementation and `github.com/yuin/goldmark` dependency are removed, and the parser-neutral CommonMark/GFM contracts remain versioned under Native tests. The M110 SPI remains unchanged above the core parser.
 
 ## Devil's advocate review
 
 1. **Core capability creep could still turn Marksplice into a dialect collection.** Mitigation: require broad, syntax-independent value before adding core semantics; route product/dialect syntax to M110 third-party packages.
 2. **A third-party SPI could weaken source-preservation guarantees.** Mitigation: extensions contribute reviewed syntax/semantic observations, never raw mutation authority; core retains source ownership validation, stale-source checks, candidate proof, and patch application.
 3. **A third-party parser hook could create nondeterminism or conflicts.** Mitigation: require explicit opt-in, deterministic registration/order/conflict rules, namespacing, bounded work, and fail-closed ambiguity handling.
-4. **A native parser becomes a permanent maintenance responsibility.** Mitigation: delay implementation until the Marksplice contract is mature, then require complete conformance, differential parity, fuzzing, benchmarks, and ordinary complexity gates before removing Goldmark.
+4. **The Native parser is now a permanent maintenance responsibility.** Mitigation: keep the specification-first snapshot/fixture gates, focused reviewed contracts, fuzzing, real-world/pathological corpus tests, benchmarks, and ordinary complexity/security gates active; historical differential evidence cannot substitute for current normative review.
 5. **Renderer-oriented ideas could pull unsafe authority into core.** Mitigation: keep rendering/media/network integrations outside core; Marksplice treats external targets and fenced payloads as data.

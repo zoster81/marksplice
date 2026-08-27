@@ -19,7 +19,7 @@ type HeadingMapping struct {
 	Level        int
 }
 
-// MapTopLevelHeading maps a Goldmark heading content range to top-level GFM source syntax.
+// MapTopLevelHeading maps a parser heading content range to top-level GFM source syntax.
 // Container-prefixed headings are intentionally rejected until container-aware mapping exists.
 func MapTopLevelHeading(input []byte, content Range, level int) (HeadingMapping, error) {
 	if !content.Valid(len(input)) || level < 1 || level > 6 {
@@ -65,7 +65,7 @@ type TaskMapping struct {
 	Checked      bool
 }
 
-// MapTaskMarker maps a Goldmark task-line anchor to the exact GFM checkbox marker.
+// MapTaskMarker maps a parser task-line anchor to the exact GFM checkbox marker.
 func MapTaskMarker(input []byte, anchor int) (TaskMapping, error) {
 	if anchor < 0 || anchor+3 > len(input) {
 		return TaskMapping{}, fmt.Errorf("%w: anchor %d is outside source length %d", ErrUnsupportedTaskMarker, anchor, len(input))

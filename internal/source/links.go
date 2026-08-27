@@ -113,7 +113,7 @@ type ReferenceDefinitionMapping struct {
 	HasTitle         bool
 }
 
-// MapSingleLineReferenceDefinition maps one Goldmark-recognized single-line reference definition to its destination bytes.
+// MapSingleLineReferenceDefinition maps one parser-recognized single-line reference definition to its destination bytes.
 func MapSingleLineReferenceDefinition(input []byte, observation Range, label, destination, title string, hasTitle bool) (ReferenceDefinitionMapping, error) {
 	if !observation.Valid(len(input)) || observation.Start == observation.End || destination == "" {
 		return ReferenceDefinitionMapping{}, fmt.Errorf("%w: invalid observation or empty destination", ErrUnsupportedReferenceDefinitionShape)

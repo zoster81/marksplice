@@ -14,7 +14,7 @@ func ValidateConstructionBlockquoteParagraph(input []byte, outer Range, contentL
 }
 
 // ValidateConstructionNestedBlockquoteBlocks combines exact canonical quoting
-// proof with the construction-only Goldmark child-sequence proof.
+// proof with the construction-only parser child-sequence proof.
 func ValidateConstructionNestedBlockquoteBlocks(input []byte, outer Range, innerSource []byte, depth int) error {
 	if err := source.ValidateCanonicalNestedBlockquoteBlocks(input, outer, innerSource, depth); err != nil {
 		return fmt.Errorf("validate canonical blockquote blocks: %w", err)

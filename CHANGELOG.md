@@ -11,6 +11,8 @@ The project uses Semantic Versioning-compatible Go module tags. Until v1, the pu
 - Replace the ambiguous four-value `WorkspaceDiagnostic.UnresolvedReference` result with typed immutable `UnresolvedReference` data; document concurrent-read safety for immutable public models, serialized build-time resolvers, caller-bounded operations, `errors.Is` error classification, and the closed core `Kind` namespace. This accessor change is intentionally source-incompatible during the v0 beta period.
 - Add the explicit `ParseWithOptions` third-party read-only extension SPI with namespaced extension kinds, validated snapshot ranges/scalar metadata, caller-owned retention limits, serial non-retained recognizers, panic/error isolation through `ErrInvalidExtension`, and no core mutation/construction/parser/graph authority.
 - Freeze the complete internal parser-backend substitution contract and add a reusable differential harness over the same pinned GFM corpus plus focused Marksplice semantic/source-position regressions, keeping Goldmark only as the temporary oracle for the native-parser transition.
+- Complete the Native parser transition: implement and harden the full CommonMark/GFM backend, switch production parsing and construction proof to Native, freeze parser-neutral conformance fixtures tied to the approved external specification inputs, and remove the Goldmark adapter, differential scaffolding, and `github.com/yuin/goldmark` module dependency.
+- Add a task-oriented module guide and an exhaustive exported-callable API reference, with documentation audits that keep the reference synchronized with the public Go declarations.
 
 ## v0.1.0-beta.1 — 2026-08-23
 

@@ -18,7 +18,7 @@ type ConstructionInlineExpectation struct {
 }
 
 // ValidateConstructionInlineHierarchy proves generated typed inline nesting
-// through the isolated Goldmark construction validator without widening ordinary
+// through the isolated parser construction validator without widening ordinary
 // parsed-source promotion.
 func ValidateConstructionInlineHierarchy(source []byte, expected []ConstructionInlineExpectation, references []ConstructionReferenceInlineExpectation) error {
 	parserExpected := make([]parser.ConstructionInlineExpectation, len(expected))

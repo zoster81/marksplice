@@ -2,19 +2,16 @@ package splice
 
 import (
 	"github.com/zoster81/marksplice/internal/parser"
-	goldmarkparser "github.com/zoster81/marksplice/internal/parser/goldmark"
+	"github.com/zoster81/marksplice/internal/parser/native"
 )
 
-// newParserBackend is the temporary production parser-backend bridge. M111 keeps
-// Goldmark ownership centralized here so later native-parser cutover cannot leave
-// hidden backend imports throughout splice/model/construction code.
+// newParserBackend returns the Marksplice-native production parser backend.
 func newParserBackend() parser.Backend {
-	return goldmarkparser.New()
+	return native.New()
 }
 
-// defaultReferenceLabelKey keeps the hot pure reference-normalization path from
-// constructing a complete parser backend for every label while preserving one
-// centralized temporary Goldmark dependency.
+// defaultReferenceLabelKey uses the same native normalization as the production backend
+// without constructing a complete backend for every label.
 func defaultReferenceLabelKey(label string) string {
-	return goldmarkparser.ReferenceLabelKey(label)
+	return native.ReferenceLabelKey(label)
 }

@@ -55,6 +55,34 @@ func TestM114CommonMark0312BlockquoteTabStructures(t *testing.T) {
 	}
 }
 
+func TestM115GFMTableSplitsTrailingLineFromOpenParagraph(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("Intro line.\n| A | B |\n| --- | --- |\n| x | y |\n")
+	nodes, err := ParseBlocks(source)
+	if err != nil {
+		t.Fatalf("ParseBlocks() error = %v", err)
+	}
+
+	tableAnchor := bytes.Index(source, []byte("| A | B |"))
+	var table parser.Node
+	found := false
+	for _, node := range nodes {
+		if node.Kind != parser.KindTable {
+			continue
+		}
+		table = node
+		found = true
+		break
+	}
+	if !found {
+		t.Fatalf("ParseBlocks() = %#v, want table split from trailing paragraph line", nodes)
+	}
+	if table.TableAnchor != tableAnchor || table.Range.Start != tableAnchor {
+		t.Fatalf("table anchor/range = %d/%v, want anchor %d", table.TableAnchor, table.Range, tableAnchor)
+	}
+}
+
 func TestM114CommonMark0312EmptyListItemMayOwnIndentedNestedList(t *testing.T) {
 	t.Parallel()
 

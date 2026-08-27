@@ -136,7 +136,7 @@ func TestPublicTableSurvivesWithoutPromotedBodyRows(t *testing.T) {
 	}
 }
 
-func TestPublicTableUsesHeaderAnchorWhenGoldmarkSplitsLeadingParagraph(t *testing.T) {
+func TestPublicTableUsesHeaderAnchorWhenTableSplitsLeadingParagraph(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("Intro line.\n| A | B |\n| --- | --- |\n| x | y |\n")

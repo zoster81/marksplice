@@ -7,7 +7,7 @@ import (
 
 var ErrUnsupportedHTMLShape = errors.New("unsupported HTML source shape")
 
-// HTMLCommentMapping binds a Goldmark-recognized inline comment to exact delimiters and editable payload bytes.
+// HTMLCommentMapping binds a parser-recognized inline comment to exact delimiters and editable payload bytes.
 type HTMLCommentMapping struct {
 	Range        Range
 	ContentRange Range
@@ -62,7 +62,7 @@ type htmlOpeningTagScanner struct {
 	limit int
 }
 
-// MapSimpleHTMLAnchor maps a Goldmark-recognized single-line opening <a> tag with exactly one quoted id/name attribute.
+// MapSimpleHTMLAnchor maps a parser-recognized single-line opening <a> tag with exactly one quoted id/name attribute.
 func MapSimpleHTMLAnchor(input []byte, raw Range) (HTMLAnchorMapping, error) {
 	if !raw.Valid(len(input)) || raw.End-raw.Start < 7 {
 		return HTMLAnchorMapping{}, ErrUnsupportedHTMLShape

@@ -584,6 +584,9 @@ func parseParagraphOrSetext(source []byte, lines []physicalLine, index int) (par
 		if blankLine(source, line) {
 			break
 		}
+		if _, _, ok := parseTableOpening(source, lines, next); ok {
+			break
+		}
 		if level, ok := parseSetextUnderline(source, line); ok && sameBlockContainer(lines[index], line) {
 			headingEnd := trimHorizontalEnd(source, lines[next-1].start, end)
 			semantic := semanticLineRanges(source, lines, index, next)

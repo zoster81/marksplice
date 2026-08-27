@@ -11,7 +11,7 @@ Marksplice is an open-source Pure-Go library for understanding, creating, and st
 
 Marksplice is currently **beta software under active development**. The first public beta version is `v0.1.0-beta.1`; until v1, public APIs and behavior may change incompatibly between releases.
 
-The repository has a green retrospective M0 bootstrap record and completed engineering milestones M1–M110. The current core model has two deliberately separate paths:
+The repository has a green retrospective M0 bootstrap record and completed engineering milestones M1–M115. M111–M115 replaced the transitional third-party parser with the Marksplice-native CommonMark/GFM backend; production parsing and construction proof are now Native-only. The current core model has two deliberately separate paths:
 
 - parsed `Document` snapshots expose reviewed source-mapped read/edit capabilities and prepare minimal source-bound changes that reject stale input;
 - `DocumentBuilder` creates new deterministic GFM and validates generated structure through the same parser/source-model boundary before returning bytes.
@@ -34,22 +34,22 @@ M107 adds syntax-independent aliases, tags, and logical document references over
 
 The public API remains intentionally narrower than everything the semantic parser can recognize. Unsupported or ambiguous shapes are preserved or kept internal until exact source ownership and caller-facing semantics are proven.
 
-See [`docs/README.md`](docs/README.md) for the documentation map and repository layout, [`docs/capabilities.md`](docs/capabilities.md) for the authoritative current read/edit/create matrix and roadmap, and [`docs/milestones/`](docs/milestones/) for detailed milestone contracts and historical verification evidence.
+Start with the task-oriented [`docs/guide.md`](docs/guide.md), then use [`docs/api-reference.md`](docs/api-reference.md) for the complete exported callable surface. [`docs/README.md`](docs/README.md) maps the remaining architecture, conformance, capability, release, and historical milestone documentation.
 
 ## Design principles
 
-- follow the published GitHub Flavored Markdown 0.29 specification as the single normative Markdown syntax profile;
+- use CommonMark 0.31.2 as the normative base grammar, layering the published GFM specification only for explicit extensions and corrections;
 - create new GFM through deterministic reviewed construction rules and parser/model proof;
 - parse existing GFM for semantic understanding without implying whole-document normalization;
 - preserve untouched author choices such as heading/list/fence styles, whitespace, delimiters, numbering, and line endings during existing-document edits;
 - bind prepared edits to exact source snapshots and reject stale application;
 - promote public capabilities only after operation-oriented source ownership is proven;
-- keep Goldmark behind an internal adapter and expose only Marksplice-owned types;
+- keep parser implementation details behind the internal parser-independent backend boundary and expose only Marksplice-owned types;
 - keep filesystem, network, command-execution, and host authorization concerns outside the core library.
 
 ## Installation
 
-Marksplice requires Go 1.26 or newer. After the first public beta tag is published, install it explicitly because Go does not prefer pre-release versions by default:
+Marksplice requires Go 1.26 or newer. The current published beta is installed explicitly because Go does not prefer pre-release versions by default:
 
 ```text
 go get github.com/zoster81/marksplice@v0.1.0-beta.1
@@ -82,14 +82,16 @@ Parsed `Document` values instead retain exact immutable source. `QueryNodes` and
 
 ## Documentation
 
+- [`docs/guide.md`](docs/guide.md): task-oriented module guide with end-to-end examples.
+- [`docs/api-reference.md`](docs/api-reference.md): exhaustive exported function/method reference verified against the public Go declarations.
 - [`docs/README.md`](docs/README.md): documentation index and repository-layout map.
-- [`docs/capabilities.md`](docs/capabilities.md): current product-facing read/edit/create matrix and forward roadmap.
+- [`docs/capabilities.md`](docs/capabilities.md): current product-facing read/edit/create matrix and completed parser roadmap.
 - [`docs/architecture.md`](docs/architecture.md): durable architecture, source-preservation, performance, safety, and complexity decisions.
 - [`docs/gfm-conformance.md`](docs/gfm-conformance.md): normative GFM profile, pinned conformance source hierarchy, and update procedure.
-- [`docs/goldmark-capability-matrix.md`](docs/goldmark-capability-matrix.md): Goldmark-versus-Marksplice responsibility boundary.
+- [`docs/goldmark-capability-matrix.md`](docs/goldmark-capability-matrix.md): historical pre-M115 parser/source ownership transition record.
 - [`docs/milestones/`](docs/milestones/): feature-specific historical contracts, design records, tests, and exit decisions.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): contributor workflow and current verification commands.
-- [`docs/releasing.md`](docs/releasing.md): public beta versioning, first-push readiness, and Go-module publication procedure.
+- [`docs/releasing.md`](docs/releasing.md): public beta versioning, release readiness, and Go-module publication procedure.
 - [`SECURITY.md`](SECURITY.md): private vulnerability-reporting policy.
 - [`CHANGELOG.md`](CHANGELOG.md): public release notes and beta history.
 
@@ -123,4 +125,4 @@ Marksplice was created by Giovanni Riccobene (`zoster81`).
 
 Licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
 
-Goldmark is an MIT-licensed third-party dependency. Exact dependency versions are recorded in `go.mod` and `go.sum`.
+M115 removed the former Goldmark parser dependency. The current direct third-party dependency is `golang.org/x/text`, used by the Native parser for full Unicode GFM reference-label case folding; exact dependency versions are recorded in `go.mod` and `go.sum`, with attribution in [`NOTICE`](NOTICE).
