@@ -20,7 +20,7 @@ Normal users should not need milestone records or parser-transition documentatio
 Use these when changing Marksplice itself or when you need the design rationale behind a boundary:
 
 - [Architecture](architecture.md) — durable package, source-preservation, mutation, construction, performance, and authority decisions.
-- [Roadmap](roadmap.md) — approved post-M115 development sequence; M116–M117 are complete, M118 is next, and M124/M126 remain the v1.0/v1.5 release gates.
+- [Roadmap](roadmap.md) — approved post-M115 development sequence; M116–M118 are complete, M119 is next, and M124/M126 remain the v1.0/v1.5 release gates.
 - [Markdown Conformance Policy](gfm-conformance.md) — normative CommonMark/GFM hierarchy, pinned external specification inputs, and update procedure.
 - [Capability and Third-Party Extensibility Strategy](extension-strategy.md) — what belongs in core versus independent read-only extensions.
 - [Release and Versioning Policy](releasing.md) — public module/release procedure.
@@ -31,7 +31,7 @@ Use these when changing Marksplice itself or when you need the design rationale 
 
 These files preserve decisions and verification evidence but are not part of the normal user journey:
 
-- [`milestones/`](milestones/) — M0–M117 feature/design/test records.
+- [`milestones/`](milestones/) — M0–M118 feature/design/test records.
 - [Goldmark capability matrix](goldmark-capability-matrix.md) — historical pre-M115 parser/source transition record.
 - [`CHANGELOG.md`](../CHANGELOG.md) — public release history and unreleased user-visible changes.
 

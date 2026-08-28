@@ -109,9 +109,11 @@ The completed resolver uses one policy for `Follow`, `Workspace.BuildGraph`, and
 
 M117 also completed the first broad `workspacefs` refactor/profiling pass. The URI-path resolver introduced no measured allocation-count regression in the frozen 256-document workloads. A profiler-driven traversal refactor replaced queue reslicing and two target-state maps with index-based breadth-first traversal and one operation-local availability map. Follow allocation bytes/counts decreased, and 4x document scaling from 256 to 1024 measured approximately 4.69x for `Scan`, 4.22x for chained `Follow`, and 4.31x for dense `Follow`; resource growth remained approximately proportional to input. Parser/document construction remains the dominant cost, so no persistent workspace cache or secondary index was added.
 
-M117 changes no exported API and no Markdown parser semantics. M118 is the next engineering milestone.
+M117 changes no exported API and no Markdown parser semantics.
 
 ## M118 — Native semantic walk foundation
+
+**Status: complete on 2026-08-28; unreleased.**
 
 **Goal:** add an on-demand semantic rendering projection without adding a second public AST or increasing the normal retained `Document` model merely for future rendering.
 
@@ -125,6 +127,10 @@ Key constraints:
 - no parser-internal type crosses the public API.
 
 Normal `Parse` CPU/allocation behavior must be benchmarked before and after this milestone to prove that unused rendering support does not create an avoidable permanent cost.
+
+The implemented foundation adds a separate internal `SemanticBackend`/event vocabulary and Native `WalkSemantic`; it does not add methods to the ordinary `parser.Backend` or retained rendering state to public `Document`. The walk projects Native-owned block/inline hierarchy plus text/break, list/task, table, fenced-code, raw/block-HTML, footnote, and math foundation events synchronously, carries snapshot-local ranges, stops on visitor errors, and discards one operation-local projection index when complete. Reference-definition, alert, and front-matter event identities are reserved for M119 policy rather than guessed in M118.
+
+Profiling rejected the first broader implementation because repeated analysis/detail scans made the 256 KiB realistic semantic walk roughly 143–175 ms. One ephemeral lookup index reduced the final path to roughly 36–42 ms, with a recorded median around 38.8 ms / 36.66 MB / 224k allocations. Ordinary public `Parse` and Native `ParseDocument` allocation bytes/counts remain effectively identical to the frozen pre-M118 baseline; later-run wall-clock movement affected both ordinary paths similarly and is treated as same-host noise rather than a retained semantic-support cost. The final freeze gate also exercised the semantic walk twice over the retained 6,857-document / 60,778,570-byte real-world corpus with deterministic, balanced, source-immutable output. M119 now owns semantic completeness/conformance and the first broad semantic-layer refactor.
 
 ## M119 — Semantic completeness and conformance harness
 
