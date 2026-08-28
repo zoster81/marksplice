@@ -151,49 +151,70 @@ func MapFencedCode(input []byte, content Range) (FencedCodeMapping, error) {
 		return FencedCodeMapping{}, fmt.Errorf("%w: multiline content requires an unindented contiguous body", ErrUnsupportedFencedCodeShape)
 	}
 
-	contentRanges, ok := contiguousFencedContentRanges(input, content)
+	closure, ok := scanContiguousFencedCodeBody(input, contentLineStart, content, opening)
 	if !ok {
 		return FencedCodeMapping{}, fmt.Errorf("%w: semantic content is not one contiguous physical body", ErrUnsupportedFencedCodeShape)
 	}
-	block, err := mapFencedBlockFromOpening(input, openingStart+opening.indent, openingStart, openingEnd, opening, contentRanges)
-	if err != nil {
-		return FencedCodeMapping{}, err
-	}
 
 	legacyRange := Range{Start: openingStart, End: len(input)}
-	if block.Closed {
-		legacyRange.End = physicalLineEnd(input, block.ClosingFenceRange.Start)
+	if closure.closed {
+		legacyRange.End = closure.lineEnd
 	}
 	return FencedCodeMapping{
 		Range:              legacyRange,
 		ContentRange:       content,
-		InfoRange:          block.InfoRange,
-		FenceChar:          block.FenceChar,
-		FenceLength:        block.OpeningFenceLength,
-		ClosingFenceLength: block.ClosingFenceLength,
-		OpeningIndent:      block.OpeningIndent,
-		ClosingIndent:      block.ClosingIndent,
-		Closed:             block.Closed,
+		InfoRange:          opening.infoRange,
+		FenceChar:          opening.char,
+		FenceLength:        opening.length,
+		ClosingFenceLength: closure.length,
+		OpeningIndent:      opening.indent,
+		ClosingIndent:      closure.indent,
+		Closed:             closure.closed,
 	}, nil
 }
 
-func contiguousFencedContentRanges(input []byte, content Range) ([]Range, bool) {
-	ranges := make([]Range, 0, 1)
-	for lineStart := content.Start; ; {
+type fencedCodeClosure struct {
+	length  int
+	indent  int
+	lineEnd int
+	closed  bool
+}
+
+func scanContiguousFencedCodeBody(input []byte, bodyStart int, content Range, opening fenceOpening) (fencedCodeClosure, bool) {
+	firstLine := true
+	for lineStart := bodyStart; lineStart < len(input); {
 		lineEnd := physicalLineEnd(input, lineStart)
-		if lineEnd > content.End {
-			return nil, false
+		if _, _, closed := parseTopLevelFenceClosing(input, lineStart, lineEnd, opening.char, opening.length); closed {
+			return fencedCodeClosure{}, false
 		}
-		ranges = append(ranges, Range{Start: lineStart, End: lineEnd})
+		if firstLine {
+			if content.Start < lineStart || content.Start > lineEnd || physicalLineStart(input, content.Start) != bodyStart {
+				return fencedCodeClosure{}, false
+			}
+			firstLine = false
+		}
+		if lineEnd > content.End {
+			return fencedCodeClosure{}, false
+		}
 		if lineEnd == content.End {
-			return ranges, true
+			next, ok := nextPhysicalLineStart(input, lineEnd)
+			if !ok || next >= len(input) {
+				return fencedCodeClosure{}, true
+			}
+			closingEnd := physicalLineEnd(input, next)
+			closingLength, closingIndent, closed := parseTopLevelFenceClosing(input, next, closingEnd, opening.char, opening.length)
+			if !closed {
+				return fencedCodeClosure{}, false
+			}
+			return fencedCodeClosure{length: closingLength, indent: closingIndent, lineEnd: closingEnd, closed: true}, true
 		}
 		next, ok := nextPhysicalLineStart(input, lineEnd)
 		if !ok || next > content.End {
-			return nil, false
+			return fencedCodeClosure{}, false
 		}
 		lineStart = next
 	}
+	return fencedCodeClosure{}, false
 }
 
 type fenceOpening struct {

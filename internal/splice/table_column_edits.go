@@ -8,7 +8,7 @@ import (
 
 // PrepareInsertTableColumn prepares source-preserving insertion of one complete GFM table column.
 func (d *Document) PrepareInsertTableColumn(id NodeID, column int, header []byte, alignment TableAlignment, body [][]byte) (ChangeSet, error) {
-	target, err := d.tableTarget(id)
+	target, mapping, err := d.tableTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -16,7 +16,7 @@ func (d *Document) PrepareInsertTableColumn(id NodeID, column int, header []byte
 	if !validTableColumnInsertionRequest(target, column, ok, len(body)) {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	rows, err := d.completeTableRows(target)
+	rows, err := d.completeTableRows(target, mapping)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -42,7 +42,7 @@ func (d *Document) PrepareInsertTableColumn(id NodeID, column int, header []byte
 	expectedAlignments := insertTableAlignment(target.TableAlignments, column, alignment)
 	candidateTable, err := d.validateTableColumnMutationCandidate(
 		candidate, target, transforms, target.TableColumnCount+1,
-		target.TableSource.Range.End+totalInserted, expectedAlignments,
+		target.Range.End+totalInserted, expectedAlignments,
 	)
 	if err != nil || !candidateInsertedTableColumn(candidate, candidateTable, column, expectedContents) {
 		return ChangeSet{}, ErrInvalidReplacement
@@ -52,14 +52,14 @@ func (d *Document) PrepareInsertTableColumn(id NodeID, column int, header []byte
 
 // PrepareRemoveTableColumn prepares source-preserving removal of one complete GFM table column.
 func (d *Document) PrepareRemoveTableColumn(id NodeID, column int) (ChangeSet, error) {
-	target, err := d.tableTarget(id)
+	target, mapping, err := d.tableTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
 	if target.TableColumnCount <= 1 || column < 0 || column >= target.TableColumnCount {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	rows, err := d.completeTableRows(target)
+	rows, err := d.completeTableRows(target, mapping)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -84,7 +84,7 @@ func (d *Document) PrepareRemoveTableColumn(id NodeID, column int) (ChangeSet, e
 	expectedAlignments := removeTableAlignment(target.TableAlignments, column)
 	if _, err := d.validateTableColumnMutationCandidate(
 		candidate, target, transforms, target.TableColumnCount-1,
-		target.TableSource.Range.End-totalRemoved, expectedAlignments,
+		target.Range.End-totalRemoved, expectedAlignments,
 	); err != nil {
 		return ChangeSet{}, err
 	}
@@ -93,7 +93,7 @@ func (d *Document) PrepareRemoveTableColumn(id NodeID, column int) (ChangeSet, e
 
 // PrepareMoveTableColumn prepares moving one complete GFM table column to a new zero-based position.
 func (d *Document) PrepareMoveTableColumn(id NodeID, from, to int) (ChangeSet, error) {
-	target, err := d.tableTarget(id)
+	target, mapping, err := d.tableTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -103,7 +103,7 @@ func (d *Document) PrepareMoveTableColumn(id NodeID, from, to int) (ChangeSet, e
 	if from == to {
 		return d.newChanges(nil, "table column move")
 	}
-	rows, err := d.completeTableRows(target)
+	rows, err := d.completeTableRows(target, mapping)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -130,7 +130,7 @@ func (d *Document) PrepareMoveTableColumn(id NodeID, from, to int) (ChangeSet, e
 	expectedAlignments := reorderTableAlignments(target.TableAlignments, order)
 	if _, err := d.validateTableColumnMutationCandidate(
 		candidate, target, transforms, target.TableColumnCount,
-		target.TableSource.Range.End, expectedAlignments,
+		target.Range.End, expectedAlignments,
 	); err != nil {
 		return ChangeSet{}, err
 	}
@@ -192,8 +192,8 @@ func (d *Document) validateTableColumnMutationCandidate(candidate []byte, target
 	if candidateTable.TableColumnCount != expectedColumnCount || candidateTable.TableBodyRowCount != target.TableBodyRowCount {
 		return Node{}, ErrInvalidReplacement
 	}
-	expectedRange := Range{Start: target.TableSource.Range.Start, End: expectedEnd}
-	if candidateTable.TableSource.Range != expectedRange || !slices.Equal(candidateTable.TableAlignments, expectedAlignments) {
+	expectedRange := Range{Start: target.Range.Start, End: expectedEnd}
+	if candidateTable.Range != expectedRange || !slices.Equal(candidateTable.TableAlignments, expectedAlignments) {
 		return Node{}, ErrInvalidReplacement
 	}
 	if !completeCandidateTableRows(candidate, candidateTable) {
@@ -202,8 +202,8 @@ func (d *Document) validateTableColumnMutationCandidate(candidate []byte, target
 	return candidateTable, nil
 }
 
-func (d *Document) completeTableRows(target Node) ([]source.TableRowMapping, error) {
-	rows, err := source.MapCompleteTableRows(d.source, target.TableSource, target.TableColumnCount, target.TableBodyRowCount)
+func (d *Document) completeTableRows(target Node, mapping source.TableMapping) ([]source.TableRowMapping, error) {
+	rows, err := source.MapCompleteTableRows(d.source, mapping, target.TableColumnCount, target.TableBodyRowCount)
 	if err != nil {
 		return nil, ErrInvalidReplacement
 	}
@@ -211,12 +211,20 @@ func (d *Document) completeTableRows(target Node) ([]source.TableRowMapping, err
 }
 
 func completeCandidateTableRows(candidate []byte, table Node) bool {
-	_, err := source.MapCompleteTableRows(candidate, table.TableSource, table.TableColumnCount, table.TableBodyRowCount)
+	mapping, ok := remapTableSource(candidate, table)
+	if !ok {
+		return false
+	}
+	_, err := source.MapCompleteTableRows(candidate, mapping, table.TableColumnCount, table.TableBodyRowCount)
 	return err == nil
 }
 
 func candidateInsertedTableColumn(candidate []byte, table Node, column int, expectedContents [][]byte) bool {
-	rows, err := source.MapCompleteTableRows(candidate, table.TableSource, table.TableColumnCount, table.TableBodyRowCount)
+	mapping, ok := remapTableSource(candidate, table)
+	if !ok {
+		return false
+	}
+	rows, err := source.MapCompleteTableRows(candidate, mapping, table.TableColumnCount, table.TableBodyRowCount)
 	if err != nil || len(rows) != len(expectedContents) || column < 0 || column >= table.TableColumnCount {
 		return false
 	}

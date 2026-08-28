@@ -104,6 +104,9 @@ func parseDelimiterObservationsWithExclusions(source []byte, block inlineBlock, 
 
 func inlineOwnerExclusions(block inlineBlock, owners []inlineSpan, composites []compositeInline) [][]parser.Range {
 	exclusions := inlineBlockExclusions(block)
+	if len(exclusions) == 0 && (len(owners) != 0 || hasActiveComposite(composites)) {
+		exclusions = ensureInlineExclusions(exclusions, len(block.segments))
+	}
 	for _, owner := range owners {
 		if owner.segment < 0 || owner.endSegment >= len(block.segments) || owner.segment > owner.endSegment {
 			continue
@@ -130,10 +133,10 @@ func inlineOwnerExclusions(block inlineBlock, owners []inlineSpan, composites []
 }
 
 func inlineBlockExclusions(block inlineBlock) [][]parser.Range {
-	exclusions := make([][]parser.Range, len(block.segments))
 	if block.prefixExclusion.Start >= block.prefixExclusion.End {
-		return exclusions
+		return nil
 	}
+	exclusions := make([][]parser.Range, len(block.segments))
 	for segmentIndex, segment := range block.segments {
 		start := max(segment.Start, block.prefixExclusion.Start)
 		end := min(segment.End, block.prefixExclusion.End)
@@ -145,6 +148,9 @@ func inlineBlockExclusions(block inlineBlock) [][]parser.Range {
 }
 
 func appendCompositeDelimiterExclusions(exclusions [][]parser.Range, block inlineBlock, composites []compositeInline) [][]parser.Range {
+	if len(exclusions) == 0 && hasActiveComposite(composites) {
+		exclusions = ensureInlineExclusions(exclusions, len(block.segments))
+	}
 	for _, composite := range composites {
 		appendCompositeExclusions(exclusions, block, composite)
 	}
@@ -161,6 +167,9 @@ func appendCompositeExclusions(exclusions [][]parser.Range, block inlineBlock, c
 }
 
 func activeBacktickBarriers(barriers []backtickRun, exclusions [][]parser.Range) []backtickRun {
+	if len(exclusions) == 0 {
+		return barriers
+	}
 	result := make([]backtickRun, 0, len(barriers))
 	currentSegment := -1
 	excludedIndex := 0
@@ -187,13 +196,14 @@ func activeBacktickBarriers(barriers []backtickRun, exclusions [][]parser.Range)
 func collectDelimiterRuns(source []byte, block inlineBlock, exclusions [][]parser.Range) []delimiterRun {
 	runs := make([]delimiterRun, 0)
 	for segmentIndex, segment := range block.segments {
+		segmentExclusions := inlineExclusionsAt(exclusions, segmentIndex)
 		excludedIndex := 0
 		for position := segment.Start; position < segment.End; {
-			for excludedIndex < len(exclusions[segmentIndex]) && position >= exclusions[segmentIndex][excludedIndex].End {
+			for excludedIndex < len(segmentExclusions) && position >= segmentExclusions[excludedIndex].End {
 				excludedIndex++
 			}
-			if excludedIndex < len(exclusions[segmentIndex]) && position >= exclusions[segmentIndex][excludedIndex].Start {
-				position = exclusions[segmentIndex][excludedIndex].End
+			if excludedIndex < len(segmentExclusions) && position >= segmentExclusions[excludedIndex].Start {
+				position = segmentExclusions[excludedIndex].End
 				continue
 			}
 			marker := source[position]
@@ -223,6 +233,15 @@ func collectDelimiterRuns(source []byte, block inlineBlock, exclusions [][]parse
 		}
 	}
 	return runs
+}
+
+func hasActiveComposite(composites []compositeInline) bool {
+	for _, composite := range composites {
+		if composite.active {
+			return true
+		}
+	}
+	return false
 }
 
 func strikethroughRunEligible(source []byte, segment parser.Range, start, length int) bool {

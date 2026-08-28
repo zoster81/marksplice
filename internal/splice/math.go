@@ -74,7 +74,7 @@ func mathExpressionNode(snapshot []byte, fingerprint source.Fingerprint, observa
 		Kind:         KindMathExpression,
 		Range:        mapping.Range,
 		ContentRange: mapping.PayloadRange,
-		MathSource:   mapping,
+		MathStyle:    style,
 		Anchor:       observation.Range.Start,
 		TopLevel:     observation.TopLevel,
 		Editable:     true,
@@ -83,8 +83,9 @@ func mathExpressionNode(snapshot []byte, fingerprint source.Fingerprint, observa
 	return node, true, nil
 }
 
-func isFencedMathNode(node Node) bool {
-	return node.Kind == KindFencedCode && node.TopLevel && node.FencedBlockSource.OpeningFenceLength >= 3 && node.FencedBlockInfo == "math"
+func (d *Document) isFencedMathNode(node Node) bool {
+	detail, ok := d.fencedSource(node)
+	return ok && node.Kind == KindFencedCode && node.TopLevel && detail.block.OpeningFenceLength >= 3 && detail.info == "math"
 }
 
 // MathExpressionPayloadRanges returns caller-owned payload source ranges for one
@@ -98,10 +99,11 @@ func (d *Document) MathExpressionPayloadRanges(id NodeID) ([]Range, bool) {
 		return nil, false
 	}
 	if node.Kind == KindMathExpression && node.Editable {
-		return []Range{node.MathSource.PayloadRange}, true
+		return []Range{node.ContentRange}, true
 	}
-	if isFencedMathNode(node) {
-		return append([]Range(nil), node.FencedBlockSource.ContentRanges...), true
+	if d.isFencedMathNode(node) {
+		detail, _ := d.fencedSource(node)
+		return append([]Range(nil), detail.block.ContentRanges...), true
 	}
 	return nil, false
 }

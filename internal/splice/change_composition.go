@@ -142,12 +142,12 @@ func compositionNodeViews(document *Document) []compositionNodeView {
 	indexes := document.nodeIndex
 	views := make([]compositionNodeView, len(document.nodes))
 	for index, node := range document.nodes {
-		owned := compositionOwnedRange(node)
+		owned := compositionOwnedRange(document, node)
 		if !owned.Valid(len(document.source)) || owned.Start > node.Range.Start || owned.End < node.Range.End {
 			owned = node.Range
 		}
 		view := compositionNodeView{
-			semantic:    compositionNodeSemantic(node, index, indexes, owned),
+			semantic:    compositionNodeSemantic(document, node, index, indexes, owned),
 			sourceHash:  source.Sum(document.source[owned.Start:owned.End]),
 			ownedLength: owned.End - owned.Start,
 			rangeStart:  node.Range.Start - owned.Start,
@@ -162,28 +162,38 @@ func compositionNodeViews(document *Document) []compositionNodeView {
 	return views
 }
 
-func compositionOwnedRange(node Node) Range {
+func compositionOwnedRange(document *Document, node Node) Range {
+	input := document.source
 	switch node.Kind {
 	case KindListItem:
-		return node.ListItemSource.LineRange
+		return node.ListItemLineRange
 	case KindTableCell:
-		return node.TableCellSource.Range
+		return node.TableCellRange
 	case KindTableRow:
-		return node.TableRowSource.LineRange
+		return node.Range
 	case KindTable:
-		return node.TableSource.Range
+		return node.Range
 	case KindReferenceDefinition:
-		return node.ReferenceDefinitionSource.LineRange
+		if mapping, ok := remapReferenceDefinitionSource(input, node); ok {
+			return mapping.LineRange
+		}
+		return node.Range
 	case KindThematicBreak:
-		return node.ThematicBreakSource.LineRange
+		if mapping, ok := remapThematicBreakSource(input, node); ok {
+			return mapping.LineRange
+		}
+		return node.Range
 	case KindBlockquote:
-		return node.BlockquoteSource.LineRange
+		if mapping, ok := document.blockquoteSource(node); ok {
+			return mapping.LineRange
+		}
+		return Range{}
 	default:
 		return node.Range
 	}
 }
 
-func compositionNodeSemantic(node Node, index int, indexes map[NodeID]int, owned Range) compositionNodeSemanticView {
+func compositionNodeSemantic(document *Document, node Node, index int, indexes map[NodeID]int, owned Range) compositionNodeSemanticView {
 	view := compositionNodeSemanticView{
 		kind:                node.Kind,
 		survivor:            removalSurvivorSemanticSignature(node),
@@ -197,16 +207,20 @@ func compositionNodeSemantic(node Node, index int, indexes map[NodeID]int, owned
 		nextRow:             relativeNodeIndex(index, node.TableNextRowID, indexes),
 	}
 	if node.Kind == KindBlockquote {
-		view.blockquoteMarker = compositionRelativeRange(node.BlockquoteSource.MarkerRange, owned)
-		view.blockquoteContent = compositionRelativeRanges(node.BlockquoteSource.ContentRanges, owned)
+		if mapping, ok := document.blockquoteSource(node); ok {
+			view.blockquoteMarker = compositionRelativeRange(mapping.MarkerRange, owned)
+			view.blockquoteContent = compositionRelativeRanges(mapping.ContentRanges, owned)
+		}
 	}
 	if node.Kind == KindFootnoteDefinition {
-		view.footnoteLabel = compositionRelativeRange(node.FootnoteSource.LabelRange, owned)
-		view.footnoteBody = compositionRelativeRanges(node.FootnoteSource.BodyRanges, owned)
+		if mapping, ok := document.footnoteSource(node); ok {
+			view.footnoteLabel = compositionRelativeRange(mapping.LabelRange, owned)
+			view.footnoteBody = compositionRelativeRanges(mapping.BodyRanges, owned)
+		}
 	}
 	if node.Kind == KindMathExpression {
-		view.mathStyle = node.MathSource.Style
-		view.mathPayload = compositionRelativeRange(node.MathSource.PayloadRange, owned)
+		view.mathStyle = node.MathStyle
+		view.mathPayload = compositionRelativeRange(node.ContentRange, owned)
 	}
 	return view
 }

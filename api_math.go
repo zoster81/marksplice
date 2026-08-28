@@ -58,7 +58,7 @@ func (d *Document) MathExpressions() []MathExpression {
 		if !ok {
 			continue
 		}
-		expression, ok := publicMathExpression(node)
+		expression, ok := publicMathExpression(d.document, node)
 		if ok {
 			result = append(result, expression)
 		}
@@ -72,7 +72,7 @@ func (d *Document) MathExpression(id NodeID) (MathExpression, bool) {
 	if !ok {
 		return MathExpression{}, false
 	}
-	return publicMathExpression(node)
+	return publicMathExpression(d.document, node)
 }
 
 // PrepareReplaceMathExpression prepares a source-preserving replacement of one
@@ -85,7 +85,7 @@ func (d *Document) PrepareReplaceMathExpression(id NodeID, replacement []byte) (
 	if !ok {
 		return ChangeSet{}, ErrNodeNotFound
 	}
-	if _, ok := publicMathExpression(node); !ok {
+	if _, ok := publicMathExpression(d.document, node); !ok {
 		return ChangeSet{}, ErrInvalidTargetKind
 	}
 	return publicChangeSet(d.document.PrepareReplaceMathExpression(internalNodeID(id), replacement))
@@ -104,31 +104,38 @@ func (d *Document) MathExpressionPayloadRanges(id NodeID) ([]Range, bool) {
 	return publicRanges(ranges), true
 }
 
-func publicMathExpression(node splice.Node) (MathExpression, bool) {
+func publicMathExpression(document *splice.Document, node splice.Node) (MathExpression, bool) {
 	if node.Kind == splice.KindMathExpression && node.Editable {
-		style, ok := publicMathExpressionStyle(node.MathSource.Style)
-		if !ok || node.MathSource.Range.Start >= node.MathSource.Range.End || node.MathSource.PayloadRange.Start >= node.MathSource.PayloadRange.End {
+		style, ok := publicMathExpressionStyle(node.MathStyle)
+		if !ok || node.Range.Start >= node.Range.End || node.ContentRange.Start >= node.ContentRange.End {
 			return MathExpression{}, false
 		}
 		return MathExpression{
 			id:           publicNodeID(node.ID),
 			style:        style,
-			sourceRange:  publicRange(node.MathSource.Range),
-			payloadRange: publicRange(node.MathSource.PayloadRange),
+			sourceRange:  publicRange(node.Range),
+			payloadRange: publicRange(node.ContentRange),
 			hasPayload:   true,
 		}, true
 	}
-	if node.Kind != splice.KindFencedCode || !node.TopLevel || node.FencedBlockInfo != "math" ||
-		node.FencedBlockSource.Range.Start >= node.FencedBlockSource.Range.End {
+	if document == nil || node.Kind != splice.KindFencedCode || !node.TopLevel {
 		return MathExpression{}, false
 	}
-	payload := node.FencedCodeSource.ContentRange
+	block, info, _, ok := document.FencedBlockSource(node.ID)
+	if !ok || info != "math" || block.Range.Start >= block.Range.End {
+		return MathExpression{}, false
+	}
+	code, codeOK := document.FencedCodeSource(node.ID)
+	payload := Range{}
+	if codeOK {
+		payload = publicRange(code.ContentRange)
+	}
 	return MathExpression{
 		id:           publicNodeID(node.ID),
 		style:        MathExpressionFencedBlock,
-		sourceRange:  publicRange(node.FencedBlockSource.Range),
-		payloadRange: publicRange(payload),
-		hasPayload:   payload.Start < payload.End,
+		sourceRange:  publicRange(block.Range),
+		payloadRange: payload,
+		hasPayload:   codeOK && payload.Start < payload.End,
 	}, true
 }
 

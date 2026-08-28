@@ -35,8 +35,23 @@ func (*Backend) ParseDocument(source []byte) (parser.DocumentObservations, error
 		footnoteDefinitions,
 		footnoteUsages,
 	)
+	details, err := attachNodeDetails(nodes, sparseNodeDetails{
+		blockquotes: blocks.blockquoteDetails,
+		fencedCode:  blocks.fencedCodeDetails,
+		tables:      blocks.tableDetails,
+		tableRows:   blocks.tableRowDetails,
+		tableCells:  blocks.tableCellDetails,
+	})
+	if err != nil {
+		return parser.DocumentObservations{}, fmt.Errorf("attach sparse node details: %w", err)
+	}
 	return parser.DocumentObservations{
 		Nodes:                     nonNilNodes(nodes),
+		BlockquoteDetails:         details.blockquotes,
+		FencedCodeDetails:         details.fencedCode,
+		TableDetails:              details.tables,
+		TableRowDetails:           details.tableRows,
+		TableCellDetails:          details.tableCells,
 		LinkUsages:                nonNilLinkUsages(usages),
 		UnresolvedReferenceUsages: nonNilUnresolvedReferences(unresolved),
 		FootnoteDefinitions:       footnoteDefinitions,
@@ -50,6 +65,123 @@ func nonNilNodes(nodes []parser.Node) []parser.Node {
 		return []parser.Node{}
 	}
 	return nodes
+}
+
+type sparseNodeDetails struct {
+	blockquotes []parser.BlockquoteDetail
+	fencedCode  []parser.FencedCodeDetail
+	tables      []parser.TableDetail
+	tableRows   []parser.TableRowDetail
+	tableCells  []parser.TableCellDetail
+}
+
+type sparseDetailCursor struct {
+	read  int
+	write int
+}
+
+type sparseDetailCursors struct {
+	blockquotes sparseDetailCursor
+	fencedCode  sparseDetailCursor
+	tables      sparseDetailCursor
+	tableRows   sparseDetailCursor
+	tableCells  sparseDetailCursor
+}
+
+func attachNodeDetails(nodes []parser.Node, details sparseNodeDetails) (sparseNodeDetails, error) {
+	cursors := sparseDetailCursors{}
+	for index := range nodes {
+		node := &nodes[index]
+		if node.DetailIndex != 0 {
+			return sparseNodeDetails{}, fmt.Errorf("node %d arrived with preassigned sparse detail index", index)
+		}
+		var err error
+		switch node.Kind {
+		case parser.KindBlockquote:
+			if !node.TopLevel {
+				continue
+			}
+			err = attachAnchoredSparseDetail(node, index, details.blockquotes, &cursors.blockquotes, node.Range.Start, blockquoteDetailAnchor, "blockquote")
+		case parser.KindFencedCode:
+			err = attachAnchoredSparseDetail(node, index, details.fencedCode, &cursors.fencedCode, node.Anchor, fencedCodeDetailAnchor, "fenced-code")
+		case parser.KindTable:
+			err = attachAnchoredSparseDetail(node, index, details.tables, &cursors.tables, node.Range.Start, tableDetailAnchor, "table")
+		case parser.KindTableRow:
+			err = attachAnchoredSparseDetail(node, index, details.tableRows, &cursors.tableRows, node.Range.Start, tableRowDetailAnchor, "table-row")
+		case parser.KindTableCell:
+			err = attachRangedSparseDetail(node, index, details.tableCells, &cursors.tableCells)
+		}
+		if err != nil {
+			return sparseNodeDetails{}, err
+		}
+	}
+	details.blockquotes = compactSparseDetails(details.blockquotes, cursors.blockquotes.write)
+	details.fencedCode = compactSparseDetails(details.fencedCode, cursors.fencedCode.write)
+	details.tables = compactSparseDetails(details.tables, cursors.tables.write)
+	details.tableRows = compactSparseDetails(details.tableRows, cursors.tableRows.write)
+	details.tableCells = compactSparseDetails(details.tableCells, cursors.tableCells.write)
+	return details, nil
+}
+
+func attachAnchoredSparseDetail[T any](node *parser.Node, nodeIndex int, details []T, cursor *sparseDetailCursor, nodeAnchor int, detailAnchor func(T) int, description string) error {
+	for cursor.read < len(details) && detailAnchor(details[cursor.read]) < nodeAnchor {
+		cursor.read++
+	}
+	if cursor.read >= len(details) || detailAnchor(details[cursor.read]) != nodeAnchor {
+		return fmt.Errorf("node %d %s detail is missing", nodeIndex, description)
+	}
+	details[cursor.write] = details[cursor.read]
+	cursor.write++
+	cursor.read++
+	if !assignNodeDetailIndex(node, cursor.write) {
+		return fmt.Errorf("node %d %s detail index exceeds uint32", nodeIndex, description)
+	}
+	return nil
+}
+
+func attachRangedSparseDetail(node *parser.Node, nodeIndex int, details []parser.TableCellDetail, cursor *sparseDetailCursor) error {
+	for cursor.read < len(details) && parserRangeLess(details[cursor.read].Range, node.Range) {
+		cursor.read++
+	}
+	if cursor.read >= len(details) || details[cursor.read].Range != node.Range {
+		return fmt.Errorf("node %d table-cell detail is missing", nodeIndex)
+	}
+	details[cursor.write] = details[cursor.read]
+	cursor.write++
+	cursor.read++
+	if !assignNodeDetailIndex(node, cursor.write) {
+		return fmt.Errorf("node %d table-cell detail index exceeds uint32", nodeIndex)
+	}
+	return nil
+}
+
+func blockquoteDetailAnchor(detail parser.BlockquoteDetail) int { return detail.Anchor }
+func fencedCodeDetailAnchor(detail parser.FencedCodeDetail) int { return detail.Anchor }
+func tableDetailAnchor(detail parser.TableDetail) int           { return detail.Anchor }
+func tableRowDetailAnchor(detail parser.TableRowDetail) int     { return detail.RowAnchor }
+
+func assignNodeDetailIndex(node *parser.Node, count int) bool {
+	if count <= 0 || uint64(count) > uint64(^uint32(0)) {
+		return false
+	}
+	node.DetailIndex = uint32(count)
+	return true
+}
+
+func parserRangeLess(left, right parser.Range) bool {
+	if left.Start != right.Start {
+		return left.Start < right.Start
+	}
+	return left.End < right.End
+}
+
+func compactSparseDetails[T any](details []T, count int) []T {
+	clear(details[count:])
+	details = details[:count]
+	if details == nil {
+		return []T{}
+	}
+	return details
 }
 
 func nonNilLinkUsages(usages []parser.LinkUsage) []parser.LinkUsage {

@@ -11,6 +11,9 @@ func (d *Document) PrepareReplace(id NodeID, replacement []byte) (ChangeSet, err
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.Range, replacement); ok {
+		return change, nil
+	}
 	if err := validateParagraphReplacement(replacement); err != nil {
 		return ChangeSet{}, err
 	}
@@ -22,6 +25,9 @@ func (d *Document) PrepareReplaceListItem(id NodeID, replacement []byte) (Change
 	target, err := d.editableTargetNode(id, KindListItem, "list item")
 	if err != nil {
 		return ChangeSet{}, err
+	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
 	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
@@ -53,10 +59,16 @@ func (d *Document) PrepareReplaceTableCell(id NodeID, replacement []byte) (Chang
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
-	mapping := target.TableCellSource
+	mapping, ok := remapTableCellSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "table cell replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -74,10 +86,16 @@ func (d *Document) PrepareReplaceFencedCode(id NodeID, replacement []byte) (Chan
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmpty(replacement); err != nil {
 		return ChangeSet{}, err
 	}
-	mapping := target.FencedCodeSource
+	mapping, ok := d.FencedCodeSource(target.ID)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "fenced code replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -93,6 +111,9 @@ func (d *Document) PrepareRenameHeading(id NodeID, replacement []byte) (ChangeSe
 	target, err := d.targetNode(id, KindHeading)
 	if err != nil {
 		return ChangeSet{}, err
+	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
 	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
@@ -162,15 +183,27 @@ func validateFencedCodeReplacement(candidate []byte, target Node, original sourc
 }
 
 func validateTableCellReplacement(candidate []byte, target Node, original source.TableCellMapping, delta int) error {
-	observations, err := parseCandidate(candidate)
+	observed, err := parseCandidateDocument(candidate)
 	if err != nil {
 		return err
 	}
-	for _, observation := range observations {
-		if observation.Kind != parser.KindTableCell || observation.TableHeader != target.TableHeader || observation.TableColumn != target.TableColumn {
+	details := parserNodeDetails{
+		tables:     observed.TableDetails,
+		tableRows:  observed.TableRowDetails,
+		tableCells: observed.TableCellDetails,
+	}
+	for _, observation := range observed.Nodes {
+		if observation.Kind != parser.KindTableCell {
 			continue
 		}
-		mapping, err := source.MapTableCell(candidate, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.TableColumn)
+		detail, detailErr := details.tableCell(observation)
+		if detailErr != nil {
+			return ErrInvalidReplacement
+		}
+		if detail.Header != target.TableHeader || detail.Column != target.TableColumn {
+			continue
+		}
+		mapping, err := source.MapTableCell(candidate, Range{Start: observation.Range.Start, End: observation.Range.End}, detail.Column)
 		if err == nil && mapping.Range == shiftedEnd(original.Range, delta) {
 			return nil
 		}
@@ -179,13 +212,13 @@ func validateTableCellReplacement(candidate []byte, target Node, original source
 }
 
 func validateListItemReplacement(candidateItems map[int]listItemCandidateMapping, target Node, replacementLength int) error {
-	candidateMapping, ok := candidateItems[target.ListItemSource.LineRange.Start]
+	candidateMapping, ok := candidateItems[target.ListItemLineRange.Start]
 	if !ok {
 		return ErrInvalidReplacement
 	}
 	mapping := candidateMapping.Mapping
 	delta := replacementLength - (target.ContentRange.End - target.ContentRange.Start)
-	expectedLine := Range{Start: target.ListItemSource.LineRange.Start, End: target.ListItemSource.LineRange.End + delta}
+	expectedLine := Range{Start: target.ListItemLineRange.Start, End: target.ListItemLineRange.End + delta}
 	expectedRange := Range{Start: target.Range.Start, End: target.Range.End + delta}
 	expectedContent := rangeWithLength(target.ContentRange.Start, replacementLength)
 	if mapping.LineRange != expectedLine || mapping.Range != expectedRange || mapping.ContentRange != expectedContent ||

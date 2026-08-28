@@ -97,12 +97,16 @@ func (d *Document) prepareInsertListItem(id NodeID, fragment []byte, after bool)
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	fragmentDocument, fragmentSubtree, err := d.parseListItemSubtreeFragment(fragment, anchor.ListItemSource)
+	anchorSource, ok := remapListItemSource(d.source, anchor)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	fragmentDocument, fragmentSubtree, err := d.parseListItemSubtreeFragment(fragment, anchorSource)
 	if err != nil {
 		return ChangeSet{}, err
 	}
 
-	insertAt := anchor.ListItemSource.LineRange.Start
+	insertAt := anchor.ListItemLineRange.Start
 	operation := "list item insertion before"
 	if after {
 		insertAt = anchor.ListSubtreeEnd
@@ -150,7 +154,7 @@ func (d *Document) PrepareAppendListItemChild(id NodeID, fragment []byte) (Chang
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	insertedSubtree, err := candidateDocument.insertedListItemChildSubtree(fragment, insertAt, parent.ListItemSource.LineRange.Start)
+	insertedSubtree, err := candidateDocument.insertedListItemChildSubtree(fragment, insertAt, parent.ListItemLineRange.Start)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -217,18 +221,20 @@ func (d *Document) planListItemMove(id, anchorID NodeID, after bool) (listItemMo
 	if err != nil {
 		return listItemMovePlan{}, false, err
 	}
-	if rangesOverlap(movedSubtree.Range, listItemSubtreeRange(anchor)) ||
-		!sameListItemSiblingShape(d.source, moved.ListItemSource, d.source, anchor.ListItemSource) {
+	movedSource, movedOK := remapListItemSource(d.source, moved)
+	anchorSource, anchorOK := remapListItemSource(d.source, anchor)
+	if !movedOK || !anchorOK || rangesOverlap(movedSubtree.Range, listItemSubtreeRange(anchor)) ||
+		!sameListItemSiblingShape(d.source, movedSource, d.source, anchorSource) {
 		return listItemMovePlan{}, false, ErrInvalidReplacement
 	}
 	plan := listItemMovePlan{
 		moved:        moved,
 		anchor:       anchor,
 		movedSubtree: movedSubtree,
-		insertAt:     anchor.ListItemSource.LineRange.Start,
+		insertAt:     anchor.ListItemLineRange.Start,
 		operation:    "list item move before",
 	}
-	alreadyPlaced := movedSubtree.Range.End == anchor.ListItemSource.LineRange.Start
+	alreadyPlaced := movedSubtree.Range.End == anchor.ListItemLineRange.Start
 	if after {
 		plan.insertAt = anchor.ListSubtreeEnd
 		plan.operation = "list item move after"

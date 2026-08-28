@@ -31,6 +31,28 @@ func TestTableRowCellIdentityModelBuildsSupportedAdjacency(t *testing.T) {
 	}
 }
 
+func TestTableRowCellIdentityModelAllowsContainerRelativeRowAnchor(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("- JDK\n\n    | Version | JDK |\n    |---------|-----|\n    | master | 21 |\n")
+	doc, err := Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	rows := internalTableRows(doc)
+	if len(rows) != 1 {
+		t.Fatalf("row count = %d, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.TableRowAnchor <= row.Range.Start || row.TableRowAnchor >= row.ContentRange.End {
+		t.Fatalf("semantic row anchor = %d, physical row = %v; want anchor inside indented physical row", row.TableRowAnchor, row.Range)
+	}
+	ids, ok := doc.TableRowCellIDs(row.ID)
+	if !ok || len(ids) != 2 {
+		t.Fatalf("TableRowCellIDs(indented row) = %v, %v; want 2 cells, true", ids, ok)
+	}
+}
+
 func TestTableRowCellIdentityModelAllowsNoPromotedCells(t *testing.T) {
 	t.Parallel()
 
@@ -98,7 +120,7 @@ func TestResolveTableRowCellsRejectsCorruptSourceRelations(t *testing.T) {
 			mutate: func(nodes []Node) {
 				rowIndex := firstTableRowIndex(nodes)
 				cellIndex := firstBodyTableCellIndex(nodes)
-				nodes[cellIndex].TableCellSource.Range.Start = nodes[rowIndex].TableRowSource.Range.Start - 1
+				nodes[cellIndex].TableCellRange.Start = nodes[rowIndex].ContentRange.Start - 1
 			},
 		},
 	}

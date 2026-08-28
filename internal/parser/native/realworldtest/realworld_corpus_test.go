@@ -381,22 +381,117 @@ func parseNativeRealWorld(backend *native.Backend, source []byte) (observations 
 }
 
 func validateSourceBound(observations parser.DocumentObservations, total int) error {
+	usedBlockquotes := make([]bool, len(observations.BlockquoteDetails))
+	usedFenced := make([]bool, len(observations.FencedCodeDetails))
+	usedTables := make([]bool, len(observations.TableDetails))
+	usedRows := make([]bool, len(observations.TableRowDetails))
+	usedCells := make([]bool, len(observations.TableCellDetails))
 	for index, node := range observations.Nodes {
 		if !node.Range.Valid(total) {
 			return fmt.Errorf("node %d range %v invalid for source length %d", index, node.Range, total)
 		}
-		if node.BlockquoteContentRange != (parser.Range{}) && !node.BlockquoteContentRange.Valid(total) {
-			return fmt.Errorf("node %d blockquote content range %v invalid", index, node.BlockquoteContentRange)
-		}
-		for _, range_ := range node.BlockquoteSemanticRanges {
-			if !range_.Valid(total) {
-				return fmt.Errorf("node %d blockquote semantic range %v invalid", index, range_)
+		switch node.Kind {
+		case parser.KindBlockquote:
+			if !node.TopLevel {
+				if node.DetailIndex != 0 {
+					return fmt.Errorf("node %d non-top-level blockquote has detail index %d", index, node.DetailIndex)
+				}
+				continue
+			}
+			detailIndex := int(node.DetailIndex) - 1
+			if detailIndex < 0 || detailIndex >= len(observations.BlockquoteDetails) || usedBlockquotes[detailIndex] {
+				return fmt.Errorf("node %d blockquote detail index %d invalid", index, node.DetailIndex)
+			}
+			usedBlockquotes[detailIndex] = true
+			detail := observations.BlockquoteDetails[detailIndex]
+			if detail.Anchor != node.Range.Start || detail.Anchor < 0 || detail.Anchor >= total {
+				return fmt.Errorf("node %d blockquote detail anchor %d invalid", index, detail.Anchor)
+			}
+			if detail.ContentRange != (parser.Range{}) && !detail.ContentRange.Valid(total) {
+				return fmt.Errorf("node %d blockquote content range %v invalid", index, detail.ContentRange)
+			}
+			for _, range_ := range detail.SemanticRanges {
+				if !range_.Valid(total) {
+					return fmt.Errorf("node %d blockquote semantic range %v invalid", index, range_)
+				}
+			}
+		case parser.KindFencedCode:
+			detailIndex := int(node.DetailIndex) - 1
+			if detailIndex < 0 || detailIndex >= len(observations.FencedCodeDetails) || usedFenced[detailIndex] {
+				return fmt.Errorf("node %d fenced detail index %d invalid", index, node.DetailIndex)
+			}
+			usedFenced[detailIndex] = true
+			detail := observations.FencedCodeDetails[detailIndex]
+			if detail.Anchor != node.Anchor || detail.Anchor < 0 || detail.Anchor >= total {
+				return fmt.Errorf("node %d fenced detail anchor %d invalid", index, detail.Anchor)
+			}
+			for _, range_ := range detail.ContentRanges {
+				if !range_.Valid(total) {
+					return fmt.Errorf("node %d fenced content range %v invalid", index, range_)
+				}
+			}
+		case parser.KindTable:
+			detailIndex := int(node.DetailIndex) - 1
+			if detailIndex < 0 || detailIndex >= len(observations.TableDetails) || usedTables[detailIndex] {
+				return fmt.Errorf("node %d table detail index %d invalid", index, node.DetailIndex)
+			}
+			usedTables[detailIndex] = true
+			detail := observations.TableDetails[detailIndex]
+			if detail.Anchor != node.Range.Start || detail.Anchor < 0 || detail.Anchor >= total || detail.ColumnCount <= 0 || len(detail.Alignments) != detail.ColumnCount || detail.BodyRowCount < 0 {
+				return fmt.Errorf("node %d table detail invalid: %#v", index, detail)
+			}
+			if detail.BodyRowCount == 0 && detail.LastBodyRowAnchor != 0 || detail.BodyRowCount > 0 && (detail.LastBodyRowAnchor < detail.Anchor || detail.LastBodyRowAnchor >= total) {
+				return fmt.Errorf("node %d table last-body-row anchor invalid: %#v", index, detail)
+			}
+		case parser.KindTableRow:
+			detailIndex := int(node.DetailIndex) - 1
+			if detailIndex < 0 || detailIndex >= len(observations.TableRowDetails) || usedRows[detailIndex] {
+				return fmt.Errorf("node %d table-row detail index %d invalid", index, node.DetailIndex)
+			}
+			usedRows[detailIndex] = true
+			detail := observations.TableRowDetails[detailIndex]
+			if detail.RowAnchor != node.Range.Start || detail.RowAnchor < 0 || detail.RowAnchor >= total || detail.TableAnchor < 0 || detail.TableAnchor >= total || detail.ColumnCount <= 0 || len(detail.Alignments) != detail.ColumnCount {
+				return fmt.Errorf("node %d table-row detail invalid: %#v", index, detail)
+			}
+		case parser.KindTableCell:
+			detailIndex := int(node.DetailIndex) - 1
+			if detailIndex < 0 || detailIndex >= len(observations.TableCellDetails) || usedCells[detailIndex] {
+				return fmt.Errorf("node %d table-cell detail index %d invalid", index, node.DetailIndex)
+			}
+			usedCells[detailIndex] = true
+			detail := observations.TableCellDetails[detailIndex]
+			if detail.Range != node.Range || !detail.Range.Valid(total) || detail.Column < 0 || detail.RowAnchor < 0 || detail.RowAnchor >= total || detail.TableAnchor < 0 || detail.TableAnchor >= total {
+				return fmt.Errorf("node %d table-cell detail invalid: %#v", index, detail)
+			}
+		default:
+			if node.DetailIndex != 0 {
+				return fmt.Errorf("node %d kind %d has unexpected detail index %d", index, node.Kind, node.DetailIndex)
 			}
 		}
-		for _, range_ := range node.FencedCodeContentRanges {
-			if !range_.Valid(total) {
-				return fmt.Errorf("node %d fenced content range %v invalid", index, range_)
-			}
+	}
+	for index, used := range usedBlockquotes {
+		if !used {
+			return fmt.Errorf("blockquote detail %d is orphaned", index)
+		}
+	}
+	for index, used := range usedFenced {
+		if !used {
+			return fmt.Errorf("fenced detail %d is orphaned", index)
+		}
+	}
+	for index, used := range usedTables {
+		if !used {
+			return fmt.Errorf("table detail %d is orphaned", index)
+		}
+	}
+	for index, used := range usedRows {
+		if !used {
+			return fmt.Errorf("table-row detail %d is orphaned", index)
+		}
+	}
+	for index, used := range usedCells {
+		if !used {
+			return fmt.Errorf("table-cell detail %d is orphaned", index)
 		}
 	}
 	for index, usage := range observations.LinkUsages {

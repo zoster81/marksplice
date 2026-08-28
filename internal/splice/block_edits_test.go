@@ -268,6 +268,41 @@ func TestRenameHeadingPreservesATXSourceStyle(t *testing.T) {
 	}
 }
 
+func TestPrepareRenameHeadingNoOpAcceptsExistingMultilineSetextContent(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("00\n0\n-")
+	doc, err := Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	headings := nodesOfKind(doc.Nodes(), KindHeading)
+	if len(headings) != 1 {
+		t.Fatalf("heading count = %d, want 1", len(headings))
+	}
+	target := headings[0]
+	if target.HeadingStyle != HeadingStyleSetext || target.ContentRange != (Range{Start: 0, End: 4}) {
+		t.Fatalf("heading = %+v, want multiline Setext content [0,4)", target)
+	}
+	replacement := append([]byte(nil), source[target.ContentRange.Start:target.ContentRange.End]...)
+	change, err := doc.PrepareRenameHeading(target.ID, replacement)
+	if err != nil {
+		t.Fatalf("PrepareRenameHeading(no-op) error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply(no-op) error = %v", err)
+	}
+	if !bytes.Equal(got, source) {
+		t.Fatalf("no-op changed source: %q", got)
+	}
+	stale := append([]byte(nil), source...)
+	stale[0] = '1'
+	if _, err := change.Apply(stale); !errors.Is(err, ErrSourceConflict) {
+		t.Fatalf("Apply(stale no-op) error = %v, want ErrSourceConflict", err)
+	}
+}
+
 func TestRenameHeadingPreservesSetextSourceStyleAndCRLF(t *testing.T) {
 	t.Parallel()
 
@@ -438,8 +473,9 @@ func TestReplaceTableCellPreservesUntouchedTableSource(t *testing.T) {
 			if !target.Editable {
 				t.Fatal("mapped table cell Editable = false, want true")
 			}
-			if target.TableCellSource.ContentRange != target.ContentRange || target.TableCellSource.Column != target.TableColumn {
-				t.Fatalf("stored table mapping = %+v, target content/column = %v/%d", target.TableCellSource, target.ContentRange, target.TableColumn)
+			mapping, ok := remapTableCellSource(tt.source, target)
+			if !ok || mapping.ContentRange != target.ContentRange || mapping.Column != target.TableColumn {
+				t.Fatalf("remapped table capability = %+v, %v; target content/column = %v/%d", mapping, ok, target.ContentRange, target.TableColumn)
 			}
 
 			prefix := append([]byte(nil), tt.source[:target.ContentRange.Start]...)
@@ -549,8 +585,9 @@ func TestReplaceSingleLineFencedCodePreservesFenceSource(t *testing.T) {
 			if !target.Editable {
 				t.Fatal("mapped fenced code Editable = false, want true")
 			}
-			if target.FencedCodeSource.ContentRange != target.ContentRange || target.FencedCodeSource.FenceChar == 0 || target.FencedCodeSource.FenceLength < 3 {
-				t.Fatalf("stored fenced-code mapping = %+v, target content = %v", target.FencedCodeSource, target.ContentRange)
+			mapping, ok := doc.FencedCodeSource(target.ID)
+			if !ok || mapping.ContentRange != target.ContentRange || mapping.FenceChar == 0 || mapping.FenceLength < 3 {
+				t.Fatalf("sidecar fenced-code mapping = %+v, %v; target content = %v", mapping, ok, target.ContentRange)
 			}
 
 			prefix := append([]byte(nil), tt.source[:target.ContentRange.Start]...)
@@ -613,11 +650,13 @@ func TestUnclosedSingleLineFencedCodeKeepsContiguousReplacement(t *testing.T) {
 		t.Fatalf("fenced code count = %d, want 1 semantic observation", len(blocks))
 	}
 	block := blocks[0]
-	if !block.Editable || block.FencedCodeSource == (sourcepkg.FencedCodeMapping{}) || block.FencedCodeSource.Closed {
-		t.Fatalf("unclosed fenced code = editable %v mapping %+v", block.Editable, block.FencedCodeSource)
+	codeMapping, codeOK := doc.FencedCodeSource(block.ID)
+	if !block.Editable || !codeOK || codeMapping == (sourcepkg.FencedCodeMapping{}) || codeMapping.Closed {
+		t.Fatalf("unclosed fenced code = editable %v mapping %+v, %v", block.Editable, codeMapping, codeOK)
 	}
-	if block.FencedBlockSource.Closed || block.FencedBlockSource.Range != (Range{Start: 0, End: len(source)}) {
-		t.Fatalf("unclosed fenced block mapping = %+v", block.FencedBlockSource)
+	blockMapping, _, _, blockOK := doc.FencedBlockSource(block.ID)
+	if !blockOK || blockMapping.Closed || blockMapping.Range != (Range{Start: 0, End: len(source)}) {
+		t.Fatalf("unclosed fenced block mapping = %+v, %v", blockMapping, blockOK)
 	}
 	change, err := doc.PrepareReplaceFencedCode(block.ID, []byte("new"))
 	if err != nil {

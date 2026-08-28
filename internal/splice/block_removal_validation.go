@@ -33,7 +33,7 @@ func (d *Document) validateNodeSurvivorsAfterRemoval(candidate []byte, removed R
 
 	matched := make([]bool, len(candidateDocument.nodes))
 	for _, original := range survivors {
-		candidateIndex := matchingRemovalSurvivor(candidateDocument.nodes, matched, original, removed)
+		candidateIndex := matchingRemovalSurvivor(d, candidateDocument, matched, original, removed)
 		if candidateIndex < 0 {
 			return ErrInvalidReplacement
 		}
@@ -63,7 +63,7 @@ func linkUsagesSurviveRemoval(original, candidate []parser.LinkUsage, removed Ra
 	return candidateIndex == len(candidate)
 }
 
-func matchingRemovalSurvivor(candidates []Node, matched []bool, original Node, removed Range) int {
+func matchingRemovalSurvivor(originalDocument, candidateDocument *Document, matched []bool, original Node, removed Range) int {
 	expectedRange, ok := rangeAfterPatch(original.Range, removed, 0)
 	if !ok {
 		return -1
@@ -72,13 +72,13 @@ func matchingRemovalSurvivor(candidates []Node, matched []bool, original Node, r
 	if !ok {
 		return -1
 	}
-	for index, candidate := range candidates {
+	for index, candidate := range candidateDocument.nodes {
 		if matched[index] || candidate.Kind != original.Kind || candidate.Range != expectedRange || candidate.ContentRange != expectedContent {
 			continue
 		}
 		if sameRemovalSurvivorSemantics(original, candidate) &&
 			sameRemovalSurvivorAnchors(original, candidate, removed) &&
-			sameRemovalBlockquoteSource(original, candidate, removed) {
+			sameRemovalBlockquoteSource(originalDocument, candidateDocument, original, candidate, removed) {
 			return index
 		}
 	}
@@ -156,22 +156,26 @@ func removalSurvivorSemanticSignature(node Node) removalSurvivorSignature {
 	}
 }
 
-func sameRemovalBlockquoteSource(original, candidate Node, removed Range) bool {
+func sameRemovalBlockquoteSource(originalDocument, candidateDocument *Document, original, candidate Node, removed Range) bool {
 	if original.Kind != KindBlockquote {
 		return true
 	}
-	expectedSource, ok := rangeAfterPatch(original.BlockquoteSource.LineRange, removed, 0)
-	if !ok || candidate.BlockquoteSource.LineRange != expectedSource {
+	originalSource, originalOK := originalDocument.blockquoteSource(original)
+	candidateSource, candidateOK := candidateDocument.blockquoteSource(candidate)
+	if !originalOK || !candidateOK {
 		return false
 	}
-	expectedMarker, ok := rangeAfterPatch(original.BlockquoteSource.MarkerRange, removed, 0)
-	if !ok || candidate.BlockquoteSource.MarkerRange != expectedMarker ||
-		len(candidate.BlockquoteSource.ContentRanges) != len(original.BlockquoteSource.ContentRanges) {
+	expectedSource, ok := rangeAfterPatch(originalSource.LineRange, removed, 0)
+	if !ok || candidateSource.LineRange != expectedSource {
 		return false
 	}
-	for index, content := range original.BlockquoteSource.ContentRanges {
+	expectedMarker, ok := rangeAfterPatch(originalSource.MarkerRange, removed, 0)
+	if !ok || candidateSource.MarkerRange != expectedMarker || len(candidateSource.ContentRanges) != len(originalSource.ContentRanges) {
+		return false
+	}
+	for index, content := range originalSource.ContentRanges {
 		expected, ok := rangeAfterPatch(content, removed, 0)
-		if !ok || candidate.BlockquoteSource.ContentRanges[index] != expected {
+		if !ok || candidateSource.ContentRanges[index] != expected {
 			return false
 		}
 	}

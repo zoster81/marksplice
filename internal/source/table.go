@@ -11,6 +11,7 @@ type TableCellMapping struct {
 
 // TableRowMapping binds one physical GFM table row to all of its lossless cell spans.
 type TableRowMapping struct {
+	Anchor    int
 	Range     Range
 	LineRange Range
 	Cells     []TableCellMapping
@@ -46,6 +47,7 @@ func MapTableRow(input []byte, anchor int) (TableRowMapping, error) {
 		lineRangeEnd = next
 	}
 	return TableRowMapping{
+		Anchor:    anchor,
 		Range:     Range{Start: lineStart, End: lineEnd},
 		LineRange: Range{Start: lineStart, End: lineRangeEnd},
 		Cells:     cells,

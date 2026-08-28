@@ -48,41 +48,77 @@ func (r Range) Valid(total int) bool {
 	return r.Start >= 0 && r.End >= r.Start && r.End <= total
 }
 
+// BlockquoteDetail carries parser-proven blockquote facts that are sparse across
+// the document node stream. Anchor identifies the owning blockquote observation.
+type BlockquoteDetail struct {
+	Anchor         int
+	ContentRange   Range
+	SemanticRanges []Range
+}
+
+// FencedCodeDetail carries parser-proven fenced-code facts that are sparse across
+// the document node stream. Anchor identifies the owning fenced-code observation.
+type FencedCodeDetail struct {
+	Anchor        int
+	ContentRanges []Range
+	Info          string
+	Language      string
+}
+
+// TableDetail carries parser-proven table-owner facts that are sparse across
+// the document node stream. Anchor identifies the owning table observation.
+type TableDetail struct {
+	Anchor            int
+	ColumnCount       int
+	Alignments        []TableAlignment
+	BodyRowCount      int
+	LastBodyRowAnchor int
+}
+
+// TableRowDetail carries parser-proven table-row facts that are sparse across
+// the document node stream. RowAnchor identifies the owning row observation.
+type TableRowDetail struct {
+	RowAnchor   int
+	TableAnchor int
+	ColumnCount int
+	Alignments  []TableAlignment
+}
+
+// TableCellDetail carries parser-proven table-cell facts that are sparse across
+// the document node stream. Range identifies the owning cell observation.
+type TableCellDetail struct {
+	Range       Range
+	Header      bool
+	Column      int
+	RowAnchor   int
+	TableAnchor int
+}
+
 // Node is a parser-independent semantic observation used by Marksplice internals.
+// DetailIndex is a 1-based index into the kind-specific detail slice in the same
+// DocumentObservations value; zero means that the node has no sparse detail.
 type Node struct {
-	Kind                     Kind
-	Range                    Range
-	BlockquoteContentRange   Range
-	BlockquoteSemanticRanges []Range
-	FencedCodeContentRanges  []Range
-	FencedCodeInfo           string
-	FencedCodeLanguage       string
-	Level                    int
-	HeadingText              string
-	Checked                  bool
-	Ordered                  bool
-	Marker                   byte
-	HasListParent            bool
-	ListParentAnchor         int
-	ListContainerAnchor      int
-	HasListChildren          bool
-	ListDirectChildCount     int
-	TableHeader              bool
-	TableColumn              int
-	TableRowAnchor           int
-	TableAnchor              int
-	TableColumnCount         int
-	TableAlignments          []TableAlignment
-	TableBodyRowCount        int
-	TableLastBodyRowAnchor   int
-	Anchor                   int
-	Destination              string
-	Label                    string
-	Title                    string
-	HasTitle                 bool
-	Value                    string
-	AutoLinkEmail            bool
-	TopLevel                 bool
+	Kind                 Kind
+	DetailIndex          uint32
+	Range                Range
+	Level                int
+	HeadingText          string
+	Checked              bool
+	Ordered              bool
+	Marker               byte
+	HasListParent        bool
+	ListParentAnchor     int
+	ListContainerAnchor  int
+	HasListChildren      bool
+	ListDirectChildCount int
+	Anchor               int
+	Destination          string
+	Label                string
+	Title                string
+	HasTitle             bool
+	Value                string
+	AutoLinkEmail        bool
+	TopLevel             bool
 }
 
 // LinkUsageForm identifies the parsed source form of one semantic link/image usage.
@@ -163,6 +199,11 @@ type FootnoteReferenceObservation struct {
 // source order unless the individual observation type documents a narrower ordering rule.
 type DocumentObservations struct {
 	Nodes                     []Node
+	BlockquoteDetails         []BlockquoteDetail
+	FencedCodeDetails         []FencedCodeDetail
+	TableDetails              []TableDetail
+	TableRowDetails           []TableRowDetail
+	TableCellDetails          []TableCellDetail
 	LinkUsages                []LinkUsage
 	UnresolvedReferenceUsages []UnresolvedReferenceUsage
 	FootnoteDefinitions       []FootnoteDefinitionObservation

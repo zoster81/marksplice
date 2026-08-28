@@ -19,7 +19,7 @@ type FootnoteReference struct {
 	Occurrence    int
 }
 
-func footnoteDefinitionNode(snapshot []byte, fingerprint source.Fingerprint, observation parser.FootnoteDefinitionObservation) (Node, bool, error) {
+func footnoteDefinitionNode(snapshot []byte, fingerprint source.Fingerprint, observation parser.FootnoteDefinitionObservation, footnoteSources *[]source.FootnoteDefinitionMapping) (Node, bool, error) {
 	bodyRanges := make([]Range, len(observation.BodyRanges))
 	for index, range_ := range observation.BodyRanges {
 		bodyRanges[index] = Range{Start: range_.Start, End: range_.End}
@@ -31,24 +31,28 @@ func footnoteDefinitionNode(snapshot []byte, fingerprint source.Fingerprint, obs
 		}
 		return Node{}, false, fmt.Errorf("map footnote definition source: %w", err)
 	}
+	index, ok := appendSourceDetail(footnoteSources, mapping)
+	if !ok {
+		return Node{}, false, fmt.Errorf("map footnote definition source: sidecar capacity exceeded")
+	}
 	node := Node{
-		Kind:           KindFootnoteDefinition,
-		Range:          mapping.Range,
-		ContentRange:   mapping.BodyRange,
-		FootnoteSource: mapping,
-		Anchor:         observation.Anchor,
-		Label:          observation.Label,
-		TopLevel:       true,
-		Editable:       true,
+		Kind:              KindFootnoteDefinition,
+		Range:             mapping.Range,
+		ContentRange:      mapping.BodyRange,
+		SourceDetailIndex: index,
+		Anchor:            observation.Anchor,
+		Label:             observation.Label,
+		TopLevel:          true,
+		Editable:          true,
 	}
 	node.ID = makeNodeID(fingerprint, node.Kind, node.Range)
 	return node, true, nil
 }
 
-func promoteFootnoteDefinitionNodes(snapshot []byte, fingerprint source.Fingerprint, definitions []parser.FootnoteDefinitionObservation) ([]Node, error) {
+func promoteFootnoteDefinitionNodes(snapshot []byte, fingerprint source.Fingerprint, definitions []parser.FootnoteDefinitionObservation, footnoteSources *[]source.FootnoteDefinitionMapping) ([]Node, error) {
 	result := make([]Node, 0, len(definitions))
 	for _, definition := range definitions {
-		node, ok, err := footnoteDefinitionNode(snapshot, fingerprint, definition)
+		node, ok, err := footnoteDefinitionNode(snapshot, fingerprint, definition, footnoteSources)
 		if err != nil {
 			return nil, err
 		}
@@ -131,14 +135,57 @@ func (d *Document) FootnoteReferences() []FootnoteReference {
 	return append([]FootnoteReference(nil), d.footnoteReferences...)
 }
 
+func (d *Document) footnoteSource(node Node) (source.FootnoteDefinitionMapping, bool) {
+	if d == nil || node.Kind != KindFootnoteDefinition || !node.Editable || !node.TopLevel {
+		return source.FootnoteDefinitionMapping{}, false
+	}
+	index, ok := sourceDetailIndex(node.SourceDetailIndex, len(d.footnoteSources))
+	if !ok {
+		return source.FootnoteDefinitionMapping{}, false
+	}
+	mapping := d.footnoteSources[index]
+	if !validFootnoteSourceMapping(d.source, node, mapping) {
+		return source.FootnoteDefinitionMapping{}, false
+	}
+	return mapping, true
+}
+
+func validFootnoteSourceMapping(input []byte, node Node, mapping source.FootnoteDefinitionMapping) bool {
+	if mapping.Range != node.Range || mapping.BodyRange != node.ContentRange || !mapping.Range.Valid(len(input)) || mapping.Range.Start >= mapping.Range.End {
+		return false
+	}
+	if !mapping.LabelRange.Valid(len(input)) || mapping.LabelRange.Start >= mapping.LabelRange.End {
+		return false
+	}
+	return sourceRangesWithin(mapping.BodyRanges, mapping.Range, len(input))
+}
+
+// FootnoteSource returns a caller-owned source mapping for one promoted top-level footnote definition.
+func (d *Document) FootnoteSource(id NodeID) (source.FootnoteDefinitionMapping, bool) {
+	node, ok := d.nodeByID(id)
+	if !ok {
+		return source.FootnoteDefinitionMapping{}, false
+	}
+	mapping, ok := d.footnoteSource(node)
+	if !ok {
+		return source.FootnoteDefinitionMapping{}, false
+	}
+	mapping.BodyRanges = append([]source.Range(nil), mapping.BodyRanges...)
+	return mapping, true
+}
+
 // FootnoteDefinitionBodyRanges returns caller-owned parser-proven semantic body ranges.
 func (d *Document) FootnoteDefinitionBodyRanges(id NodeID) ([]Range, bool) {
 	if d == nil {
 		return nil, false
 	}
 	node, ok := d.nodeByID(id)
-	if !ok || node.Kind != KindFootnoteDefinition || !node.Editable || !node.TopLevel {
+	if !ok {
 		return nil, false
 	}
-	return append([]Range(nil), node.FootnoteSource.BodyRanges...), true
+	mapping, ok := d.footnoteSource(node)
+	if !ok {
+		return nil, false
+	}
+	return append([]Range(nil), mapping.BodyRanges...), true
 }

@@ -2,6 +2,8 @@ package native
 
 import "testing"
 
+var inlineStartIndexAllocationSink inlineStartIndex
+
 func TestDelimiterRunIndexSingleAndMultiSegment(t *testing.T) {
 	t.Parallel()
 
@@ -42,6 +44,20 @@ func TestDelimiterRunIndexSingleAndMultiSegment(t *testing.T) {
 	}
 }
 
+func TestInlineStartIndexMultiSegmentAllocationBudget(t *testing.T) {
+	allocations := testing.AllocsPerRun(1000, func() {
+		index := newInlineStartIndex(3)
+		index.add(2, 9)
+		index.add(0, 2)
+		index.add(2, 4)
+		index.finalize()
+		inlineStartIndexAllocationSink = index
+	})
+	if allocations > 1 {
+		t.Fatalf("multi-segment inline-start index allocations = %.0f, want <= 1", allocations)
+	}
+}
+
 func TestInlineStartIndexSingleAndMultiSegment(t *testing.T) {
 	t.Parallel()
 
@@ -54,10 +70,10 @@ func TestInlineStartIndexSingleAndMultiSegment(t *testing.T) {
 		index.add(1, 9)
 		index.finalize()
 		if !index.hasAt(0, 3) || !index.hasAt(0, 7) || index.hasAt(0, 4) {
-			t.Fatalf("single-segment starts = %v", index.starts(0))
+			t.Fatalf("single-segment index = %#v", index)
 		}
 		if !index.anyIn(0, 4, 8) || index.anyIn(0, 8, 9) || index.anyIn(1, 0, 10) {
-			t.Fatalf("single-segment range queries changed: %v", index.starts(0))
+			t.Fatalf("single-segment range queries changed: %#v", index)
 		}
 	})
 
@@ -68,7 +84,10 @@ func TestInlineStartIndexSingleAndMultiSegment(t *testing.T) {
 		index.add(2, 4)
 		index.finalize()
 		if !index.hasAt(0, 2) || !index.hasAt(2, 4) || !index.hasAt(2, 9) || index.hasAt(1, 2) {
-			t.Fatalf("multi-segment starts = %v / %v / %v", index.starts(0), index.starts(1), index.starts(2))
+			t.Fatalf("multi-segment index = %#v", index)
+		}
+		if !index.anyIn(2, 3, 5) || index.anyIn(1, 0, 10) || index.anyIn(2, 10, 12) {
+			t.Fatalf("multi-segment range queries changed: %#v", index)
 		}
 	})
 

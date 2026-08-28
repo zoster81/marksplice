@@ -33,8 +33,9 @@ func (d *Document) parseListItemSubtreeFragment(fragment []byte, anchor source.L
 	if err != nil {
 		return nil, listItemSubtreeOwnership{}, err
 	}
-	if fragmentSubtree.Range != (Range{Start: 0, End: len(fragment)}) ||
-		!sameListItemSiblingShape(fragment, root.ListItemSource, d.source, anchor) ||
+	rootSource, ok := remapListItemSource(fragmentDocument.source, root)
+	if !ok || fragmentSubtree.Range != (Range{Start: 0, End: len(fragment)}) ||
+		!sameListItemSiblingShape(fragment, rootSource, d.source, anchor) ||
 		len(fragmentSubtree.IDs) != fragmentDocument.promotedListItemCount() {
 		return nil, listItemSubtreeOwnership{}, ErrInvalidReplacement
 	}
@@ -105,7 +106,10 @@ func listItemCandidateMappingsFromDocument(document *Document) (map[int]listItem
 		if !ok {
 			return nil, ErrInvalidReplacement
 		}
-		mapping := node.ListItemSource
+		mapping, ok := remapListItemSource(document.source, node)
+		if !ok {
+			return nil, ErrInvalidReplacement
+		}
 		if _, exists := items[mapping.LineRange.Start]; exists {
 			return nil, ErrInvalidReplacement
 		}
@@ -145,7 +149,10 @@ func (d *Document) validateOriginalListItemsAfterPatches(candidate []byte, candi
 }
 
 func (d *Document) originalListItemSurvives(candidate []byte, candidateItems map[int]listItemCandidateMapping, originalNode Node, ordered []patchTransform, childCountDelta int) bool {
-	original := originalNode.ListItemSource
+	original, ok := remapListItemSource(d.source, originalNode)
+	if !ok {
+		return false
+	}
 	expectedLine, ok := rangeAfterOrderedPatches(original.LineRange, ordered)
 	if !ok {
 		return false
@@ -217,7 +224,7 @@ func validateCandidateListItemSibling(candidateItems map[int]listItemCandidateMa
 	if !ok {
 		return ErrInvalidReplacement
 	}
-	expectedAnchorLine, ok := rangeAfterPatches(anchor.ListItemSource.LineRange, patches)
+	expectedAnchorLine, ok := rangeAfterPatches(anchor.ListItemLineRange, patches)
 	if !ok {
 		return ErrInvalidReplacement
 	}
@@ -269,7 +276,10 @@ func (d *Document) validatePlacedListItemSubtreeMappings(candidate []byte, candi
 		if !ok || originalNode.Kind != KindListItem {
 			return ErrInvalidReplacement
 		}
-		original := originalNode.ListItemSource
+		original, ok := remapListItemSource(d.source, originalNode)
+		if !ok {
+			return ErrInvalidReplacement
+		}
 		expectedLine := shiftedRange(original.LineRange, delta)
 		expectedRange := shiftedRange(original.Range, delta)
 		expectedContent := shiftedRange(original.ContentRange, delta)
@@ -326,7 +336,9 @@ func (d *Document) insertedListItemChildSubtree(fragment []byte, insertAt, paren
 
 func validateReplacedListItemSubtreeRoot(originalSource []byte, target Node, candidateSource []byte, replacement listItemSubtreeOwnership, patches []patchTransform) error {
 	root := replacement.Root
-	if root.ListHasParent != target.ListHasParent || !sameListItemSiblingShape(candidateSource, root.ListItemSource, originalSource, target.ListItemSource) {
+	rootSource, rootOK := remapListItemSource(candidateSource, root)
+	targetSource, targetOK := remapListItemSource(originalSource, target)
+	if !rootOK || !targetOK || root.ListHasParent != target.ListHasParent || !sameListItemSiblingShape(candidateSource, rootSource, originalSource, targetSource) {
 		return ErrInvalidReplacement
 	}
 	if !target.ListHasParent {
@@ -351,7 +363,7 @@ func (d *Document) listItemNodeAtLineStart(lineStart int) (Node, bool) {
 		if !ok {
 			return Node{}, false
 		}
-		if node.ListItemSource.LineRange.Start < lineStart {
+		if node.ListItemLineRange.Start < lineStart {
 			low = middle + 1
 		} else {
 			high = middle
@@ -362,7 +374,7 @@ func (d *Document) listItemNodeAtLineStart(lineStart int) (Node, bool) {
 	}
 	nodeIndex := d.listItemIndexes[low]
 	node, ok := d.indexedEditableNode(nodeIndex, KindListItem)
-	if !ok || node.ListItemSource.LineRange.Start != lineStart {
+	if !ok || node.ListItemLineRange.Start != lineStart {
 		return Node{}, false
 	}
 	return node, true

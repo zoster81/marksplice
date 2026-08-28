@@ -9,14 +9,22 @@ type tableRowScan struct {
 	hasPipe bool
 }
 
-func parseTable(source []byte, lines []physicalLine, index int) ([]parser.Node, []parser.Range, int, bool) {
+type tableParseDetails struct {
+	tables []parser.TableDetail
+	rows   []parser.TableRowDetail
+	cells  []parser.TableCellDetail
+}
+
+func parseTable(source []byte, lines []physicalLine, index int) ([]parser.Node, tableParseDetails, []parser.Range, int, bool) {
 	header, alignments, ok := parseTableOpening(source, lines, index)
 	if !ok {
-		return nil, nil, index, false
+		return nil, tableParseDetails{}, nil, index, false
 	}
 	headerLine := lines[index]
 
 	bodyNodes := make([]parser.Node, 0)
+	bodyRowDetails := make([]parser.TableRowDetail, 0)
+	bodyCellDetails := make([]parser.TableCellDetail, 0)
 	semantic := tableRowSemanticRanges(source, header.cells, len(header.cells))
 	bodyRowCount := 0
 	lastBodyRowAnchor := 0
@@ -28,25 +36,36 @@ func parseTable(source []byte, lines []physicalLine, index int) ([]parser.Node, 
 		}
 		bodyRowCount++
 		lastBodyRowAnchor = row.anchor
-		bodyNodes = append(bodyNodes, tableRowNode(row, header.anchor, len(header.cells), alignments))
-		bodyNodes = append(bodyNodes, tableCellNodes(row.cells, false, row.anchor, header.anchor, len(header.cells))...)
+		rowNode, rowDetail := tableRowNode(row, header.anchor, len(header.cells), alignments)
+		bodyNodes = append(bodyNodes, rowNode)
+		bodyRowDetails = append(bodyRowDetails, rowDetail)
+		cellNodes, cellDetails := tableCellNodes(row.cells, false, row.anchor, header.anchor, len(header.cells))
+		bodyNodes = append(bodyNodes, cellNodes...)
+		bodyCellDetails = append(bodyCellDetails, cellDetails...)
 		semantic = append(semantic, tableRowSemanticRanges(source, row.cells, len(header.cells))...)
 		next++
 	}
 
 	nodes := make([]parser.Node, 0, 1+len(header.cells)+len(bodyNodes))
 	nodes = append(nodes, parser.Node{
-		Kind:                   parser.KindTable,
-		Range:                  parser.Range{Start: header.anchor, End: header.end},
-		TableAnchor:            header.anchor,
-		TableColumnCount:       len(header.cells),
-		TableAlignments:        append([]parser.TableAlignment(nil), alignments...),
-		TableBodyRowCount:      bodyRowCount,
-		TableLastBodyRowAnchor: lastBodyRowAnchor,
+		Kind:  parser.KindTable,
+		Range: parser.Range{Start: header.anchor, End: header.end},
 	})
-	nodes = append(nodes, tableCellNodes(header.cells, true, header.anchor, header.anchor, len(header.cells))...)
+	headerNodes, headerDetails := tableCellNodes(header.cells, true, header.anchor, header.anchor, len(header.cells))
+	nodes = append(nodes, headerNodes...)
 	nodes = append(nodes, bodyNodes...)
-	return nodes, semantic, next, true
+	details := tableParseDetails{
+		tables: []parser.TableDetail{{
+			Anchor:            header.anchor,
+			ColumnCount:       len(header.cells),
+			Alignments:        append([]parser.TableAlignment(nil), alignments...),
+			BodyRowCount:      bodyRowCount,
+			LastBodyRowAnchor: lastBodyRowAnchor,
+		}},
+		rows:  bodyRowDetails,
+		cells: append(headerDetails, bodyCellDetails...),
+	}
+	return nodes, details, semantic, next, true
 }
 
 func parseTableOpening(source []byte, lines []physicalLine, index int) (tableRowScan, []parser.TableAlignment, bool) {
@@ -109,35 +128,42 @@ func tableLazyBodyContinuation(source []byte, header, line physicalLine) bool {
 	return header.start != header.physicalStart && line.start == line.physicalStart && lazyParagraphContinuation(source, line)
 }
 
-func tableRowNode(row tableRowScan, tableAnchor, columnCount int, alignments []parser.TableAlignment) parser.Node {
-	return parser.Node{
-		Kind:             parser.KindTableRow,
-		Range:            parser.Range{Start: row.anchor, End: row.end},
-		TableRowAnchor:   row.anchor,
-		TableAnchor:      tableAnchor,
-		TableColumnCount: columnCount,
-		TableAlignments:  append([]parser.TableAlignment(nil), alignments...),
+func tableRowNode(row tableRowScan, tableAnchor, columnCount int, alignments []parser.TableAlignment) (parser.Node, parser.TableRowDetail) {
+	node := parser.Node{
+		Kind:  parser.KindTableRow,
+		Range: parser.Range{Start: row.anchor, End: row.end},
 	}
+	detail := parser.TableRowDetail{
+		RowAnchor:   row.anchor,
+		TableAnchor: tableAnchor,
+		ColumnCount: columnCount,
+		Alignments:  append([]parser.TableAlignment(nil), alignments...),
+	}
+	return node, detail
 }
 
-func tableCellNodes(cells []parser.Range, header bool, rowAnchor, tableAnchor, columnCount int) []parser.Node {
+func tableCellNodes(cells []parser.Range, header bool, rowAnchor, tableAnchor, columnCount int) ([]parser.Node, []parser.TableCellDetail) {
 	limit := min(len(cells), columnCount)
 	nodes := make([]parser.Node, 0, limit)
+	details := make([]parser.TableCellDetail, 0, limit)
 	for column := 0; column < limit; column++ {
 		range_ := cells[column]
 		if range_.Start == range_.End {
 			continue
 		}
 		nodes = append(nodes, parser.Node{
-			Kind:           parser.KindTableCell,
-			Range:          range_,
-			TableHeader:    header,
-			TableColumn:    column,
-			TableRowAnchor: rowAnchor,
-			TableAnchor:    tableAnchor,
+			Kind:  parser.KindTableCell,
+			Range: range_,
+		})
+		details = append(details, parser.TableCellDetail{
+			Range:       range_,
+			Header:      header,
+			Column:      column,
+			RowAnchor:   rowAnchor,
+			TableAnchor: tableAnchor,
 		})
 	}
-	return nodes
+	return nodes, details
 }
 
 func scanTableRow(source []byte, line physicalLine, allowNoPipe bool) (tableRowScan, bool) {

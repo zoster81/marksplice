@@ -212,6 +212,11 @@ func assembleList(source []byte, items []parsedListItem, loose bool) blockParseR
 		} else {
 			result.nodes = appendTaskAndChildren(result.nodes, source, child)
 		}
+		result.blockquoteDetails = append(result.blockquoteDetails, child.blockquoteDetails...)
+		result.fencedCodeDetails = append(result.fencedCodeDetails, child.fencedCodeDetails...)
+		result.tableDetails = append(result.tableDetails, child.tableDetails...)
+		result.tableRowDetails = append(result.tableRowDetails, child.tableRowDetails...)
+		result.tableCellDetails = append(result.tableCellDetails, child.tableCellDetails...)
 		result.semantic = append(result.semantic, child.semantic...)
 		result.inlines = append(result.inlines, child.inlines...)
 		result.references = append(result.references, child.references...)

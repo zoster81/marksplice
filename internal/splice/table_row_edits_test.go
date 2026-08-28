@@ -22,7 +22,7 @@ func TestTableRowModelAndRemovalPreserveTableStructure(t *testing.T) {
 	if rows[0].TableAnchor != rows[1].TableAnchor || rows[0].TableColumnCount != 2 || rows[1].TableColumnCount != 2 {
 		t.Fatalf("row table/column facts = anchor %d/%d columns %d/%d", rows[0].TableAnchor, rows[1].TableAnchor, rows[0].TableColumnCount, rows[1].TableColumnCount)
 	}
-	if got := string(source[rows[0].TableRowSource.LineRange.Start:rows[0].TableRowSource.LineRange.End]); got != "| one | two |\r\n" {
+	if got := string(source[rows[0].Range.Start:rows[0].Range.End]); got != "| one | two |\r\n" {
 		t.Fatalf("first row bytes = %q", got)
 	}
 

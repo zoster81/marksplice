@@ -72,6 +72,9 @@ func (d *Document) PrepareReplaceFrontMatterValue(id NodeID, replacement []byte)
 	if (target.Kind != KindYAMLFrontMatterField && target.Kind != KindTOMLFrontMatterField) || !target.Editable {
 		return ChangeSet{}, ErrInvalidTargetKind
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
@@ -118,6 +121,9 @@ func (d *Document) PrepareReplaceHTMLComment(id NodeID, replacement []byte) (Cha
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
@@ -158,6 +164,9 @@ func (d *Document) PrepareReplaceHTMLAnchor(id NodeID, replacement []byte) (Chan
 	target, err := d.editableTargetNode(id, KindHTMLAnchor, "HTML anchor")
 	if err != nil {
 		return ChangeSet{}, err
+	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
 	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err

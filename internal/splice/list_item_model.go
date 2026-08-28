@@ -53,7 +53,7 @@ func (b *listItemModelBuilder) collectItems() error {
 		if _, exists := seenIDs[node.ID]; exists {
 			return fmt.Errorf("%w: %q", errDuplicateNodeID, node.ID)
 		}
-		lineStart := node.ListItemSource.LineRange.Start
+		lineStart := node.ListItemLineRange.Start
 		if previousOrdinal, exists := b.ordinalByLineStart[lineStart]; exists {
 			previous := b.nodes[b.itemIndexes[previousOrdinal]]
 			return fmt.Errorf("duplicate supported list-item line start %d for %q and %q", lineStart, previous.ID, node.ID)
@@ -69,7 +69,7 @@ func (b *listItemModelBuilder) collectItems() error {
 		node.ListChildStart = 0
 		node.ListChildCount = 0
 		node.ListSubtreeComplete = false
-		node.ListSubtreeEnd = node.ListItemSource.LineRange.End
+		node.ListSubtreeEnd = node.ListItemLineRange.End
 		lastLineStart = lineStart
 	}
 	return nil
@@ -164,7 +164,7 @@ func (b *listItemModelBuilder) resolveSubtrees() error {
 }
 
 func listItemSubtreeRange(item Node) Range {
-	return Range{Start: item.ListItemSource.LineRange.Start, End: item.ListSubtreeEnd}
+	return Range{Start: item.ListItemLineRange.Start, End: item.ListSubtreeEnd}
 }
 
 type listItemSubtreeOwnership struct {
@@ -198,7 +198,7 @@ func (d *Document) listItemSubtreeIDs(root Node, subtreeRange Range) (map[NodeID
 		if _, duplicate := ids[node.ID]; duplicate || !node.ListSubtreeComplete {
 			return nil, false
 		}
-		lineRange := node.ListItemSource.LineRange
+		lineRange := node.ListItemLineRange
 		if lineRange.Start < subtreeRange.Start || lineRange.End > subtreeRange.End {
 			return nil, false
 		}
@@ -240,20 +240,20 @@ func validListItemChildSpanRequest(d *Document, parent Node) bool {
 }
 
 func (d *Document) validListItemChildren(parent Node, ids []NodeID) bool {
-	previousStart := parent.ListItemSource.LineRange.Start
+	previousStart := parent.ListItemLineRange.Start
 	for _, id := range ids {
 		child, ok := d.nodeByID(id)
 		if !ok || !validListItemChild(parent, child, previousStart) {
 			return false
 		}
-		previousStart = child.ListItemSource.LineRange.Start
+		previousStart = child.ListItemLineRange.Start
 	}
 	return true
 }
 
 func validListItemChild(parent, child Node, previousStart int) bool {
 	return child.Kind == KindListItem && child.Editable && child.ListParentID == parent.ID &&
-		child.ListParentAnchor == parent.ListItemSource.LineRange.Start && child.ListItemSource.LineRange.Start > previousStart
+		child.ListParentAnchor == parent.ListItemLineRange.Start && child.ListItemLineRange.Start > previousStart
 }
 
 func (d *Document) promotedListItemCount() int {

@@ -56,7 +56,8 @@ func (b *tableRowModelBuilder) collectRows() error {
 		}
 		anchor := row.TableRowAnchor
 		tableAnchor := row.TableAnchor
-		if anchor < 0 || anchor != row.TableRowSource.LineRange.Start || anchor <= lastRowStart {
+		lineStart := row.Range.Start
+		if anchor < 0 || anchor != row.TableRowSourceAnchor || lineStart < 0 || lineStart <= lastRowStart {
 			return fmt.Errorf("invalid promoted table-row anchor %d after %d", anchor, lastRowStart)
 		}
 		if tableAnchor < 0 || tableAnchor > anchor || tableAnchor < lastTableAnchor {
@@ -77,7 +78,7 @@ func (b *tableRowModelBuilder) collectRows() error {
 		lastRowIndexByTable[tableAnchor] = index
 		b.rowOrdinalByAnchor[anchor] = len(b.rowIndexes)
 		b.rowIndexes = append(b.rowIndexes, index)
-		lastRowStart = anchor
+		lastRowStart = lineStart
 		lastTableAnchor = tableAnchor
 	}
 	return nil
@@ -139,7 +140,7 @@ func (b *tableRowModelBuilder) resolveBodyCell(cell *Node, lastColumns []int) er
 	if cell.TableColumn < 0 || cell.TableColumn >= row.TableColumnCount || cell.TableColumn <= lastColumns[ordinal] {
 		return fmt.Errorf("invalid promoted table-cell column %d for row %q", cell.TableColumn, row.ID)
 	}
-	if cell.TableCellSource.Range.Start < row.TableRowSource.Range.Start || cell.TableCellSource.Range.End > row.TableRowSource.Range.End {
+	if cell.TableCellRange.Start < row.ContentRange.Start || cell.TableCellRange.End > row.ContentRange.End {
 		return fmt.Errorf("promoted table cell %q escapes row %q", cell.ID, row.ID)
 	}
 	cell.TableRowID = row.ID
@@ -281,9 +282,9 @@ func (d *Document) validTableRowNeighbor(row Node, neighborID NodeID, previous b
 		return false
 	}
 	if previous {
-		return neighbor.TableRowSource.LineRange.Start < row.TableRowSource.LineRange.Start && neighbor.TableNextRowID == row.ID
+		return neighbor.Range.Start < row.Range.Start && neighbor.TableNextRowID == row.ID
 	}
-	return neighbor.TableRowSource.LineRange.Start > row.TableRowSource.LineRange.Start && neighbor.TablePreviousRowID == row.ID
+	return neighbor.Range.Start > row.Range.Start && neighbor.TablePreviousRowID == row.ID
 }
 
 // TableRowHeaderCellIDs returns the promoted non-empty header-cell identities for the table that owns one promoted body row.

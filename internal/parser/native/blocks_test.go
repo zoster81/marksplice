@@ -59,10 +59,8 @@ func TestM115GFMTableSplitsTrailingLineFromOpenParagraph(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("Intro line.\n| A | B |\n| --- | --- |\n| x | y |\n")
-	nodes, err := ParseBlocks(source)
-	if err != nil {
-		t.Fatalf("ParseBlocks() error = %v", err)
-	}
+	parsed := parseBlockLines(source, physicalLines(source), true)
+	nodes := parsed.nodes
 
 	tableAnchor := bytes.Index(source, []byte("| A | B |"))
 	var table parser.Node
@@ -78,8 +76,8 @@ func TestM115GFMTableSplitsTrailingLineFromOpenParagraph(t *testing.T) {
 	if !found {
 		t.Fatalf("ParseBlocks() = %#v, want table split from trailing paragraph line", nodes)
 	}
-	if table.TableAnchor != tableAnchor || table.Range.Start != tableAnchor {
-		t.Fatalf("table anchor/range = %d/%v, want anchor %d", table.TableAnchor, table.Range, tableAnchor)
+	if table.Range.Start != tableAnchor || len(parsed.tableDetails) != 1 || parsed.tableDetails[0].Anchor != tableAnchor {
+		t.Fatalf("table range/detail = %v/%#v, want anchor %d", table.Range, parsed.tableDetails, tableAnchor)
 	}
 }
 
@@ -202,7 +200,6 @@ func TestParseBlocksLeafStructures(t *testing.T) {
 
 	fenced := []byte("  ~~~~ go test  \n  one\n    two\n  ~~~~\n")
 	fencedBodyStart := bytes.Index(fenced, []byte("one"))
-	fencedSecondLineStart := bytes.Index(fenced, []byte("    two")) + 2
 	fencedSecondLineEnd := bytes.Index(fenced, []byte("\n  ~~~~"))
 
 	tests := []struct {
@@ -256,24 +253,20 @@ func TestParseBlocksLeafStructures(t *testing.T) {
 			name:   "fenced block",
 			source: fenced,
 			want: []parser.Node{{
-				Kind:                    parser.KindFencedCode,
-				Range:                   parser.Range{Start: fencedBodyStart, End: fencedSecondLineEnd},
-				Anchor:                  2,
-				FencedCodeContentRanges: []parser.Range{{Start: fencedBodyStart, End: fencedBodyStart + len("one")}, {Start: fencedSecondLineStart, End: fencedSecondLineEnd}},
-				FencedCodeInfo:          "go test",
-				FencedCodeLanguage:      "go",
-				TopLevel:                true,
+				Kind:     parser.KindFencedCode,
+				Range:    parser.Range{Start: fencedBodyStart, End: fencedSecondLineEnd},
+				Anchor:   2,
+				TopLevel: true,
 			}},
 		},
 		{
 			name:   "empty fenced block",
 			source: []byte("```\n```\n"),
 			want: []parser.Node{{
-				Kind:                    parser.KindFencedCode,
-				Range:                   parser.Range{Start: 0, End: 0},
-				Anchor:                  0,
-				FencedCodeContentRanges: []parser.Range{},
-				TopLevel:                true,
+				Kind:     parser.KindFencedCode,
+				Range:    parser.Range{Start: 0, End: 0},
+				Anchor:   0,
+				TopLevel: true,
 			}},
 		},
 		{
@@ -309,6 +302,30 @@ func TestParseBlocksLeafStructures(t *testing.T) {
 				t.Fatalf("ParseBlocks() = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseBlockLinesCollectsSparseBlockDetails(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("> quote\n\n```go test\none\ntwo\n```\n")
+	parsed := parseBlockLines(source, physicalLines(source), true)
+	if len(parsed.blockquoteDetails) != 1 {
+		t.Fatalf("blockquote details = %#v, want one", parsed.blockquoteDetails)
+	}
+	quote := parsed.blockquoteDetails[0]
+	if quote.Anchor != 0 || quote.ContentRange != (parser.Range{Start: 2, End: 7}) || len(quote.SemanticRanges) != 1 || quote.SemanticRanges[0] != (parser.Range{Start: 2, End: 7}) {
+		t.Fatalf("blockquote detail = %#v, want exact sparse facts", quote)
+	}
+	if len(parsed.fencedCodeDetails) != 1 {
+		t.Fatalf("fenced details = %#v, want one", parsed.fencedCodeDetails)
+	}
+	fence := parsed.fencedCodeDetails[0]
+	if fence.Anchor != 9 || fence.Info != "go test" || fence.Language != "go" || len(fence.ContentRanges) != 2 {
+		t.Fatalf("fenced detail = %#v, want exact sparse facts", fence)
+	}
+	if fence.ContentRanges[0] != (parser.Range{Start: 20, End: 23}) || fence.ContentRanges[1] != (parser.Range{Start: 24, End: 27}) {
+		t.Fatalf("fenced content ranges = %#v, want exact body lines", fence.ContentRanges)
 	}
 }
 

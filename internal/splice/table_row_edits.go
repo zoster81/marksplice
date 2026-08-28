@@ -9,7 +9,7 @@ func (d *Document) PrepareReplaceTableRow(id NodeID, replacement []byte) (Change
 	if len(replacement) == 0 {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	lineRange := target.TableRowSource.LineRange
+	lineRange := target.Range
 	change, candidate, err := d.prepareCandidateChange(lineRange, replacement, "table row replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -37,7 +37,7 @@ func (d *Document) PrepareRemoveTableRow(id NodeID) (ChangeSet, error) {
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	change, candidate, err := d.prepareCandidateChange(target.TableRowSource.LineRange, nil, "table row removal")
+	change, candidate, err := d.prepareCandidateChange(target.Range, nil, "table row removal")
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -48,7 +48,7 @@ func (d *Document) PrepareRemoveTableRow(id NodeID) (ChangeSet, error) {
 	if candidateIndex.rowCount != d.promotedTableRowCount()-1 {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	patches := []patchTransform{{Range: target.TableRowSource.LineRange}}
+	patches := []patchTransform{{Range: target.Range}}
 	if err := d.validateOriginalTableModelAfterPatches(candidate, candidateIndex, patches, &target); err != nil {
 		return ChangeSet{}, err
 	}
@@ -73,10 +73,10 @@ func (d *Document) prepareInsertTableRow(anchorID NodeID, fragment []byte, after
 	if len(fragment) == 0 {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	insertAt := anchor.TableRowSource.LineRange.Start
+	insertAt := anchor.Range.Start
 	operation := "table row insertion before"
 	if after {
-		insertAt = anchor.TableRowSource.LineRange.End
+		insertAt = anchor.Range.End
 		operation = "table row insertion after"
 	}
 	patch := Range{Start: insertAt, End: insertAt}
@@ -156,16 +156,16 @@ func (d *Document) planTableRowMove(id, anchorID NodeID, after bool) (tableRowMo
 	plan := tableRowMovePlan{
 		moved:      moved,
 		anchor:     anchor,
-		movedRange: moved.TableRowSource.LineRange,
-		insertAt:   anchor.TableRowSource.LineRange.Start,
+		movedRange: moved.Range,
+		insertAt:   anchor.Range.Start,
 		operation:  "table row move before",
 	}
 	if after {
-		plan.insertAt = anchor.TableRowSource.LineRange.End
+		plan.insertAt = anchor.Range.End
 		plan.operation = "table row move after"
 	}
-	if !after && plan.movedRange.End == anchor.TableRowSource.LineRange.Start ||
-		after && anchor.TableRowSource.LineRange.End == plan.movedRange.Start {
+	if !after && plan.movedRange.End == anchor.Range.Start ||
+		after && anchor.Range.End == plan.movedRange.Start {
 		return plan, true, nil
 	}
 	if plan.insertAt > plan.movedRange.Start && plan.insertAt < plan.movedRange.End {

@@ -27,9 +27,6 @@ type headingTerminal struct {
 func completeBackendBlockFacts(source []byte, nodes []parser.Node, analyses []inlineAnalysis) {
 	byStart := inlineAnalysisStartIndex(analyses)
 	for index := range nodes {
-		if nodes[index].Kind == parser.KindBlockquote && nodes[index].BlockquoteSemanticRanges == nil {
-			nodes[index].BlockquoteSemanticRanges = []parser.Range{}
-		}
 		if nodes[index].Kind != parser.KindHeading {
 			continue
 		}

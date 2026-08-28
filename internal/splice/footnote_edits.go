@@ -15,7 +15,11 @@ func (d *Document) PrepareReplaceFootnoteDefinitionBody(id NodeID, replacement [
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	body := target.FootnoteSource.BodyRange
+	mapping, ok := d.footnoteSource(target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidTargetKind
+	}
+	body := mapping.BodyRange
 	if body.Start >= body.End || !body.Valid(len(d.source)) {
 		return ChangeSet{}, ErrInvalidTargetKind
 	}
@@ -55,7 +59,11 @@ func (d *Document) PrepareRenameFootnote(id NodeID, replacement []byte) (ChangeS
 		return ChangeSet{}, ErrInvalidReplacement
 	}
 
-	patches := []source.Patch{{Range: target.FootnoteSource.LabelRange, Replacement: replacement}}
+	mapping, ok := d.footnoteSource(target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidTargetKind
+	}
+	patches := []source.Patch{{Range: mapping.LabelRange, Replacement: replacement}}
 	for _, reference := range d.footnoteReferences {
 		if reference.HasDefinition && reference.DefinitionID == target.ID {
 			patches = append(patches, source.Patch{Range: reference.LabelRange, Replacement: replacement})
@@ -118,12 +126,12 @@ func sameFootnoteDefinitionsAfterBodyReplacement(original, candidate *Document, 
 	}
 	for index := range left {
 		if left[index].ID == target.ID {
-			if !sameReplacedFootnoteDefinition(left[index], right[index], replacement, transforms) {
+			if !sameReplacedFootnoteDefinition(original, candidate, left[index], right[index], replacement, transforms) {
 				return false
 			}
 			continue
 		}
-		if !sameShiftedFootnoteDefinition(left[index], right[index], transforms, left[index].Label) {
+		if !sameShiftedFootnoteDefinition(original, candidate, left[index], right[index], transforms, left[index].Label) {
 			return false
 		}
 	}
@@ -141,15 +149,20 @@ func sameFootnoteDefinitionsAfterRename(original, candidate *Document, target No
 		if left[index].ID == target.ID {
 			expectedLabel = label
 		}
-		if !sameShiftedFootnoteDefinition(left[index], right[index], transforms, expectedLabel) {
+		if !sameShiftedFootnoteDefinition(original, candidate, left[index], right[index], transforms, expectedLabel) {
 			return false
 		}
 	}
 	return true
 }
 
-func sameShiftedFootnoteDefinition(original, candidate Node, transforms []patchTransform, expectedLabel string) bool {
-	expectedRange, ok := rangeBoundariesAfterPatches(original.FootnoteSource.Range, transforms)
+func sameShiftedFootnoteDefinition(originalDocument, candidateDocument *Document, original, candidate Node, transforms []patchTransform, expectedLabel string) bool {
+	originalSource, originalOK := originalDocument.footnoteSource(original)
+	candidateSource, candidateOK := candidateDocument.footnoteSource(candidate)
+	if !originalOK || !candidateOK {
+		return false
+	}
+	expectedRange, ok := rangeBoundariesAfterPatches(originalSource.Range, transforms)
 	if !ok {
 		return false
 	}
@@ -159,24 +172,26 @@ func sameShiftedFootnoteDefinition(original, candidate Node, transforms []patchT
 	}
 	expectedLabelRange := Range{Start: expectedAnchor + 2, End: expectedAnchor + 2 + len(expectedLabel)}
 	if candidate.Kind != KindFootnoteDefinition || !candidate.TopLevel || !candidate.Editable || candidate.Label != expectedLabel ||
-		candidate.Anchor != expectedAnchor || candidate.FootnoteSource.Range != expectedRange || candidate.FootnoteSource.LabelRange != expectedLabelRange {
+		candidate.Anchor != expectedAnchor || candidateSource.Range != expectedRange || candidateSource.LabelRange != expectedLabelRange {
 		return false
 	}
-	return sameShiftedFootnoteBodyRanges(original.FootnoteSource, candidate.FootnoteSource, transforms)
+	return sameShiftedFootnoteBodyRanges(originalSource, candidateSource, transforms)
 }
 
-func sameReplacedFootnoteDefinition(original, candidate Node, replacement []byte, transforms []patchTransform) bool {
-	if !sameShiftedFootnoteDefinitionBase(original, candidate, transforms, original.Label) {
+func sameReplacedFootnoteDefinition(originalDocument, candidateDocument *Document, original, candidate Node, replacement []byte, transforms []patchTransform) bool {
+	originalSource, originalOK := originalDocument.footnoteSource(original)
+	candidateSource, candidateOK := candidateDocument.footnoteSource(candidate)
+	if !originalOK || !candidateOK || !sameShiftedFootnoteDefinitionBase(original, candidate, originalSource, candidateSource, transforms, original.Label) {
 		return false
 	}
-	body := original.FootnoteSource.BodyRange
+	body := originalSource.BodyRange
 	expectedBody := Range{Start: body.Start, End: body.Start + len(replacement)}
-	return candidate.FootnoteSource.BodyRange == expectedBody && candidate.ContentRange == expectedBody &&
-		len(candidate.FootnoteSource.BodyRanges) == 1 && candidate.FootnoteSource.BodyRanges[0] == expectedBody
+	return candidateSource.BodyRange == expectedBody && candidate.ContentRange == expectedBody &&
+		len(candidateSource.BodyRanges) == 1 && candidateSource.BodyRanges[0] == expectedBody
 }
 
-func sameShiftedFootnoteDefinitionBase(original, candidate Node, transforms []patchTransform, expectedLabel string) bool {
-	expectedRange, ok := rangeBoundariesAfterPatches(original.FootnoteSource.Range, transforms)
+func sameShiftedFootnoteDefinitionBase(original, candidate Node, originalSource, candidateSource source.FootnoteDefinitionMapping, transforms []patchTransform, expectedLabel string) bool {
+	expectedRange, ok := rangeBoundariesAfterPatches(originalSource.Range, transforms)
 	if !ok {
 		return false
 	}
@@ -184,12 +199,12 @@ func sameShiftedFootnoteDefinitionBase(original, candidate Node, transforms []pa
 	if !ok {
 		return false
 	}
-	expectedLabelRange, ok := rangeBoundariesAfterPatches(original.FootnoteSource.LabelRange, transforms)
+	expectedLabelRange, ok := rangeBoundariesAfterPatches(originalSource.LabelRange, transforms)
 	if !ok {
 		return false
 	}
 	return candidate.Kind == KindFootnoteDefinition && candidate.TopLevel && candidate.Editable && candidate.Label == expectedLabel &&
-		candidate.Anchor == expectedAnchor && candidate.FootnoteSource.Range == expectedRange && candidate.FootnoteSource.LabelRange == expectedLabelRange
+		candidate.Anchor == expectedAnchor && candidateSource.Range == expectedRange && candidateSource.LabelRange == expectedLabelRange
 }
 
 func sameShiftedFootnoteBodyRanges(original, candidate source.FootnoteDefinitionMapping, transforms []patchTransform) bool {
@@ -238,7 +253,11 @@ func sameFootnoteReferencesAfterRename(original, candidate *Document, target Nod
 }
 
 func sameFootnoteReferencesOutsideOwnedBody(original, candidate *Document, target Node, transforms []patchTransform) bool {
-	oldBody := target.FootnoteSource.BodyRange
+	mapping, ok := original.footnoteSource(target)
+	if !ok {
+		return false
+	}
+	oldBody := mapping.BodyRange
 	newBody := Range{Start: oldBody.Start, End: oldBody.Start + transforms[0].ReplacementLength}
 	left := footnoteReferencesOutsideOwnedRange(original.footnoteReferences, oldBody)
 	right := footnoteReferencesOutsideOwnedRange(candidate.footnoteReferences, newBody)
@@ -316,7 +335,11 @@ func sameLinkUsagesAfterPatches(original, candidate []parser.LinkUsage, transfor
 }
 
 func sameLinkUsagesOutsideOwnedBody(original, candidate *Document, target Node, transforms []patchTransform) bool {
-	oldBody := target.FootnoteSource.BodyRange
+	mapping, ok := original.footnoteSource(target)
+	if !ok {
+		return false
+	}
+	oldBody := mapping.BodyRange
 	newBody := Range{Start: oldBody.Start, End: oldBody.Start + transforms[0].ReplacementLength}
 	left := linkUsagesOutsideOwnedRange(original.linkUsages, oldBody)
 	right := linkUsagesOutsideOwnedRange(candidate.linkUsages, newBody)

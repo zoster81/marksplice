@@ -48,6 +48,17 @@ func validateNonEmptySingleLine(replacement []byte) error {
 	return nil
 }
 
+func (d *Document) unchangedRangeChange(range_ Range, replacement []byte) (ChangeSet, bool) {
+	if d == nil || !range_.Valid(len(d.source)) || !bytes.Equal(replacement, d.source[range_.Start:range_.End]) {
+		return ChangeSet{}, false
+	}
+	change, err := source.NewChangeSet(d.source, nil)
+	if err != nil {
+		return ChangeSet{}, false
+	}
+	return change, true
+}
+
 func (d *Document) newChange(range_ Range, replacement []byte, operation string) (ChangeSet, error) {
 	return d.newChanges([]source.Patch{{Range: range_, Replacement: replacement}}, operation)
 }
@@ -87,11 +98,19 @@ func (d *Document) prepareMoveCandidate(moved Range, insertAt int, fragment []by
 }
 
 func parseCandidate(candidate []byte) ([]parser.Node, error) {
-	observed, err := newParserBackend().ParseDocument(candidate)
+	observed, err := parseCandidateDocument(candidate)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidReplacement, err)
+		return nil, err
 	}
 	return observed.Nodes, nil
+}
+
+func parseCandidateDocument(candidate []byte) (parser.DocumentObservations, error) {
+	observed, err := newParserBackend().ParseDocument(candidate)
+	if err != nil {
+		return parser.DocumentObservations{}, fmt.Errorf("%w: %v", ErrInvalidReplacement, err)
+	}
+	return observed, nil
 }
 
 func shiftedEnd(range_ Range, delta int) Range {

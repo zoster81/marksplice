@@ -650,18 +650,22 @@ func typedInlineLinkExpectation(document *Document, node Node) (typedInlineExpec
 		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline link is not source-proven", ErrInvalidConstruction)
 	}
 	internal, ok := document.internalNode(node.ID())
-	if !ok || internal.InlineLinkSource.LabelRange.Start == internal.InlineLinkSource.LabelRange.End {
+	if !ok {
+		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline link mapping is incomplete", ErrInvalidConstruction)
+	}
+	mapping, ok := document.document.InlineLinkSource(internal.ID)
+	if !ok || mapping.LabelRange.Start == mapping.LabelRange.End {
 		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline link mapping is incomplete", ErrInvalidConstruction)
 	}
 	return typedInlineExpectation{
 		kind:             KindInlineLink,
 		contentRange:     detail.Range(),
-		labelRange:       publicRange(internal.InlineLinkSource.LabelRange),
-		titleRange:       publicRange(internal.InlineLinkSource.TitleRange),
+		labelRange:       publicRange(mapping.LabelRange),
+		titleRange:       publicRange(mapping.TitleRange),
 		destination:      internal.Destination,
 		title:            internal.Title,
-		angleDestination: internal.InlineLinkSource.AngleDestination,
-		hasTitle:         internal.InlineLinkSource.HasTitle,
+		angleDestination: mapping.AngleDestination,
+		hasTitle:         mapping.HasTitle,
 	}, true, nil
 }
 
@@ -671,16 +675,20 @@ func typedInlineImageExpectation(document *Document, node Node) (typedInlineExpe
 		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline image is not source-proven", ErrInvalidConstruction)
 	}
 	internal, ok := document.internalNode(node.ID())
-	if !ok || internal.ImageSource.AltRange.Start == internal.ImageSource.AltRange.End {
+	if !ok {
+		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline image mapping is incomplete", ErrInvalidConstruction)
+	}
+	mapping, ok := document.document.ImageSource(internal.ID)
+	if !ok || mapping.AltRange.Start == mapping.AltRange.End {
 		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline image mapping is incomplete", ErrInvalidConstruction)
 	}
 	destination, ok := document.SourceRange(detail.Range())
 	if !ok {
 		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline image destination is not readable", ErrInvalidConstruction)
 	}
-	titleRange := publicRange(internal.ImageSource.TitleRange)
+	titleRange := publicRange(mapping.TitleRange)
 	title := ""
-	if internal.ImageSource.HasTitle {
+	if mapping.HasTitle {
 		titleSource, ok := document.SourceRange(titleRange)
 		if !ok {
 			return typedInlineExpectation{}, false, fmt.Errorf("%w: typed inline image title is not readable", ErrInvalidConstruction)
@@ -690,12 +698,12 @@ func typedInlineImageExpectation(document *Document, node Node) (typedInlineExpe
 	return typedInlineExpectation{
 		kind:             KindImage,
 		contentRange:     detail.Range(),
-		labelRange:       publicRange(internal.ImageSource.AltRange),
+		labelRange:       publicRange(mapping.AltRange),
 		titleRange:       titleRange,
 		destination:      string(destination),
 		title:            title,
-		angleDestination: internal.ImageSource.AngleDestination,
-		hasTitle:         internal.ImageSource.HasTitle,
+		angleDestination: mapping.AngleDestination,
+		hasTitle:         mapping.HasTitle,
 	}, true, nil
 }
 
@@ -708,11 +716,15 @@ func typedInlineAutoLinkExpectation(document *Document, node Node) (typedInlineE
 	if !ok {
 		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed autolink mapping is incomplete", ErrInvalidConstruction)
 	}
+	mapping, ok := document.document.AutoLinkSource(internal.ID)
+	if !ok {
+		return typedInlineExpectation{}, false, fmt.Errorf("%w: typed autolink mapping is incomplete", ErrInvalidConstruction)
+	}
 	return typedInlineExpectation{
 		kind:             KindAutoLink,
 		contentRange:     detail.Range(),
 		destination:      internal.Value,
-		angleDestination: internal.AutoLinkSource.Angle,
+		angleDestination: mapping.Angle,
 	}, true, nil
 }
 

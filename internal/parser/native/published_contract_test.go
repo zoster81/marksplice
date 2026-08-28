@@ -25,11 +25,37 @@ type publishedContractFixture struct {
 }
 
 type publishedContractCase struct {
-	Number         int                         `json:"number"`
-	Section        string                      `json:"section,omitempty"`
-	Extensions     []string                    `json:"extensions,omitempty"`
-	MarkdownSHA256 string                      `json:"markdown_sha256"`
-	Observations   parser.DocumentObservations `json:"observations"`
+	Number         int                           `json:"number"`
+	Section        string                        `json:"section,omitempty"`
+	Extensions     []string                      `json:"extensions,omitempty"`
+	MarkdownSHA256 string                        `json:"markdown_sha256"`
+	Observations   publishedDocumentObservations `json:"observations"`
+}
+
+type publishedNode struct {
+	parser.Node
+	BlockquoteContentRange   parser.Range
+	BlockquoteSemanticRanges []parser.Range
+	FencedCodeContentRanges  []parser.Range
+	FencedCodeInfo           string
+	FencedCodeLanguage       string
+	TableHeader              bool
+	TableColumn              int
+	TableRowAnchor           int
+	TableAnchor              int
+	TableColumnCount         int
+	TableAlignments          []parser.TableAlignment
+	TableBodyRowCount        int
+	TableLastBodyRowAnchor   int
+}
+
+type publishedDocumentObservations struct {
+	Nodes                     []publishedNode
+	LinkUsages                []parser.LinkUsage
+	UnresolvedReferenceUsages []parser.UnresolvedReferenceUsage
+	FootnoteDefinitions       []parser.FootnoteDefinitionObservation
+	FootnoteReferences        []parser.FootnoteReferenceObservation
+	MathExpressions           []parser.MathExpressionObservation
 }
 
 func TestM115NativeMatchesPublishedCommonMark0312Contract(t *testing.T) {
@@ -112,7 +138,7 @@ func loadPublishedContractFixture(t *testing.T, path string) publishedContractFi
 	return fixture
 }
 
-func assertPublishedContractCase(t *testing.T, backend parser.Backend, number int, markdown string, want parser.DocumentObservations) {
+func assertPublishedContractCase(t *testing.T, backend parser.Backend, number int, markdown string, legacyWant publishedDocumentObservations) {
 	t.Helper()
 	source := []byte(markdown)
 	before := bytes.Clone(source)
@@ -123,6 +149,7 @@ func assertPublishedContractCase(t *testing.T, backend parser.Backend, number in
 	if !bytes.Equal(source, before) {
 		t.Fatalf("example %d ParseDocument() mutated source", number)
 	}
+	want := legacyWant.current()
 	normalizePublishedObservations(&got)
 	normalizePublishedObservations(&want)
 	if !reflect.DeepEqual(got, want) {
@@ -130,9 +157,108 @@ func assertPublishedContractCase(t *testing.T, backend parser.Backend, number in
 	}
 }
 
+func (legacy publishedDocumentObservations) current() parser.DocumentObservations {
+	result := parser.DocumentObservations{
+		Nodes:                     make([]parser.Node, len(legacy.Nodes)),
+		BlockquoteDetails:         make([]parser.BlockquoteDetail, 0),
+		FencedCodeDetails:         make([]parser.FencedCodeDetail, 0),
+		TableDetails:              make([]parser.TableDetail, 0),
+		TableRowDetails:           make([]parser.TableRowDetail, 0),
+		TableCellDetails:          make([]parser.TableCellDetail, 0),
+		LinkUsages:                legacy.LinkUsages,
+		UnresolvedReferenceUsages: legacy.UnresolvedReferenceUsages,
+		FootnoteDefinitions:       legacy.FootnoteDefinitions,
+		FootnoteReferences:        legacy.FootnoteReferences,
+		MathExpressions:           legacy.MathExpressions,
+	}
+	for index, legacyNode := range legacy.Nodes {
+		node := legacyNode.Node
+		node.DetailIndex = 0
+		switch node.Kind {
+		case parser.KindBlockquote:
+			if node.TopLevel {
+				ranges := legacyNode.BlockquoteSemanticRanges
+				if ranges == nil {
+					ranges = []parser.Range{}
+				}
+				result.BlockquoteDetails = append(result.BlockquoteDetails, parser.BlockquoteDetail{
+					Anchor:         node.Range.Start,
+					ContentRange:   legacyNode.BlockquoteContentRange,
+					SemanticRanges: ranges,
+				})
+				node.DetailIndex = uint32(len(result.BlockquoteDetails))
+			}
+		case parser.KindFencedCode:
+			ranges := legacyNode.FencedCodeContentRanges
+			if ranges == nil {
+				ranges = []parser.Range{}
+			}
+			result.FencedCodeDetails = append(result.FencedCodeDetails, parser.FencedCodeDetail{
+				Anchor:        node.Anchor,
+				ContentRanges: ranges,
+				Info:          legacyNode.FencedCodeInfo,
+				Language:      legacyNode.FencedCodeLanguage,
+			})
+			node.DetailIndex = uint32(len(result.FencedCodeDetails))
+		case parser.KindTable:
+			alignments := nonNilPublishedAlignments(legacyNode.TableAlignments)
+			result.TableDetails = append(result.TableDetails, parser.TableDetail{
+				Anchor:            legacyNode.TableAnchor,
+				ColumnCount:       legacyNode.TableColumnCount,
+				Alignments:        alignments,
+				BodyRowCount:      legacyNode.TableBodyRowCount,
+				LastBodyRowAnchor: legacyNode.TableLastBodyRowAnchor,
+			})
+			node.DetailIndex = uint32(len(result.TableDetails))
+		case parser.KindTableRow:
+			alignments := nonNilPublishedAlignments(legacyNode.TableAlignments)
+			result.TableRowDetails = append(result.TableRowDetails, parser.TableRowDetail{
+				RowAnchor:   legacyNode.TableRowAnchor,
+				TableAnchor: legacyNode.TableAnchor,
+				ColumnCount: legacyNode.TableColumnCount,
+				Alignments:  alignments,
+			})
+			node.DetailIndex = uint32(len(result.TableRowDetails))
+		case parser.KindTableCell:
+			result.TableCellDetails = append(result.TableCellDetails, parser.TableCellDetail{
+				Range:       node.Range,
+				Header:      legacyNode.TableHeader,
+				Column:      legacyNode.TableColumn,
+				RowAnchor:   legacyNode.TableRowAnchor,
+				TableAnchor: legacyNode.TableAnchor,
+			})
+			node.DetailIndex = uint32(len(result.TableCellDetails))
+		}
+		result.Nodes[index] = node
+	}
+	return result
+}
+
+func nonNilPublishedAlignments(alignments []parser.TableAlignment) []parser.TableAlignment {
+	if alignments == nil {
+		return []parser.TableAlignment{}
+	}
+	return alignments
+}
+
 func normalizePublishedObservations(observed *parser.DocumentObservations) {
 	if observed.Nodes == nil {
 		observed.Nodes = []parser.Node{}
+	}
+	if observed.BlockquoteDetails == nil {
+		observed.BlockquoteDetails = []parser.BlockquoteDetail{}
+	}
+	if observed.FencedCodeDetails == nil {
+		observed.FencedCodeDetails = []parser.FencedCodeDetail{}
+	}
+	if observed.TableDetails == nil {
+		observed.TableDetails = []parser.TableDetail{}
+	}
+	if observed.TableRowDetails == nil {
+		observed.TableRowDetails = []parser.TableRowDetail{}
+	}
+	if observed.TableCellDetails == nil {
+		observed.TableCellDetails = []parser.TableCellDetail{}
 	}
 	if observed.LinkUsages == nil {
 		observed.LinkUsages = []parser.LinkUsage{}
@@ -149,16 +275,24 @@ func normalizePublishedObservations(observed *parser.DocumentObservations) {
 	if observed.MathExpressions == nil {
 		observed.MathExpressions = []parser.MathExpressionObservation{}
 	}
-	for index := range observed.Nodes {
-		node := &observed.Nodes[index]
-		if node.BlockquoteSemanticRanges == nil {
-			node.BlockquoteSemanticRanges = []parser.Range{}
+	for index := range observed.BlockquoteDetails {
+		if observed.BlockquoteDetails[index].SemanticRanges == nil {
+			observed.BlockquoteDetails[index].SemanticRanges = []parser.Range{}
 		}
-		if node.FencedCodeContentRanges == nil {
-			node.FencedCodeContentRanges = []parser.Range{}
+	}
+	for index := range observed.FencedCodeDetails {
+		if observed.FencedCodeDetails[index].ContentRanges == nil {
+			observed.FencedCodeDetails[index].ContentRanges = []parser.Range{}
 		}
-		if node.TableAlignments == nil {
-			node.TableAlignments = []parser.TableAlignment{}
+	}
+	for index := range observed.TableDetails {
+		if observed.TableDetails[index].Alignments == nil {
+			observed.TableDetails[index].Alignments = []parser.TableAlignment{}
+		}
+	}
+	for index := range observed.TableRowDetails {
+		if observed.TableRowDetails[index].Alignments == nil {
+			observed.TableRowDetails[index].Alignments = []parser.TableAlignment{}
 		}
 	}
 	for index := range observed.FootnoteDefinitions {

@@ -6,7 +6,11 @@ func (d *Document) PrepareRemoveThematicBreak(id NodeID) (ChangeSet, error) {
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	removeRange := target.ThematicBreakSource.LineRange
+	mapping, ok := remapThematicBreakSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	removeRange := mapping.LineRange
 	if !removeRange.Valid(len(d.source)) || removeRange.Start >= removeRange.End || !rangesOverlap(target.Range, removeRange) {
 		return ChangeSet{}, ErrInvalidReplacement
 	}

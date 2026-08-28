@@ -28,10 +28,11 @@ Published tags are immutable. Never move, delete-and-recreate, or otherwise rewr
 
 The approved post-M115 roadmap targets:
 
+- `v0.5.0-beta.1` as the pre-M116 performance beta after the dedicated parser/document-model optimization campaign meets its measured throughput/allocation gates and full correctness/conformance verification;
 - `v1.0.0` after M124 completes the full API-stability, refactor, profiling, conformance, documentation, and release-readiness gate;
 - `v1.5.0` after the deferred M125–M126 PDF backend/adapter line completes its own release gate.
 
-M125–M126 must not delay v1.0. Reaching a milestone implementation boundary does not by itself publish a release: tags/releases are created only from the exact reviewed commit after the required local and GitHub Actions gates are green.
+The v0.5 line is intentionally optimization-first. `v0.5.0-beta.1` is the completed pre-M116 performance beta; any later `v0.5.0-beta.N` tag must represent a separately justified optimization/correctness iteration. M125–M126 must not delay v1.0. Reaching a milestone implementation boundary does not by itself publish a release: tags/releases are created only from the exact reviewed commit after the required local and GitHub Actions gates are green.
 
 Official Go module references:
 

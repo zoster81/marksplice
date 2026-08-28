@@ -89,19 +89,54 @@ func TestReplaceParagraphPreservesUnchangedBytes(t *testing.T) {
 	}
 }
 
+func TestPrepareReplaceParagraphNoOpAcceptsExistingSourceProvenContent(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("[0]:0\n*")
+	doc, err := Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	paragraphs := nodesOfKind(doc.Nodes(), KindParagraph)
+	if len(paragraphs) != 1 {
+		t.Fatalf("paragraph count = %d, want 1", len(paragraphs))
+	}
+	target := paragraphs[0]
+	if !target.Range.Valid(len(source)) || target.Range.Start == target.Range.End {
+		t.Fatalf("paragraph range = %v, want non-empty valid range", target.Range)
+	}
+	replacement := append([]byte(nil), source[target.Range.Start:target.Range.End]...)
+	change, err := doc.PrepareReplace(target.ID, replacement)
+	if err != nil {
+		t.Fatalf("PrepareReplace(no-op) error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply(no-op) error = %v", err)
+	}
+	if !bytes.Equal(got, source) {
+		t.Fatalf("no-op changed source: %q", got)
+	}
+	stale := append([]byte(nil), source...)
+	stale[0] = '1'
+	if _, err := change.Apply(stale); !errors.Is(err, ErrSourceConflict) {
+		t.Fatalf("Apply(stale no-op) error = %v, want ErrSourceConflict", err)
+	}
+}
+
 func TestTableCellSourceMappingCacheReusesOneRowMapping(t *testing.T) {
 	t.Parallel()
 
 	snapshot := []byte("| alpha | beta |\n")
 	cache := make(map[int]tableRowSourceResult)
-	firstObservation := markparser.Node{Kind: markparser.KindTableCell, TableColumn: 0, TableRowAnchor: 0}
-	secondObservation := markparser.Node{Kind: markparser.KindTableCell, TableColumn: 1, TableRowAnchor: 0}
+	firstDetail := markparser.TableCellDetail{Column: 0, RowAnchor: 0}
+	secondDetail := markparser.TableCellDetail{Column: 1, RowAnchor: 0}
 
-	first, editable, err := mapTableCellSource(snapshot, firstObservation, Range{Start: 2, End: 7}, cache)
+	first, editable, err := mapTableCellSource(snapshot, firstDetail, Range{Start: 2, End: 7}, cache)
 	if err != nil || !editable {
 		t.Fatalf("first map = %+v, editable %v, error %v; want mapped/true/nil", first, editable, err)
 	}
-	second, editable, err := mapTableCellSource(snapshot, secondObservation, Range{Start: 10, End: 14}, cache)
+	second, editable, err := mapTableCellSource(snapshot, secondDetail, Range{Start: 10, End: 14}, cache)
 	if err != nil || !editable {
 		t.Fatalf("second map = %+v, editable %v, error %v; want mapped/true/nil", second, editable, err)
 	}
@@ -113,7 +148,7 @@ func TestTableCellSourceMappingCacheReusesOneRowMapping(t *testing.T) {
 	}
 }
 
-func TestDocumentNodeCopiesDoNotAliasTableAlignments(t *testing.T) {
+func TestDocumentNodeCopiesAndRemappedTableRowsDoNotAlias(t *testing.T) {
 	t.Parallel()
 
 	doc, err := Parse([]byte("| A | B |\n| :--- | ---: |\n| one | two |\n"))
@@ -121,26 +156,34 @@ func TestDocumentNodeCopiesDoNotAliasTableAlignments(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	rows := nodesOfKind(doc.Nodes(), KindTableRow)
-	if len(rows) != 1 || len(rows[0].TableAlignments) != 2 || len(rows[0].TableRowSource.Cells) != 2 {
-		t.Fatalf("table rows = %+v, want one row with two alignments/cells", rows)
+	if len(rows) != 1 || len(rows[0].TableAlignments) != 2 {
+		t.Fatalf("table rows = %+v, want one row with two alignments", rows)
 	}
 	rowID := rows[0].ID
 	rows[0].TableAlignments[0] = TableAlignmentCenter
-	rows[0].TableRowSource.Cells[0].Column = 99
 
 	again := nodesOfKind(doc.Nodes(), KindTableRow)
-	if len(again) != 1 || again[0].TableAlignments[0] != TableAlignmentLeft || again[0].TableAlignments[1] != TableAlignmentRight || again[0].TableRowSource.Cells[0].Column != 0 {
-		t.Fatalf("Nodes() table copy = alignments %v cells %+v, want [left right] and original cells", again[0].TableAlignments, again[0].TableRowSource.Cells)
+	if len(again) != 1 || again[0].TableAlignments[0] != TableAlignmentLeft || again[0].TableAlignments[1] != TableAlignmentRight {
+		t.Fatalf("Nodes() table copy = alignments %v, want [left right]", again[0].TableAlignments)
 	}
 	node, ok := doc.Node(rowID)
 	if !ok {
 		t.Fatalf("Node(%q) ok = false", rowID)
 	}
 	node.TableAlignments[1] = TableAlignmentCenter
-	node.TableRowSource.Cells[1].Column = 99
 	nodeAgain, ok := doc.Node(rowID)
-	if !ok || nodeAgain.TableAlignments[0] != TableAlignmentLeft || nodeAgain.TableAlignments[1] != TableAlignmentRight || nodeAgain.TableRowSource.Cells[1].Column != 1 {
-		t.Fatalf("Node() table copy = alignments %v cells %+v, %v; want [left right], original cells, true", nodeAgain.TableAlignments, nodeAgain.TableRowSource.Cells, ok)
+	if !ok || nodeAgain.TableAlignments[0] != TableAlignmentLeft || nodeAgain.TableAlignments[1] != TableAlignmentRight {
+		t.Fatalf("Node() table copy = alignments %v, %v; want [left right], true", nodeAgain.TableAlignments, ok)
+	}
+
+	mapping, ok := doc.TableRowSource(rowID)
+	if !ok || len(mapping.Cells) != 2 {
+		t.Fatalf("TableRowSource(%q) = %+v, %v; want two cells, true", rowID, mapping, ok)
+	}
+	mapping.Cells[0].Column = 99
+	mappingAgain, ok := doc.TableRowSource(rowID)
+	if !ok || len(mappingAgain.Cells) != 2 || mappingAgain.Cells[0].Column != 0 || mappingAgain.Cells[1].Column != 1 {
+		t.Fatalf("TableRowSource() remap = %+v, %v; want fresh columns 0/1", mappingAgain, ok)
 	}
 }
 

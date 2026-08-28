@@ -107,13 +107,13 @@ func validateConstructionDocument(source []byte, expected []constructionExpectat
 			}
 			tasks[node.Range.Start] = node
 		}
-		if isConstructionOnlyBlockquoteObservation(node, expected) || !isConstructionProofNode(node) {
+		if isConstructionOnlyBlockquoteObservation(node, expected) || !isConstructionProofNode(document, node) {
 			continue
 		}
 		if matched >= len(nodeExpected) {
 			return fmt.Errorf("%w: generated unexpected top-level block", ErrInvalidConstruction)
 		}
-		if err := validateConstructionExpectation(node, nodeExpected[matched]); err != nil {
+		if err := validateConstructionExpectation(document, node, nodeExpected[matched]); err != nil {
 			return err
 		}
 		matched++
@@ -196,12 +196,13 @@ func isConstructionOnlyBlockquoteObservation(node splice.Node, expected []constr
 	return false
 }
 
-func isConstructionProofNode(node splice.Node) bool {
+func isConstructionProofNode(document *splice.Document, node splice.Node) bool {
 	switch node.Kind {
 	case splice.KindThematicBreak, splice.KindBlockquote:
 		return node.TopLevel
 	case splice.KindFencedCode:
-		return node.TopLevel && node.FencedBlockSource.OpeningFenceLength >= 3
+		mapping, _, _, ok := document.FencedBlockSource(node.ID)
+		return ok && node.TopLevel && mapping.OpeningFenceLength >= 3
 	}
 	if !node.Editable {
 		return false
@@ -216,7 +217,7 @@ func isConstructionProofNode(node splice.Node) bool {
 	}
 }
 
-func validateConstructionExpectation(node splice.Node, want constructionExpectation) error {
+func validateConstructionExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
 	if node.Kind != want.kind {
 		return fmt.Errorf("%w: generated block kind changed: got %d want %d", ErrInvalidConstruction, node.Kind, want.kind)
 	}
@@ -226,31 +227,31 @@ func validateConstructionExpectation(node splice.Node, want constructionExpectat
 	case splice.KindParagraph:
 		return validateConstructionParagraphExpectation(node, want)
 	case splice.KindThematicBreak:
-		return validateConstructionThematicBreakExpectation(node, want)
+		return validateConstructionThematicBreakExpectation(document, node, want)
 	case splice.KindBlockquote:
-		return validateConstructionBlockquoteExpectation(node, want)
+		return validateConstructionBlockquoteExpectation(document, node, want)
 	case splice.KindListItem:
 		return validateConstructionListItemExpectation(node, want)
 	case splice.KindFencedCode:
-		return validateConstructionFencedCodeExpectation(node, want)
+		return validateConstructionFencedCodeExpectation(document, node, want)
 	case splice.KindReferenceDefinition:
-		return validateConstructionReferenceDefinitionExpectation(node, want)
+		return validateConstructionReferenceDefinitionExpectation(document, node, want)
 	case splice.KindFootnoteDefinition:
-		return validateConstructionFootnoteDefinitionExpectation(node, want)
+		return validateConstructionFootnoteDefinitionExpectation(document, node, want)
 	case splice.KindMathExpression:
-		return validateConstructionMathExpectation(node, want)
+		return validateConstructionMathExpectation(document, node, want)
 	case splice.KindTable:
-		return validateConstructionTableExpectation(node, want)
+		return validateConstructionTableExpectation(document, node, want)
 	case splice.KindTableRow:
-		return validateConstructionTableRowExpectation(node, want)
+		return validateConstructionTableRowExpectation(document, node, want)
 	default:
 		return fmt.Errorf("%w: generated unsupported proof block", ErrInvalidConstruction)
 	}
 }
 
-func validateConstructionMathExpectation(node splice.Node, want constructionExpectation) error {
-	mapping := node.MathSource
-	if !node.TopLevel || !node.Editable || mapping.Style != want.mathStyle ||
+func validateConstructionMathExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
+	mapping, ok := document.MathSource(node.ID)
+	if !ok || !node.TopLevel || !node.Editable || mapping.Style != want.mathStyle ||
 		node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
 		mapping.Range != want.sourceRange || mapping.PayloadRange != want.contentRange {
 		return fmt.Errorf("%w: generated mathematical block mapping changed", ErrInvalidConstruction)
@@ -272,15 +273,19 @@ func validateConstructionParagraphExpectation(node splice.Node, want constructio
 	return nil
 }
 
-func validateConstructionThematicBreakExpectation(node splice.Node, want constructionExpectation) error {
-	if node.Range != want.contentRange || !node.TopLevel || !node.Editable || node.ThematicBreakSource.Range != want.contentRange {
+func validateConstructionThematicBreakExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
+	mapping, ok := document.ThematicBreakSource(node.ID)
+	if !ok || node.Range != want.contentRange || !node.TopLevel || !node.Editable || mapping.Range != want.contentRange {
 		return fmt.Errorf("%w: generated thematic-break mapping changed", ErrInvalidConstruction)
 	}
 	return nil
 }
 
-func validateConstructionBlockquoteExpectation(node splice.Node, want constructionExpectation) error {
-	mapping := node.BlockquoteSource
+func validateConstructionBlockquoteExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
+	mapping, ok := document.BlockquoteSource(node.ID)
+	if !ok {
+		return fmt.Errorf("%w: generated blockquote mapping changed", ErrInvalidConstruction)
+	}
 	if !validConstructionBlockquoteBaseMapping(node, want, mapping) {
 		return fmt.Errorf("%w: generated blockquote mapping changed", ErrInvalidConstruction)
 	}
@@ -322,7 +327,7 @@ func validConstructionAlertMapping(ranges []splice.Range, marker splice.Range) b
 
 func validateConstructionListItemExpectation(node splice.Node, want constructionExpectation) error {
 	expectedRange := splice.Range{Start: want.list.markerStart, End: want.contentRange.End}
-	if node.Range != expectedRange || node.ContentRange != want.contentRange || node.ListItemSource.LineRange != want.sourceRange ||
+	if node.Range != expectedRange || node.ContentRange != want.contentRange || node.ListItemLineRange != want.sourceRange ||
 		node.ListOrdered != want.list.ordered || node.ListMarker != want.list.marker || node.ListContainerAnchor != want.list.containerAnchor ||
 		node.ListHasParent != want.list.hasParent || node.ListHasChildren != (want.list.directChildren != 0) ||
 		node.ListDirectChildCount != want.list.directChildren || node.ListChildCount != want.list.directChildren ||
@@ -335,8 +340,11 @@ func validateConstructionListItemExpectation(node splice.Node, want construction
 	return nil
 }
 
-func validateConstructionFencedCodeExpectation(node splice.Node, want constructionExpectation) error {
-	block := node.FencedBlockSource
+func validateConstructionFencedCodeExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
+	block, _, _, ok := document.FencedBlockSource(node.ID)
+	if !ok {
+		return fmt.Errorf("%w: generated fenced-block mapping changed", ErrInvalidConstruction)
+	}
 	blockFacts := struct {
 		topLevel           bool
 		closed             bool
@@ -379,7 +387,10 @@ func validateConstructionFencedCodeExpectation(node splice.Node, want constructi
 		return nil
 	}
 
-	mapping := node.FencedCodeSource
+	mapping, ok := document.FencedCodeSource(node.ID)
+	if !ok {
+		return fmt.Errorf("%w: generated fenced-code mapping changed", ErrInvalidConstruction)
+	}
 	mappingFacts := struct {
 		editable            bool
 		range_              splice.Range
@@ -427,9 +438,9 @@ func validateConstructionFencedCodeExpectation(node splice.Node, want constructi
 	return nil
 }
 
-func validateConstructionReferenceDefinitionExpectation(node splice.Node, want constructionExpectation) error {
-	mapping := node.ReferenceDefinitionSource
-	if node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
+func validateConstructionReferenceDefinitionExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
+	mapping, ok := document.ReferenceDefinitionSource(node.ID)
+	if !ok || node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
 		node.Label != want.reference.label || node.Destination != want.reference.destination ||
 		node.Title != want.reference.title || node.HasTitle != want.reference.hasTitle ||
 		mapping.Range != want.sourceRange || mapping.DestinationRange != want.contentRange || mapping.TitleRange != want.reference.titleRange ||
@@ -439,8 +450,11 @@ func validateConstructionReferenceDefinitionExpectation(node splice.Node, want c
 	return nil
 }
 
-func validateConstructionFootnoteDefinitionExpectation(node splice.Node, want constructionExpectation) error {
-	mapping := node.FootnoteSource
+func validateConstructionFootnoteDefinitionExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
+	mapping, ok := document.FootnoteSource(node.ID)
+	if !ok {
+		return fmt.Errorf("%w: generated footnote-definition mapping changed", ErrInvalidConstruction)
+	}
 	if !node.TopLevel || !node.Editable || node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
 		node.Label != want.footnote.label || mapping.Range != want.sourceRange || mapping.LabelRange != want.footnote.labelRange ||
 		mapping.BodyRange != want.footnote.bodyRange || len(mapping.BodyRanges) != 1 || mapping.BodyRanges[0] != want.footnote.bodyRange {
@@ -449,9 +463,9 @@ func validateConstructionFootnoteDefinitionExpectation(node splice.Node, want co
 	return nil
 }
 
-func validateConstructionTableExpectation(node splice.Node, want constructionExpectation) error {
-	mapping := node.TableSource
-	if !node.Editable || node.Range != want.sourceRange || node.ContentRange != want.sourceRange ||
+func validateConstructionTableExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
+	mapping, ok := document.TableSource(node.ID)
+	if !ok || !node.Editable || node.Range != want.sourceRange || node.ContentRange != want.sourceRange ||
 		node.TableAnchor != want.sourceRange.Start || node.TableColumnCount != want.table.columnCount ||
 		node.TableBodyRowCount != want.table.bodyRowCount || !slices.Equal(node.TableAlignments, want.table.alignments) ||
 		mapping.Range != want.sourceRange || len(mapping.Header.Cells) != want.table.columnCount ||
@@ -461,9 +475,9 @@ func validateConstructionTableExpectation(node splice.Node, want constructionExp
 	return nil
 }
 
-func validateConstructionTableRowExpectation(node splice.Node, want constructionExpectation) error {
-	mapping := node.TableRowSource
-	if node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
+func validateConstructionTableRowExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
+	mapping, ok := document.TableRowSource(node.ID)
+	if !ok || node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
 		node.TableRowAnchor != want.contentRange.Start || node.TableAnchor != want.tableRow.tableAnchor || node.TableColumnCount != want.tableRow.columnCount ||
 		!slices.Equal(node.TableAlignments, want.tableRow.alignments) ||
 		mapping.Range != want.contentRange || mapping.LineRange != want.sourceRange || len(mapping.Cells) != len(want.tableRow.cellRanges) {

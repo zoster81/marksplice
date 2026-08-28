@@ -81,11 +81,19 @@ func (d *Document) AlertBodyRanges(id NodeID) ([]Range, bool) {
 	if _, ok := d.alertFromBlockquoteNode(node); !ok {
 		return nil, false
 	}
-	return publicRanges(node.BlockquoteSource.ContentRanges[1:]), true
+	mapping, ok := d.document.BlockquoteSource(node.ID)
+	if !ok {
+		return nil, false
+	}
+	return publicRanges(mapping.ContentRanges[1:]), true
 }
 
 func (d *Document) alertFromBlockquoteNode(node splice.Node) (Alert, bool) {
-	ranges := node.BlockquoteSource.ContentRanges
+	mapping, ok := d.document.BlockquoteSource(node.ID)
+	if !ok {
+		return Alert{}, false
+	}
+	ranges := mapping.ContentRanges
 	if len(ranges) < 2 {
 		return Alert{}, false
 	}
@@ -98,7 +106,6 @@ func (d *Document) alertFromBlockquoteNode(node splice.Node) (Alert, bool) {
 	if kind == AlertKindUnknown || !alertHasBody(ranges[1:]) {
 		return Alert{}, false
 	}
-	mapping := node.BlockquoteSource
 	return Alert{
 		id:          publicNodeID(node.ID),
 		kind:        kind,

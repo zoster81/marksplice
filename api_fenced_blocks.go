@@ -114,7 +114,7 @@ func (d *Document) FencedBlocks() []FencedBlock {
 		if !ok {
 			continue
 		}
-		block, ok := publicFencedBlock(node)
+		block, ok := publicFencedBlock(d.document, node)
 		if ok {
 			blocks = append(blocks, block)
 		}
@@ -128,7 +128,7 @@ func (d *Document) FencedBlock(id NodeID) (FencedBlock, bool) {
 	if !ok {
 		return FencedBlock{}, false
 	}
-	return publicFencedBlock(node)
+	return publicFencedBlock(d.document, node)
 }
 
 // FencedBlockContentRanges returns caller-owned source-backed payload ranges, one
@@ -139,15 +139,22 @@ func (d *Document) FencedBlockContentRanges(id NodeID) ([]Range, bool) {
 	if !ok {
 		return nil, false
 	}
-	if _, ok := publicFencedBlock(node); !ok {
+	if node.Kind != splice.KindFencedCode || !node.TopLevel {
 		return nil, false
 	}
-	return publicRanges(node.FencedBlockSource.ContentRanges), true
+	mapping, _, _, ok := d.document.FencedBlockSource(node.ID)
+	if !ok {
+		return nil, false
+	}
+	return publicRanges(mapping.ContentRanges), true
 }
 
-func publicFencedBlock(node splice.Node) (FencedBlock, bool) {
-	mapping := node.FencedBlockSource
-	if node.Kind != splice.KindFencedCode || !node.TopLevel || mapping.OpeningFenceLength < 3 ||
+func publicFencedBlock(document *splice.Document, node splice.Node) (FencedBlock, bool) {
+	if document == nil || node.Kind != splice.KindFencedCode || !node.TopLevel {
+		return FencedBlock{}, false
+	}
+	mapping, info, language, ok := document.FencedBlockSource(node.ID)
+	if !ok || mapping.OpeningFenceLength < 3 ||
 		mapping.OpeningFenceRange.Start >= mapping.OpeningFenceRange.End {
 		return FencedBlock{}, false
 	}
@@ -157,15 +164,15 @@ func publicFencedBlock(node splice.Node) (FencedBlock, bool) {
 		openingFenceRange:  Range{Start: mapping.OpeningFenceRange.Start, End: mapping.OpeningFenceRange.End},
 		infoRange:          Range{Start: mapping.InfoRange.Start, End: mapping.InfoRange.End},
 		closingFenceRange:  Range{Start: mapping.ClosingFenceRange.Start, End: mapping.ClosingFenceRange.End},
-		info:               node.FencedBlockInfo,
-		language:           node.FencedBlockLanguage,
+		info:               info,
+		language:           language,
 		fenceChar:          mapping.FenceChar,
 		openingFenceLength: mapping.OpeningFenceLength,
 		closingFenceLength: mapping.ClosingFenceLength,
 		openingIndent:      mapping.OpeningIndent,
 		closingIndent:      mapping.ClosingIndent,
-		hasInfo:            node.FencedBlockInfo != "",
-		hasLanguage:        node.FencedBlockLanguage != "",
+		hasInfo:            info != "",
+		hasLanguage:        language != "",
 		closed:             mapping.Closed,
 	}, true
 }

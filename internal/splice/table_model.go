@@ -1,6 +1,10 @@
 package splice
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/zoster81/marksplice/internal/source"
+)
 
 type tableOwnerModel struct {
 	rowIDs        []NodeID
@@ -15,12 +19,14 @@ type tableOwnerModelBuilder struct {
 	lastSemanticRow      []int
 	promotedRowCounts    []int
 	headerCellCounts     []int
+	tableSources         map[int]source.TableMapping
 }
 
-func resolveTables(nodes []Node) (tableOwnerModel, error) {
+func resolveTables(nodes []Node, tableSources map[int]source.TableMapping) (tableOwnerModel, error) {
 	builder := tableOwnerModelBuilder{
 		nodes:                nodes,
 		tableOrdinalByAnchor: make(map[int]int),
+		tableSources:         tableSources,
 	}
 	if err := builder.collectTables(); err != nil {
 		return tableOwnerModel{}, err
@@ -51,7 +57,10 @@ func (b *tableOwnerModelBuilder) collectTables() error {
 			continue
 		}
 		anchor := table.TableAnchor
-		if table.ID == "" || anchor < 0 || anchor != table.TableSource.Range.Start || anchor <= lastAnchor || table.TableColumnCount <= 0 || len(table.TableAlignments) != table.TableColumnCount || table.TableBodyRowCount < 0 {
+		mapping, mapped := b.tableSources[anchor]
+		if table.ID == "" || anchor < 0 || !mapped || anchor != table.Range.Start || mapping.Range != table.Range ||
+			anchor <= lastAnchor || table.TableColumnCount <= 0 || len(table.TableAlignments) != table.TableColumnCount || table.TableBodyRowCount < 0 ||
+			len(mapping.Delimiter.Cells) != table.TableColumnCount {
 			return fmt.Errorf("invalid promoted table at anchor %d", anchor)
 		}
 		if _, exists := b.tableOrdinalByAnchor[anchor]; exists {
@@ -79,7 +88,8 @@ func (b *tableOwnerModelBuilder) resolveOwnership() error {
 				continue
 			}
 			table := &b.nodes[b.tableIndexes[ordinal]]
-			if node.TableRowAnchor <= table.TableSource.Delimiter.Range.Start || node.TableRowAnchor >= table.TableSource.Range.End {
+			mapping, ok := b.tableSources[table.TableAnchor]
+			if !ok || node.TableRowAnchor <= mapping.Delimiter.Range.Start || node.TableRowAnchor >= table.Range.End {
 				return fmt.Errorf("table row anchor %d escapes table %q", node.TableRowAnchor, table.ID)
 			}
 			b.semanticRowCounts[ordinal]++
@@ -216,10 +226,10 @@ func (d *Document) TableRowIDs(id NodeID) ([]NodeID, bool) {
 	previousStart := -1
 	for _, rowID := range ids {
 		row, ok := d.nodeByID(rowID)
-		if !ok || row.Kind != KindTableRow || !row.Editable || row.TableID != table.ID || row.TableAnchor != table.TableAnchor || row.TableRowSource.LineRange.Start <= previousStart {
+		if !ok || row.Kind != KindTableRow || !row.Editable || row.TableID != table.ID || row.TableAnchor != table.TableAnchor || row.Range.Start <= previousStart {
 			return nil, false
 		}
-		previousStart = row.TableRowSource.LineRange.Start
+		previousStart = row.Range.Start
 	}
 	return append([]NodeID(nil), ids...), true
 }

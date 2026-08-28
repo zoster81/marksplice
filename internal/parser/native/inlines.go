@@ -493,10 +493,12 @@ func collectInlineSpans(source []byte, block inlineBlock) []inlineSpan {
 				continue
 			}
 		}
-		if node, end, ok := scanExtendedAutolink(source, position, segment.Start, segment.End); ok {
-			spans = append(spans, observedInlineSpan(segmentIndex, position, end, node))
-			position = end
-			continue
+		if asciiAlphaNumeric(source[position]) && extendedAutolinkBoundary(source, segment.Start, position) {
+			if node, end, ok := scanExtendedAutolink(source, position, segment.Start, segment.End); ok {
+				spans = append(spans, observedInlineSpan(segmentIndex, position, end, node))
+				position = end
+				continue
+			}
 		}
 		position++
 	}

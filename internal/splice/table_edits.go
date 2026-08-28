@@ -6,13 +6,21 @@ import (
 	"github.com/zoster81/marksplice/internal/source"
 )
 
-func (d *Document) tableTarget(id NodeID) (Node, error) {
-	return d.editableTargetNode(id, KindTable, "table")
+func (d *Document) tableTarget(id NodeID) (Node, source.TableMapping, error) {
+	target, err := d.editableTargetNode(id, KindTable, "table")
+	if err != nil {
+		return Node{}, source.TableMapping{}, err
+	}
+	mapping, ok := remapTableSource(d.source, target)
+	if !ok {
+		return Node{}, source.TableMapping{}, ErrInvalidReplacement
+	}
+	return target, mapping, nil
 }
 
 // PrepareSetTableColumnAlignment prepares a source-preserving alignment change for one GFM table column.
 func (d *Document) PrepareSetTableColumnAlignment(id NodeID, column int, alignment TableAlignment) (ChangeSet, error) {
-	target, err := d.tableTarget(id)
+	target, mapping, err := d.tableTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -21,19 +29,19 @@ func (d *Document) PrepareSetTableColumnAlignment(id NodeID, column int, alignme
 	}
 	expected := append([]TableAlignment(nil), target.TableAlignments...)
 	expected[column] = alignment
-	return d.prepareSetTableAlignments(target, expected, "table column alignment")
+	return d.prepareSetTableAlignments(target, mapping, expected, "table column alignment")
 }
 
 // PrepareSetTableAlignments prepares one atomic source-preserving alignment update for every GFM table column.
 func (d *Document) PrepareSetTableAlignments(id NodeID, alignments []TableAlignment) (ChangeSet, error) {
-	target, err := d.tableTarget(id)
+	target, mapping, err := d.tableTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
 	if len(alignments) != target.TableColumnCount {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	return d.prepareSetTableAlignments(target, append([]TableAlignment(nil), alignments...), "table alignments")
+	return d.prepareSetTableAlignments(target, mapping, append([]TableAlignment(nil), alignments...), "table alignments")
 }
 
 type tableAlignmentPatchPlan struct {
@@ -42,8 +50,8 @@ type tableAlignmentPatchPlan struct {
 	totalDelta int
 }
 
-func (d *Document) prepareSetTableAlignments(target Node, expected []TableAlignment, operation string) (ChangeSet, error) {
-	plan, err := d.planTableAlignmentPatches(target, expected)
+func (d *Document) prepareSetTableAlignments(target Node, mapping source.TableMapping, expected []TableAlignment, operation string) (ChangeSet, error) {
+	plan, err := d.planTableAlignmentPatches(target, mapping, expected)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -60,8 +68,8 @@ func (d *Document) prepareSetTableAlignments(target Node, expected []TableAlignm
 	return change, nil
 }
 
-func (d *Document) planTableAlignmentPatches(target Node, expected []TableAlignment) (tableAlignmentPatchPlan, error) {
-	if len(expected) != target.TableColumnCount || len(target.TableSource.Delimiter.Cells) != target.TableColumnCount {
+func (d *Document) planTableAlignmentPatches(target Node, mapping source.TableMapping, expected []TableAlignment) (tableAlignmentPatchPlan, error) {
+	if len(expected) != target.TableColumnCount || len(mapping.Delimiter.Cells) != target.TableColumnCount {
 		return tableAlignmentPatchPlan{}, ErrInvalidReplacement
 	}
 	plan := tableAlignmentPatchPlan{
@@ -76,7 +84,7 @@ func (d *Document) planTableAlignmentPatches(target Node, expected []TableAlignm
 		if alignment == target.TableAlignments[column] {
 			continue
 		}
-		delimiterRange := target.TableSource.Delimiter.Cells[column].ContentRange
+		delimiterRange := mapping.Delimiter.Cells[column].ContentRange
 		replacement, err := source.TableDelimiterAlignmentReplacement(d.source, delimiterRange, lexical)
 		if err != nil {
 			return tableAlignmentPatchPlan{}, ErrInvalidReplacement
@@ -104,7 +112,7 @@ func (d *Document) validateTableAlignmentCandidate(target Node, expected []Table
 	if !ok || promotedTableCount(candidateDocument) != promotedTableCount(d) ||
 		candidateTable.TableColumnCount != target.TableColumnCount ||
 		candidateTable.TableBodyRowCount != target.TableBodyRowCount ||
-		candidateTable.TableSource.Range != shiftedEnd(target.TableSource.Range, plan.totalDelta) ||
+		candidateTable.Range != shiftedEnd(target.Range, plan.totalDelta) ||
 		!slices.Equal(candidateTable.TableAlignments, expected) {
 		return ErrInvalidReplacement
 	}
@@ -113,11 +121,11 @@ func (d *Document) validateTableAlignmentCandidate(target Node, expected []Table
 
 // PrepareAppendTableRow prepares appending one caller-owned compatible body row to a promoted GFM table.
 func (d *Document) PrepareAppendTableRow(id NodeID, fragment []byte) (ChangeSet, error) {
-	target, err := d.tableTarget(id)
+	target, mapping, err := d.tableTarget(id)
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	insertAt := target.TableSource.Range.End
+	insertAt := mapping.Range.End
 	if len(fragment) == 0 || !tableAppendBoundary(d.source, insertAt) {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
@@ -153,7 +161,7 @@ func (d *Document) validateAppendedTableRowCandidate(target Node, fragment, cand
 		candidateTable.TableColumnCount != target.TableColumnCount ||
 		candidateTable.TableBodyRowCount != target.TableBodyRowCount+1 ||
 		candidateTable.TableLastBodyRowAnchor != insertAt ||
-		candidateTable.TableSource.Range != (Range{Start: target.TableSource.Range.Start, End: target.TableSource.Range.End + len(fragment)}) ||
+		candidateTable.Range != (Range{Start: target.Range.Start, End: target.Range.End + len(fragment)}) ||
 		!slices.Equal(candidateTable.TableAlignments, target.TableAlignments) {
 		return ErrInvalidReplacement
 	}

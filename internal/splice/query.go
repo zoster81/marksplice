@@ -15,14 +15,21 @@ func (d *Document) NodeSelectionAt(index int) (NodeSummary, Range, bool) {
 		return NodeSummary{}, Range{}, false
 	}
 	node := d.nodes[index]
-	selectionRange, ok := nodeSelectionRange(node)
+	selectionRange, ok := d.nodeSelectionRange(node)
+	if ok && node.Kind == KindThematicBreak {
+		mapping, mapped := remapThematicBreakSource(d.source, node)
+		if !mapped {
+			return NodeSummary{}, Range{}, false
+		}
+		selectionRange = mapping.LineRange
+	}
 	if !ok || !selectionRange.Valid(len(d.source)) {
 		return NodeSummary{}, Range{}, false
 	}
 	return summarizeNode(node), selectionRange, true
 }
 
-func nodeSelectionRange(node Node) (Range, bool) {
+func (d *Document) nodeSelectionRange(node Node) (Range, bool) {
 	switch node.Kind {
 	case KindParagraph:
 		return node.Range, true
@@ -31,17 +38,17 @@ func nodeSelectionRange(node Node) (Range, bool) {
 		KindAutoLink, KindYAMLFrontMatterField, KindTOMLFrontMatterField, KindHTMLComment, KindHTMLAnchor:
 		return node.ContentRange, true
 	case KindTableRow:
-		return node.TableRowSource.LineRange, true
-	case KindTable:
-		return node.TableSource.Range, true
-	case KindThematicBreak:
-		return node.ThematicBreakSource.LineRange, true
+		return node.Range, true
+	case KindTable, KindThematicBreak:
+		return node.Range, true
 	case KindBlockquote:
-		return node.BlockquoteSource.LineRange, true
+		mapping, ok := d.blockquoteSource(node)
+		return mapping.LineRange, ok
 	case KindFootnoteDefinition:
-		return node.FootnoteSource.Range, true
+		mapping, ok := d.footnoteSource(node)
+		return mapping.Range, ok
 	case KindMathExpression:
-		return node.MathSource.Range, true
+		return node.Range, true
 	default:
 		return Range{}, false
 	}

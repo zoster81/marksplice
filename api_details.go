@@ -52,7 +52,7 @@ func (d *Document) ListItem(id NodeID) (ListItem, bool) {
 		hasChildren: node.ListHasChildren,
 	}
 	if node.ListSubtreeComplete {
-		item.subtreeRange = Range{Start: node.ListItemSource.LineRange.Start, End: node.ListSubtreeEnd}
+		item.subtreeRange = Range{Start: node.ListItemLineRange.Start, End: node.ListSubtreeEnd}
 		item.hasSubtreeRange = true
 	}
 	return item, true
@@ -121,7 +121,7 @@ func (d *Document) Table(id NodeID) (Table, bool) {
 	}
 	return Table{
 		id:           publicNodeID(node.ID),
-		sourceRange:  Range{Start: node.TableSource.Range.Start, End: node.TableSource.Range.End},
+		sourceRange:  Range{Start: node.Range.Start, End: node.Range.End},
 		columnCount:  node.TableColumnCount,
 		bodyRowCount: node.TableBodyRowCount,
 	}, true
@@ -185,7 +185,7 @@ func (d *Document) TableRow(id NodeID) (TableRow, bool) {
 	}
 	return TableRow{
 		id:          publicNodeID(node.ID),
-		sourceRange: Range{Start: node.TableRowSource.LineRange.Start, End: node.TableRowSource.LineRange.End},
+		sourceRange: Range{Start: node.Range.Start, End: node.Range.End},
 		tableID:     publicNodeID(node.TableID),
 		columnCount: node.TableColumnCount,
 		previousID:  publicNodeID(previousID),
@@ -199,9 +199,13 @@ func (d *Document) ThematicBreak(id NodeID) (ThematicBreak, bool) {
 	if err != nil {
 		return ThematicBreak{}, false
 	}
+	mapping, ok := d.document.ThematicBreakSource(node.ID)
+	if !ok {
+		return ThematicBreak{}, false
+	}
 	return ThematicBreak{
 		id:          publicNodeID(node.ID),
-		sourceRange: Range{Start: node.ThematicBreakSource.LineRange.Start, End: node.ThematicBreakSource.LineRange.End},
+		sourceRange: publicRange(mapping.LineRange),
 	}, true
 }
 
@@ -211,10 +215,14 @@ func (d *Document) Blockquote(id NodeID) (Blockquote, bool) {
 	if err != nil {
 		return Blockquote{}, false
 	}
+	mapping, ok := d.document.BlockquoteSource(node.ID)
+	if !ok {
+		return Blockquote{}, false
+	}
 	return Blockquote{
 		id:           publicNodeID(node.ID),
-		sourceRange:  Range{Start: node.BlockquoteSource.LineRange.Start, End: node.BlockquoteSource.LineRange.End},
-		contentRange: Range{Start: node.BlockquoteSource.ContentRange.Start, End: node.BlockquoteSource.ContentRange.End},
+		sourceRange:  Range{Start: mapping.LineRange.Start, End: mapping.LineRange.End},
+		contentRange: Range{Start: mapping.ContentRange.Start, End: mapping.ContentRange.End},
 	}, true
 }
 

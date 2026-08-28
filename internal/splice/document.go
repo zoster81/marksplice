@@ -108,10 +108,11 @@ type Node struct {
 	ListChildCount            int
 	ListSubtreeComplete       bool
 	ListSubtreeEnd            int
-	ListItemSource            source.ListItemMapping
+	ListItemLineRange         Range
 	TableHeader               bool
 	TableColumn               int
 	TableRowAnchor            int
+	TableRowSourceAnchor      int
 	TableRowID                NodeID
 	TableAnchor               int
 	TableColumnCount          int
@@ -130,24 +131,9 @@ type Node struct {
 	TableHeaderCellStart      int
 	TableHeaderCellCount      int
 	Editable                  bool
-	TableCellSource           source.TableCellMapping
-	TableRowSource            source.TableRowMapping
-	TableSource               source.TableMapping
-	FencedBlockSource         source.FencedBlockMapping
-	FencedCodeSource          source.FencedCodeMapping
-	FencedBlockInfo           string
-	FencedBlockLanguage       string
-	StrikethroughSource       source.StrikethroughMapping
-	InlineLinkSource          source.InlineLinkMapping
-	ImageSource               source.ImageMapping
-	ReferenceDefinitionSource source.ReferenceDefinitionMapping
-	AutoLinkSource            source.AutoLinkMapping
-	CodeSpanSource            source.CodeSpanMapping
-	EmphasisSource            source.EmphasisMapping
-	ThematicBreakSource       source.ThematicBreakMapping
-	BlockquoteSource          source.BlockquoteMapping
-	FootnoteSource            source.FootnoteDefinitionMapping
-	MathSource                source.MathExpressionMapping
+	SourceDetailIndex         uint32
+	TableCellRange            Range
+	MathStyle                 MathExpressionStyle
 	Anchor                    int
 	Destination               string
 	Label                     string
@@ -193,6 +179,9 @@ type Document struct {
 	tableCellIndexes          []int
 	tableRowIDs               []NodeID
 	tableOwnedHeaderCellIDs   []NodeID
+	fencedSources             []fencedSourceDetail
+	blockquoteSources         []source.BlockquoteMapping
+	footnoteSources           []source.FootnoteDefinitionMapping
 	sections                  []Section
 	sectionIndex              map[NodeID]int
 	frontMatter               frontMatterEnvelope
@@ -221,6 +210,13 @@ func parseWithValidatedBackend(input []byte, semanticParser parser.Backend) (*Do
 		return nil, fmt.Errorf("parse markdown: %w", err)
 	}
 	observations := observed.Nodes
+	parserDetails := parserNodeDetails{
+		blockquotes: observed.BlockquoteDetails,
+		fencedCode:  observed.FencedCodeDetails,
+		tables:      observed.TableDetails,
+		tableRows:   observed.TableRowDetails,
+		tableCells:  observed.TableCellDetails,
+	}
 	linkUsages := observed.LinkUsages
 	unresolvedReferenceUsages := observed.UnresolvedReferenceUsages
 	footnoteDefinitions := observed.FootnoteDefinitions
@@ -237,6 +233,11 @@ func parseWithValidatedBackend(input []byte, semanticParser parser.Backend) (*Do
 	fingerprint := source.Sum(snapshot)
 	nodes := make([]Node, 0, len(observations)+len(frontMatter.Fields)+len(footnoteDefinitions)+len(mathExpressions))
 	tableRows := make(map[int]tableRowSourceResult)
+	tableSources := make(map[int]source.TableMapping)
+	fencedCapacity, blockquoteCapacity := sourceDetailCapacities(observations)
+	fencedSources := make([]fencedSourceDetail, 0, fencedCapacity)
+	blockquoteSources := make([]source.BlockquoteMapping, 0, blockquoteCapacity)
+	footnoteSources := make([]source.FootnoteDefinitionMapping, 0, len(footnoteDefinitions))
 	if hasFrontMatter {
 		nodes = append(nodes, frontMatterNodes(fingerprint, frontMatter)...)
 	}
@@ -245,13 +246,13 @@ func parseWithValidatedBackend(input []byte, semanticParser parser.Backend) (*Do
 		if hasFrontMatter && rangesOverlap(frontMatter.Range, observationRange) {
 			continue
 		}
-		node, err := nodeFromObservation(snapshot, fingerprint, observation, tableRows)
+		node, err := nodeFromObservation(snapshot, fingerprint, observation, parserDetails, tableRows, tableSources, &fencedSources, &blockquoteSources)
 		if err != nil {
 			return nil, err
 		}
 		nodes = append(nodes, node)
 	}
-	nodes, err = promoteSupplementalNodes(snapshot, fingerprint, nodes, mathExpressions, footnoteDefinitions)
+	nodes, err = promoteSupplementalNodes(snapshot, fingerprint, nodes, mathExpressions, footnoteDefinitions, &footnoteSources)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +264,7 @@ func parseWithValidatedBackend(input []byte, semanticParser parser.Backend) (*Do
 	if err != nil {
 		return nil, fmt.Errorf("resolve table row cells: %w", err)
 	}
-	tableOwnerModel, err := resolveTables(nodes)
+	tableOwnerModel, err := resolveTables(nodes, tableSources)
 	if err != nil {
 		return nil, fmt.Errorf("resolve tables: %w", err)
 	}
@@ -297,6 +298,9 @@ func parseWithValidatedBackend(input []byte, semanticParser parser.Backend) (*Do
 		tableCellIndexes:          tableModel.cellIndexes,
 		tableRowIDs:               tableOwnerModel.rowIDs,
 		tableOwnedHeaderCellIDs:   tableOwnerModel.headerCellIDs,
+		fencedSources:             fencedSources,
+		blockquoteSources:         blockquoteSources,
+		footnoteSources:           footnoteSources,
 		sections:                  sections,
 		sectionIndex:              sectionIndex,
 		frontMatter:               storedFrontMatter,
@@ -306,13 +310,13 @@ func parseWithValidatedBackend(input []byte, semanticParser parser.Backend) (*Do
 	}, nil
 }
 
-func promoteSupplementalNodes(snapshot []byte, fingerprint source.Fingerprint, nodes []Node, mathExpressions []parser.MathExpressionObservation, footnotes []parser.FootnoteDefinitionObservation) ([]Node, error) {
+func promoteSupplementalNodes(snapshot []byte, fingerprint source.Fingerprint, nodes []Node, mathExpressions []parser.MathExpressionObservation, footnotes []parser.FootnoteDefinitionObservation, footnoteSources *[]source.FootnoteDefinitionMapping) ([]Node, error) {
 	mathNodes, err := promoteMathExpressionNodes(snapshot, fingerprint, mathExpressions)
 	if err != nil {
 		return nil, err
 	}
 	nodes = mergeSourceOrderedNodes(nodes, mathNodes)
-	footnoteNodes, err := promoteFootnoteDefinitionNodes(snapshot, fingerprint, footnotes)
+	footnoteNodes, err := promoteFootnoteDefinitionNodes(snapshot, fingerprint, footnotes, footnoteSources)
 	if err != nil {
 		return nil, err
 	}
@@ -413,10 +417,14 @@ func (d *Document) BlockquoteContentRanges(id NodeID) ([]Range, bool) {
 		return nil, false
 	}
 	node, ok := d.nodeByID(id)
-	if !ok || node.Kind != KindBlockquote || !node.Editable || !node.TopLevel || len(node.BlockquoteSource.ContentRanges) == 0 {
+	if !ok {
 		return nil, false
 	}
-	return append([]Range(nil), node.BlockquoteSource.ContentRanges...), true
+	mapping, ok := d.blockquoteSource(node)
+	if !ok {
+		return nil, false
+	}
+	return append([]Range(nil), mapping.ContentRanges...), true
 }
 
 func linkUsagesOutsideRange(usages []parser.LinkUsage, excluded Range) []parser.LinkUsage {
@@ -443,13 +451,6 @@ func unresolvedReferenceUsagesOutsideRange(usages []parser.UnresolvedReferenceUs
 
 func cloneNode(node Node) Node {
 	node.TableAlignments = append([]TableAlignment(nil), node.TableAlignments...)
-	node.TableRowSource.Cells = append([]source.TableCellMapping(nil), node.TableRowSource.Cells...)
-	node.TableSource.Header.Cells = append([]source.TableCellMapping(nil), node.TableSource.Header.Cells...)
-	node.TableSource.Delimiter.Cells = append([]source.TableCellMapping(nil), node.TableSource.Delimiter.Cells...)
-	node.TableSource.DelimiterAlignments = append([]source.TableDelimiterAlignment(nil), node.TableSource.DelimiterAlignments...)
-	node.BlockquoteSource.ContentRanges = append([]source.Range(nil), node.BlockquoteSource.ContentRanges...)
-	node.FencedBlockSource.ContentRanges = append([]source.Range(nil), node.FencedBlockSource.ContentRanges...)
-	node.FootnoteSource.BodyRanges = append([]source.Range(nil), node.FootnoteSource.BodyRanges...)
 	return node
 }
 
@@ -515,15 +516,14 @@ func mapKind(kind parser.Kind) (Kind, error) {
 }
 
 func makeNodeID(fingerprint source.Fingerprint, kind Kind, range_ Range) NodeID {
-	hash := sha256.New()
-	_, _ = hash.Write(fingerprint[:])
-	_, _ = hash.Write([]byte{byte(kind)})
+	var input [sha256.Size + 1 + 16]byte
+	copy(input[:sha256.Size], fingerprint[:])
+	input[sha256.Size] = byte(kind)
+	binary.BigEndian.PutUint64(input[sha256.Size+1:sha256.Size+9], uint64(range_.Start))
+	binary.BigEndian.PutUint64(input[sha256.Size+9:], uint64(range_.End))
 
-	var offsets [16]byte
-	binary.BigEndian.PutUint64(offsets[:8], uint64(range_.Start))
-	binary.BigEndian.PutUint64(offsets[8:], uint64(range_.End))
-	_, _ = hash.Write(offsets[:])
-
-	sum := hash.Sum(nil)
-	return NodeID(hex.EncodeToString(sum[:16]))
+	sum := sha256.Sum256(input[:])
+	var encoded [32]byte
+	hex.Encode(encoded[:], sum[:16])
+	return NodeID(string(encoded[:]))
 }

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"testing"
-
-	"github.com/zoster81/marksplice/internal/source"
 )
 
 func TestReplaceSimpleStrikethroughPreservesDelimitersAndSurroundingSource(t *testing.T) {
@@ -56,8 +54,9 @@ func TestReplaceSimpleStrikethroughPreservesDelimitersAndSurroundingSource(t *te
 			if !found {
 				t.Fatalf("strikethrough with content %q not found; strikes = %+v", tt.targetText, strikes)
 			}
-			if !target.Editable || target.StrikethroughSource.ContentRange != target.ContentRange || target.StrikethroughSource.DelimiterLength < 1 {
-				t.Fatalf("stored strikethrough capability = editable %v mapping %+v", target.Editable, target.StrikethroughSource)
+			mapping, ok := remapStrikethroughSource(tt.source, target)
+			if !target.Editable || !ok || mapping.ContentRange != target.ContentRange || mapping.DelimiterLength < 1 {
+				t.Fatalf("strikethrough capability = editable %v mapping %+v", target.Editable, mapping)
 			}
 
 			prefix := append([]byte(nil), tt.source[:target.ContentRange.Start]...)
@@ -254,8 +253,9 @@ func TestReplaceSimpleCodeSpanPreservesFenceRun(t *testing.T) {
 			if !found {
 				t.Fatalf("code span with content %q not found; nodes = %+v", tt.targetText, doc.Nodes())
 			}
-			if !target.Editable || target.CodeSpanSource.ContentRange != target.ContentRange || target.CodeSpanSource.FenceLength < 1 {
-				t.Fatalf("stored code-span capability = editable %v mapping %+v", target.Editable, target.CodeSpanSource)
+			mapping, ok := remapCodeSpanSource(tt.source, target)
+			if !target.Editable || !ok || mapping.ContentRange != target.ContentRange || mapping.FenceLength < 1 {
+				t.Fatalf("code-span capability = editable %v mapping %+v", target.Editable, mapping)
 			}
 			change, err := doc.PrepareReplaceCodeSpan(target.ID, tt.replacement)
 			if err != nil {
@@ -322,8 +322,9 @@ func TestReplaceSimpleEmphasisAndStrongPreservesDelimiterStyle(t *testing.T) {
 			if len(nodes) != 1 {
 				t.Fatalf("node count for kind %d = %d, want 1; nodes = %+v", tt.kind, len(nodes), doc.Nodes())
 			}
-			if !nodes[0].Editable || nodes[0].EmphasisSource.ContentRange != nodes[0].ContentRange || nodes[0].EmphasisSource.Level < 1 {
-				t.Fatalf("stored emphasis capability = editable %v mapping %+v", nodes[0].Editable, nodes[0].EmphasisSource)
+			mapping, ok := remapEmphasisSource(tt.source, nodes[0])
+			if !nodes[0].Editable || !ok || mapping.ContentRange != nodes[0].ContentRange || mapping.Level < 1 {
+				t.Fatalf("emphasis capability = editable %v mapping %+v", nodes[0].Editable, mapping)
 			}
 			var change ChangeSet
 			if tt.kind == KindEmphasis {
@@ -381,8 +382,11 @@ func TestUnsupportedInlineSourceShapesRemainParsableButFailClosed(t *testing.T) 
 	if len(codeSpans) != 1 {
 		t.Fatalf("normalized-space code span count = %d, want 1 semantic observation", len(codeSpans))
 	}
-	if codeSpans[0].Editable || codeSpans[0].CodeSpanSource != (source.CodeSpanMapping{}) {
-		t.Fatalf("normalized-space code span capability = editable %v mapping %+v, want false/zero", codeSpans[0].Editable, codeSpans[0].CodeSpanSource)
+	if codeSpans[0].Editable {
+		t.Fatalf("normalized-space code span capability = editable %v, want false", codeSpans[0].Editable)
+	}
+	if _, ok := remapCodeSpanSource(codeSource, codeSpans[0]); ok {
+		t.Fatal("normalized-space code span unexpectedly remapped as editable source")
 	}
 	if _, err := codeDoc.PrepareReplaceCodeSpan(codeSpans[0].ID, []byte("new")); err == nil {
 		t.Fatal("PrepareReplaceCodeSpan(normalized-space source) error = nil, want fail-closed unsupported source shape")
@@ -398,8 +402,11 @@ func TestUnsupportedInlineSourceShapesRemainParsableButFailClosed(t *testing.T) 
 		t.Fatal("compound emphasis produced no semantic emphasis/strong observation")
 	}
 	for _, candidate := range candidates {
-		if candidate.Editable || candidate.EmphasisSource != (source.EmphasisMapping{}) {
-			t.Fatalf("compound emphasis capability = editable %v mapping %+v, want false/zero", candidate.Editable, candidate.EmphasisSource)
+		if candidate.Editable {
+			t.Fatalf("compound emphasis capability = editable %v, want false", candidate.Editable)
+		}
+		if _, ok := remapEmphasisSource(compoundSource, candidate); ok {
+			t.Fatal("compound emphasis unexpectedly remapped as editable source")
 		}
 		var err error
 		if candidate.Kind == KindEmphasis {

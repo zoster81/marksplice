@@ -46,6 +46,9 @@ func nativeInlineDollarMathObservations(source []byte, analyses []inlineAnalysis
 }
 
 func nativeDelimiterTextBoundaries(block inlineBlock, matches []delimiterMatch) [][]int {
+	if len(matches) == 0 {
+		return nil
+	}
 	boundaries := make([][]int, len(block.segments))
 	for _, match := range matches {
 		if match.startSegment >= 0 && match.startSegment < len(block.segments) {
@@ -81,39 +84,95 @@ func compactNativeMathBoundaries(boundaries []int) []int {
 	return result
 }
 
+type nativeMathScanCursor struct {
+	exclusions     []parser.Range
+	boundaries     []int
+	exclusionIndex int
+	boundaryIndex  int
+}
+
 func scanNativeInlineDollarRuns(source []byte, block inlineBlock, exclusions [][]parser.Range, boundaries [][]int) []parser.MathExpressionObservation {
 	result := make([]parser.MathExpressionObservation, 0)
 	for segmentIndex, segment := range block.segments {
-		exclusionIndex := 0
-		boundaryIndex := 0
-		for position := segment.Start; position < segment.End; {
-			for exclusionIndex < len(exclusions[segmentIndex]) && position >= exclusions[segmentIndex][exclusionIndex].End {
-				exclusionIndex++
-			}
-			for boundaryIndex < len(boundaries[segmentIndex]) && position >= boundaries[segmentIndex][boundaryIndex] {
-				boundaryIndex++
-			}
-			if exclusionIndex < len(exclusions[segmentIndex]) && position >= exclusions[segmentIndex][exclusionIndex].Start {
-				position = exclusions[segmentIndex][exclusionIndex].End
-				continue
-			}
-			limit := segment.End
-			if exclusionIndex < len(exclusions[segmentIndex]) && exclusions[segmentIndex][exclusionIndex].Start > position {
-				limit = exclusions[segmentIndex][exclusionIndex].Start
-			}
-			if boundaryIndex < len(boundaries[segmentIndex]) && boundaries[segmentIndex][boundaryIndex] < limit {
-				limit = boundaries[segmentIndex][boundaryIndex]
-			}
-			observation, end, ok := nativeInlineDollarMathAt(source, position, limit)
-			if !ok {
-				position++
-				continue
-			}
-			result = append(result, observation)
-			position = end
-		}
+		result = scanNativeInlineDollarSegment(
+			source,
+			segment,
+			nativeMathSegmentExclusions(exclusions, segmentIndex),
+			nativeMathSegmentBoundaries(boundaries, segmentIndex),
+			result,
+		)
 	}
 	return result
+}
+
+func nativeMathSegmentExclusions(exclusions [][]parser.Range, index int) []parser.Range {
+	if index >= len(exclusions) {
+		return nil
+	}
+	return exclusions[index]
+}
+
+func nativeMathSegmentBoundaries(boundaries [][]int, index int) []int {
+	if index >= len(boundaries) {
+		return nil
+	}
+	return boundaries[index]
+}
+
+func scanNativeInlineDollarSegment(source []byte, segment parser.Range, exclusions []parser.Range, boundaries []int, result []parser.MathExpressionObservation) []parser.MathExpressionObservation {
+	cursor := nativeMathScanCursor{exclusions: exclusions, boundaries: boundaries}
+	for position := segment.Start; position < segment.End; {
+		cursor.advance(position)
+		if end, excluded := cursor.excludedEnd(position); excluded {
+			position = end
+			continue
+		}
+		limit := cursor.limit(position, segment.End)
+		relative := bytes.IndexByte(source[position:limit], '$')
+		if relative < 0 {
+			position = limit
+			continue
+		}
+		position += relative
+		observation, end, ok := nativeInlineDollarMathAt(source, position, limit)
+		if !ok {
+			position++
+			continue
+		}
+		result = append(result, observation)
+		position = end
+	}
+	return result
+}
+
+func (cursor *nativeMathScanCursor) advance(position int) {
+	for cursor.exclusionIndex < len(cursor.exclusions) && position >= cursor.exclusions[cursor.exclusionIndex].End {
+		cursor.exclusionIndex++
+	}
+	for cursor.boundaryIndex < len(cursor.boundaries) && position >= cursor.boundaries[cursor.boundaryIndex] {
+		cursor.boundaryIndex++
+	}
+}
+
+func (cursor *nativeMathScanCursor) excludedEnd(position int) (int, bool) {
+	if cursor.exclusionIndex >= len(cursor.exclusions) || position < cursor.exclusions[cursor.exclusionIndex].Start {
+		return 0, false
+	}
+	return cursor.exclusions[cursor.exclusionIndex].End, true
+}
+
+func (cursor *nativeMathScanCursor) limit(position, end int) int {
+	limit := end
+	if cursor.exclusionIndex < len(cursor.exclusions) {
+		exclusionStart := cursor.exclusions[cursor.exclusionIndex].Start
+		if exclusionStart > position && exclusionStart < limit {
+			limit = exclusionStart
+		}
+	}
+	if cursor.boundaryIndex < len(cursor.boundaries) && cursor.boundaries[cursor.boundaryIndex] < limit {
+		limit = cursor.boundaries[cursor.boundaryIndex]
+	}
+	return limit
 }
 
 func nativeInlineDollarMathAt(source []byte, anchor, limit int) (parser.MathExpressionObservation, int, bool) {

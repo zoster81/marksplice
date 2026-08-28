@@ -1,6 +1,7 @@
 package native
 
 import (
+	"bytes"
 	"cmp"
 	"slices"
 	"sort"
@@ -45,7 +46,7 @@ type referenceDefinitionIndex map[string]referenceDefinitionParse
 func collectCompositeInlinesIndexed(source []byte, block inlineBlock, owners []inlineSpan, definitions referenceDefinitionIndex, primaryExclusions [][]parser.Range) []compositeInline {
 	composites := make([]compositeInline, 0)
 	for segmentIndex, segment := range block.segments {
-		exclusions := primaryExclusions[segmentIndex]
+		exclusions := inlineExclusionsAt(primaryExclusions, segmentIndex)
 		for position := segment.Start; position < segment.End; position++ {
 			if inlineRangesContainPosition(exclusions, position) {
 				continue
@@ -138,7 +139,7 @@ func collectReferenceComposites(source []byte, block inlineBlock, definitions re
 	directStarts.finalize()
 	composites := make([]compositeInline, 0)
 	for segmentIndex, segment := range block.segments {
-		exclusions := primaryExclusions[segmentIndex]
+		exclusions := inlineExclusionsAt(primaryExclusions, segmentIndex)
 		for position := segment.Start; position < segment.End; position++ {
 			if inlineRangesContainPosition(exclusions, position) || directStarts.hasAt(segmentIndex, position) {
 				continue
@@ -228,7 +229,7 @@ func scanReferenceUsageLabelEnd(source []byte, segment parser.Range, start int) 
 }
 
 func scanInlineLabelAcrossSegments(source []byte, block inlineBlock, startSegment, start int, exclusions [][]parser.Range) (int, int, bool) {
-	if startSegment < 0 || startSegment >= len(block.segments) || len(exclusions) != len(block.segments) {
+	if startSegment < 0 || startSegment >= len(block.segments) || len(exclusions) != 0 && len(exclusions) != len(block.segments) {
 		return startSegment, start, false
 	}
 	depth := 0
@@ -238,7 +239,7 @@ func scanInlineLabelAcrossSegments(source []byte, block inlineBlock, startSegmen
 		if segmentIndex == startSegment {
 			position = start
 		}
-		end, nextDepth, ok := scanInlineLabelSegment(source, segment, position, exclusions[segmentIndex], depth)
+		end, nextDepth, ok := scanInlineLabelSegment(source, segment, position, inlineExclusionsAt(exclusions, segmentIndex), depth)
 		if ok {
 			return segmentIndex, end, true
 		}
@@ -415,22 +416,32 @@ func unresolvedReferenceUsages(source []byte, block inlineBlock, relationshipExc
 	exclusions := unresolvedReferenceExclusions(relationshipExclusions, block, matches)
 	result := make([]parser.UnresolvedReferenceUsage, 0)
 	for segmentIndex, segment := range block.segments {
+		segmentExclusions := inlineExclusionsAt(exclusions, segmentIndex)
 		exclusionIndex := 0
 		for position := segment.Start; position < segment.End; {
-			for exclusionIndex < len(exclusions[segmentIndex]) && position >= exclusions[segmentIndex][exclusionIndex].End {
+			for exclusionIndex < len(segmentExclusions) && position >= segmentExclusions[exclusionIndex].End {
 				exclusionIndex++
 			}
-			if exclusionIndex < len(exclusions[segmentIndex]) && position >= exclusions[segmentIndex][exclusionIndex].Start {
-				position = exclusions[segmentIndex][exclusionIndex].End
+			if exclusionIndex < len(segmentExclusions) && position >= segmentExclusions[exclusionIndex].Start {
+				position = segmentExclusions[exclusionIndex].End
 				continue
 			}
 			limit := segment.End
-			if exclusionIndex < len(exclusions[segmentIndex]) && exclusions[segmentIndex][exclusionIndex].Start > position {
-				limit = exclusions[segmentIndex][exclusionIndex].Start
+			if exclusionIndex < len(segmentExclusions) && segmentExclusions[exclusionIndex].Start > position {
+				limit = segmentExclusions[exclusionIndex].Start
 			}
-			usage, end, ok := scanUnresolvedReferenceUsage(source, parser.Range{Start: segment.Start, End: limit}, position, definitions)
+			relative := bytes.IndexByte(source[position:limit], '[')
+			if relative < 0 {
+				position = limit
+				continue
+			}
+			anchor := position + relative
+			if anchor > position && source[anchor-1] == '!' {
+				anchor--
+			}
+			usage, end, ok := scanUnresolvedReferenceUsage(source, parser.Range{Start: segment.Start, End: limit}, anchor, definitions)
 			if !ok {
-				position++
+				position = anchor + 1
 				continue
 			}
 			result = append(result, usage)
@@ -460,6 +471,9 @@ func appendDelimiterRelationshipExclusion(exclusions [][]parser.Range, block inl
 }
 
 func promoteRelationshipExclusions(exclusions [][]parser.Range, block inlineBlock, composites []compositeInline) [][]parser.Range {
+	if len(exclusions) == 0 && hasActiveComposite(composites) {
+		exclusions = ensureInlineExclusions(exclusions, len(block.segments))
+	}
 	for _, composite := range composites {
 		if !composite.active {
 			continue
@@ -474,7 +488,7 @@ func unresolvedReferenceExclusions(base [][]parser.Range, block inlineBlock, mat
 	if len(matches) == 0 {
 		return base
 	}
-	exclusions := cloneInlineExclusions(base)
+	exclusions := ensureInlineExclusions(cloneInlineExclusions(base), len(block.segments))
 	appendDelimiterRelationshipExclusions(exclusions, block, matches)
 	normalizeInlineExclusions(exclusions)
 	return exclusions

@@ -11,10 +11,16 @@ func (d *Document) PrepareReplaceStrikethrough(id NodeID, replacement []byte) (C
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
-	mapping := target.StrikethroughSource
+	mapping, ok := remapStrikethroughSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "strikethrough replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -31,11 +37,17 @@ func (d *Document) PrepareReplaceAutoLink(id NodeID, replacement []byte) (Change
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
 
-	mapping := target.AutoLinkSource
+	mapping, ok := remapAutoLinkSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "autolink replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -52,10 +64,16 @@ func (d *Document) PrepareReplaceCodeSpan(id NodeID, replacement []byte) (Change
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
-	mapping := target.CodeSpanSource
+	mapping, ok := remapCodeSpanSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "code span replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -81,10 +99,16 @@ func (d *Document) prepareReplaceEmphasisLike(id NodeID, replacement []byte, kin
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
-	mapping := target.EmphasisSource
+	mapping, ok := remapEmphasisSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
 	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "emphasis replacement")
 	if err != nil {
 		return ChangeSet{}, err

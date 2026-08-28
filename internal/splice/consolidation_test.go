@@ -108,7 +108,7 @@ func TestCompactMutationIndexesFailClosedWhenCorrupt(t *testing.T) {
 	if len(listDoc.listItemIndexes) != 1 {
 		t.Fatalf("list-item index count = %d, want 1", len(listDoc.listItemIndexes))
 	}
-	lineStart := listDoc.nodes[listDoc.listItemIndexes[0]].ListItemSource.LineRange.Start
+	lineStart := listDoc.nodes[listDoc.listItemIndexes[0]].ListItemLineRange.Start
 	listDoc.listItemIndexes[0] = len(listDoc.nodes)
 	if _, ok := listDoc.listItemNodeAtLineStart(lineStart); ok {
 		t.Fatal("listItemNodeAtLineStart(corrupt index) ok = true, want false")
@@ -166,8 +166,8 @@ func TestParseBuildsSourceOrderedListItemHierarchyAndSubtreeMetadata(t *testing.
 			t.Fatalf("child metadata = %+v, want parent %q and complete subtree", child, parent.ID)
 		}
 	}
-	if parent.ListSubtreeEnd != items[2].ListItemSource.LineRange.End {
-		t.Fatalf("parent subtree end = %d, want %d", parent.ListSubtreeEnd, items[2].ListItemSource.LineRange.End)
+	if parent.ListSubtreeEnd != items[2].ListItemLineRange.End {
+		t.Fatalf("parent subtree end = %d, want %d", parent.ListSubtreeEnd, items[2].ListItemLineRange.End)
 	}
 	if items[3].ListParentID != "" || !items[3].ListSubtreeComplete {
 		t.Fatalf("leaf metadata = %+v, want independent complete root", items[3])

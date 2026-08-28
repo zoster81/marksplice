@@ -31,6 +31,11 @@ type rootBlock struct {
 
 type blockParseResult struct {
 	nodes             []parser.Node
+	blockquoteDetails []parser.BlockquoteDetail
+	fencedCodeDetails []parser.FencedCodeDetail
+	tableDetails      []parser.TableDetail
+	tableRowDetails   []parser.TableRowDetail
+	tableCellDetails  []parser.TableCellDetail
 	semantic          []parser.Range
 	inlines           []inlineBlock
 	references        []referenceDefinitionParse
@@ -153,13 +158,22 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 			child = parseBlockLines(source, quoted.content, false)
 		}
 		if topLevel {
-			quoted.node.BlockquoteSemanticRanges = child.semantic
+			detail := parser.BlockquoteDetail{
+				Anchor:         quoted.node.Range.Start,
+				SemanticRanges: nonNilBlockRanges(child.semantic),
+			}
 			if simpleBlockquoteParagraph(child) {
-				quoted.node.BlockquoteContentRange = child.nodes[0].Range
+				detail.ContentRange = child.nodes[0].Range
 			}
 			result.nodes = append(result.nodes, quoted.node)
+			result.blockquoteDetails = append(result.blockquoteDetails, detail)
 		}
 		result.nodes = append(result.nodes, child.nodes...)
+		result.blockquoteDetails = append(result.blockquoteDetails, child.blockquoteDetails...)
+		result.fencedCodeDetails = append(result.fencedCodeDetails, child.fencedCodeDetails...)
+		result.tableDetails = append(result.tableDetails, child.tableDetails...)
+		result.tableRowDetails = append(result.tableRowDetails, child.tableRowDetails...)
+		result.tableCellDetails = append(result.tableCellDetails, child.tableCellDetails...)
 		result.semantic = append(result.semantic, child.semantic...)
 		result.inlines = append(result.inlines, child.inlines...)
 		result.references = append(result.references, child.references...)
@@ -175,10 +189,11 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 		return next, true, false
 	}
 	if opening, ok := parseFenceOpening(source, line); ok {
-		node, semantic, next := parseFencedBlock(source, lines, index, opening)
+		node, detail, semantic, next := parseFencedBlock(source, lines, index, opening)
 		node.TopLevel = topLevel
 		if node.Anchor >= 0 && node.Anchor < len(source) {
 			result.nodes = append(result.nodes, node)
+			result.fencedCodeDetails = append(result.fencedCodeDetails, detail)
 		}
 		result.semantic = append(result.semantic, semantic...)
 		result.lastLeafParagraph = false
@@ -223,6 +238,11 @@ func parseStructuralBlock(result *blockParseResult, source []byte, lines []physi
 	}
 	if list, next, ok := parseList(source, lines, index); ok {
 		result.nodes = append(result.nodes, list.nodes...)
+		result.blockquoteDetails = append(result.blockquoteDetails, list.blockquoteDetails...)
+		result.fencedCodeDetails = append(result.fencedCodeDetails, list.fencedCodeDetails...)
+		result.tableDetails = append(result.tableDetails, list.tableDetails...)
+		result.tableRowDetails = append(result.tableRowDetails, list.tableRowDetails...)
+		result.tableCellDetails = append(result.tableCellDetails, list.tableCellDetails...)
 		result.semantic = append(result.semantic, list.semantic...)
 		result.inlines = append(result.inlines, list.inlines...)
 		result.references = append(result.references, list.references...)
@@ -237,8 +257,11 @@ func parseStructuralBlock(result *blockParseResult, source []byte, lines []physi
 		recordRoot(result, rootBlock{kind: rootBlockOther}, blankBeforeRoot)
 		return index + 1, false, true
 	}
-	if nodes, semantic, next, ok := parseTable(source, lines, index); ok {
+	if nodes, details, semantic, next, ok := parseTable(source, lines, index); ok {
 		result.nodes = append(result.nodes, nodes...)
+		result.tableDetails = append(result.tableDetails, details.tables...)
+		result.tableRowDetails = append(result.tableRowDetails, details.rows...)
+		result.tableCellDetails = append(result.tableCellDetails, details.cells...)
 		result.semantic = append(result.semantic, semantic...)
 		result.lastLeafParagraph = true
 		appendTableInlineBlocks(result, nodes)
@@ -295,6 +318,13 @@ func blockLineSemanticEnd(source []byte, stop int) int {
 func simpleBlockquoteParagraph(child blockParseResult) bool {
 	return len(child.nodes) == 1 && child.nodes[0].Kind == parser.KindParagraph &&
 		len(child.roots) == 1 && child.roots[0].kind == rootBlockParagraph && child.roots[0].lineCount == 1
+}
+
+func nonNilBlockRanges(ranges []parser.Range) []parser.Range {
+	if ranges == nil {
+		return []parser.Range{}
+	}
+	return ranges
 }
 
 func parseBlockquoteOpening(source []byte, line physicalLine) (anchor, contentStart int, ok bool) {
@@ -513,7 +543,7 @@ func parseFenceOpening(source []byte, line physicalLine) (fenceOpening, bool) {
 	return fenceOpening{anchor: anchor, indent: indent, marker: marker, length: length, info: info}, true
 }
 
-func parseFencedBlock(source []byte, lines []physicalLine, index int, opening fenceOpening) (parser.Node, []parser.Range, int) {
+func parseFencedBlock(source []byte, lines []physicalLine, index int, opening fenceOpening) (parser.Node, parser.FencedCodeDetail, []parser.Range, int) {
 	content := make([]parser.Range, 0)
 	semantic := make([]parser.Range, 0)
 	next := index + 1
@@ -541,15 +571,19 @@ func parseFencedBlock(source []byte, lines []physicalLine, index int, opening fe
 	if separator := strings.IndexByte(language, ' '); separator >= 0 {
 		language = language[:separator]
 	}
-	return parser.Node{
-		Kind:                    parser.KindFencedCode,
-		Range:                   range_,
-		Anchor:                  opening.anchor,
-		FencedCodeContentRanges: content,
-		FencedCodeInfo:          opening.info,
-		FencedCodeLanguage:      language,
-		TopLevel:                true,
-	}, semantic, next
+	node := parser.Node{
+		Kind:     parser.KindFencedCode,
+		Range:    range_,
+		Anchor:   opening.anchor,
+		TopLevel: true,
+	}
+	detail := parser.FencedCodeDetail{
+		Anchor:        opening.anchor,
+		ContentRanges: content,
+		Info:          opening.info,
+		Language:      language,
+	}
+	return node, detail, semantic, next
 }
 
 func fenceClosing(source []byte, line physicalLine, opening fenceOpening) bool {

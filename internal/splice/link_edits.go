@@ -11,11 +11,17 @@ func (d *Document) PrepareReplaceInlineLinkDestination(id NodeID, replacement []
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
 
-	mapping := target.InlineLinkSource
+	mapping, ok := remapInlineLinkSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
 	change, candidate, err := d.prepareCandidateChange(mapping.DestinationRange, replacement, "inline link destination replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -32,11 +38,17 @@ func (d *Document) PrepareReplaceImageDestination(id NodeID, replacement []byte)
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
 
-	mapping := target.ImageSource
+	mapping, ok := remapImageSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
 	change, candidate, err := d.prepareCandidateChange(mapping.DestinationRange, replacement, "image destination replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -53,11 +65,17 @@ func (d *Document) PrepareReplaceReferenceDefinitionDestination(id NodeID, repla
 	if err != nil {
 		return ChangeSet{}, err
 	}
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return ChangeSet{}, err
 	}
 
-	mapping := target.ReferenceDefinitionSource
+	mapping, ok := remapReferenceDefinitionSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
 	change, candidate, err := d.prepareCandidateChange(mapping.DestinationRange, replacement, "reference definition destination replacement")
 	if err != nil {
 		return ChangeSet{}, err
@@ -78,7 +96,10 @@ func (d *Document) PrepareReplaceReferenceDefinitionTitle(id NodeID, replacement
 		return ChangeSet{}, err
 	}
 
-	mapping := target.ReferenceDefinitionSource
+	mapping, ok := remapReferenceDefinitionSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
 	if !mapping.HasTitle || mapping.TitleRange.Start == mapping.TitleRange.End {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
@@ -98,7 +119,11 @@ func (d *Document) PrepareRemoveReferenceDefinition(id NodeID) (ChangeSet, error
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	removeRange := target.ReferenceDefinitionSource.LineRange
+	mapping, ok := remapReferenceDefinitionSource(d.source, target)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	removeRange := mapping.LineRange
 	if !removeRange.Valid(len(d.source)) || removeRange.Start >= removeRange.End || !rangesOverlap(target.Range, removeRange) {
 		return ChangeSet{}, ErrInvalidReplacement
 	}

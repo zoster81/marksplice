@@ -18,9 +18,9 @@ func TestValidateOriginalListItemsRejectsUnexpectedDirectChildCount(t *testing.T
 	if err != nil {
 		t.Fatalf("candidateListItemMappings() error = %v", err)
 	}
-	candidateParent := candidateItems[parent.ListItemSource.LineRange.Start]
+	candidateParent := candidateItems[parent.ListItemLineRange.Start]
 	candidateParent.DirectChildCount--
-	candidateItems[parent.ListItemSource.LineRange.Start] = candidateParent
+	candidateItems[parent.ListItemLineRange.Start] = candidateParent
 
 	if err := doc.validateOriginalListItemsAfterPatches(sourceBytes, candidateItems, nil, nil, nil); !errors.Is(err, ErrInvalidReplacement) {
 		t.Fatalf("validateOriginalListItemsAfterPatches() error = %v, want ErrInvalidReplacement", err)
@@ -40,9 +40,9 @@ func TestValidateListItemReplacementRejectsUnexpectedDirectChildCount(t *testing
 	if err != nil {
 		t.Fatalf("candidateListItemMappings() error = %v", err)
 	}
-	candidateParent := candidateItems[parent.ListItemSource.LineRange.Start]
+	candidateParent := candidateItems[parent.ListItemLineRange.Start]
 	candidateParent.DirectChildCount--
-	candidateItems[parent.ListItemSource.LineRange.Start] = candidateParent
+	candidateItems[parent.ListItemLineRange.Start] = candidateParent
 
 	replacementLength := parent.ContentRange.End - parent.ContentRange.Start
 	if err := validateListItemReplacement(candidateItems, parent, replacementLength); !errors.Is(err, ErrInvalidReplacement) {

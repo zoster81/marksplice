@@ -3,9 +3,9 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/zoster81/marksplice.svg)](https://pkg.go.dev/github.com/zoster81/marksplice)
 [![CI](https://github.com/zoster81/marksplice/actions/workflows/ci.yml/badge.svg)](https://github.com/zoster81/marksplice/actions/workflows/ci.yml)
 
-Marksplice is a Pure-Go library for reading, creating, querying, and **source-preservingly editing** Markdown.
+Marksplice is a **Pure-Go, source-preserving Markdown document engine** for Go — built for editors, developer tooling, and AI agents that need to understand and modify Markdown without rewriting it.
 
-Use it when you need to change Markdown structurally without reformatting the rest of the file.
+An ordinary AST parser tells you what Markdown means. Marksplice also proves **which source bytes a structural operation owns**, so a change can stay local, preserve author formatting, and fail closed when the source has changed.
 
 ## Why use Marksplice?
 
@@ -13,15 +13,42 @@ Use it when you need to change Markdown structurally without reformatting the re
 - **Work with structure instead of string searches.** Inspect headings, sections, lists, tasks, tables, fenced blocks, links, fragments, footnotes, front matter, and more.
 - **Create Markdown from structured Go values.** `DocumentBuilder` writes deterministic GFM for new documents.
 - **Understand documentation sets.** Build caller-controlled document graphs, inspect backlinks, validate links/fragments, and plan conservative repairs.
+- **Give tools and AI agents a safer editing surface.** Use bounded structural queries, snapshot-local identities, exact source ranges, typed operations, and source-bound `ChangeSet`s instead of fragile whole-file text rewrites.
+
+## Engineering facts
+
+| Property | Current Marksplice contract |
+| --- | --- |
+| Markdown engine | Marksplice-owned Native parser; CommonMark 0.31.2 base plus reviewed GFM behavior |
+| Conformance evidence | 652 CommonMark examples plus 676 parser-applicable published-GFM contracts |
+| Source safety | Exact byte ranges, immutable snapshots, stale-source detection, minimal operation-owned patches |
+| Real-world validation | Byte-certified corpus of 6,857 Markdown documents, 60.8 MB, from 195 open-source repositories |
+| Measured parse performance | v0.5 engineering freeze: 25.06 MB/s public `Parse`, 30.87 MB/s Native on the same preloaded 60.8 MB corpus |
+| Robustness | Focused/pathological tests, fuzz targets, race testing, static analysis, and cross-platform builds |
+| Portability | Pure Go; Go 1.26+; no third-party Markdown parser dependency |
+| Dependencies | One direct dependency: `golang.org/x/text`, used for full Unicode GFM reference-label folding |
+| Authority boundary | No hidden filesystem traversal, URL fetching, network access, or command execution in the document core |
+
+Performance is measured on real documents as well as focused benchmarks; correctness and source preservation are not traded away to win a parser-only microbenchmark. On the same-host v0.5 campaign, public `Parse` improved from 15.04 to **25.06 MB/s** while allocated bytes fell from about 4.49 GB/op to **2.70 GB/op**. These are engineering benchmark results for that corpus/host, not cross-machine guarantees.
+
+## Built for tools and AI agents
+
+Marksplice turns a document-editing workflow into a small structural protocol:
+
+```text
+bounded query -> exact target -> typed change -> optional atomic composition -> apply to exact source
+```
+
+An agent can ask for a limited set of sections or nodes, prepare a structural change, and apply it without regenerating the document. If another actor changed the bytes in the meantime, the prepared change fails with `ErrSourceConflict` instead of guessing. Graph, backlink, fragment, and workspace APIs provide the same explicit model across documentation sets.
 
 Marksplice does not crawl your filesystem, fetch URLs, render HTML/PDF, or silently normalize existing documents.
 
 ## Install
 
-Marksplice requires Go 1.26 or newer. The current published beta is `v0.1.0-beta.2`:
+Marksplice requires Go 1.26 or newer. The current published beta is `v0.5.0-beta.1`:
 
 ```sh
-go get github.com/zoster81/marksplice@v0.1.0-beta.2
+go get github.com/zoster81/marksplice@v0.5.0-beta.1
 ```
 
 ## Try a real file

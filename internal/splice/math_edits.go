@@ -12,17 +12,20 @@ func (d *Document) PrepareReplaceMathExpression(id NodeID, replacement []byte) (
 	if !ok {
 		return ChangeSet{}, ErrNodeNotFound
 	}
-	if isFencedMathNode(target) {
+	if d.isFencedMathNode(target) {
 		return d.PrepareReplaceFencedCode(id, replacement)
 	}
 	if target.Kind != KindMathExpression || !target.Editable {
 		return ChangeSet{}, ErrInvalidTargetKind
 	}
-	if err := validateMathReplacement(target.MathSource.Style, replacement); err != nil {
+	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
+		return change, nil
+	}
+	if err := validateMathReplacement(target.MathStyle, replacement); err != nil {
 		return ChangeSet{}, err
 	}
 
-	change, candidate, err := d.prepareCandidateChange(target.MathSource.PayloadRange, replacement, "math expression replacement")
+	change, candidate, err := d.prepareCandidateChange(target.ContentRange, replacement, "math expression replacement")
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -66,12 +69,12 @@ func validateMathExpressionReplacement(candidate []byte, target Node, replacemen
 	if err != nil {
 		return ErrInvalidReplacement
 	}
-	delta := replacementLength - (target.MathSource.PayloadRange.End - target.MathSource.PayloadRange.Start)
-	wantRange := shiftedEnd(target.MathSource.Range, delta)
-	wantPayload := rangeWithLength(target.MathSource.PayloadRange.Start, replacementLength)
+	delta := replacementLength - (target.ContentRange.End - target.ContentRange.Start)
+	wantRange := shiftedEnd(target.Range, delta)
+	wantPayload := rangeWithLength(target.ContentRange.Start, replacementLength)
 	for _, node := range parsed.nodes {
 		if node.Kind != KindMathExpression || node.Anchor != target.Anchor || node.TopLevel != target.TopLevel ||
-			node.MathSource.Style != target.MathSource.Style || node.MathSource.Range != wantRange || node.MathSource.PayloadRange != wantPayload {
+			node.MathStyle != target.MathStyle || node.Range != wantRange || node.ContentRange != wantPayload {
 			continue
 		}
 		return nil

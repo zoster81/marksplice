@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestImageMappingPersistsAtParseTimeAndUnsupportedShapesStayNonEditable(t *testing.T) {
+func TestImageSourceCapabilityPersistsAndUnsupportedShapesStayNonEditable(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("![alt](<old path> \"title\")\n\n![ref][id]\n\n[id]: old/ref\n\n![empty]()\n")
@@ -27,15 +27,16 @@ func TestImageMappingPersistsAtParseTimeAndUnsupportedShapesStayNonEditable(t *t
 			continue
 		}
 		unsupported++
-		if image.ImageSource.DestinationRange != (Range{}) {
-			t.Fatalf("unsupported image retained destination mapping %v", image.ImageSource.DestinationRange)
+		if _, ok := remapImageSource(source, image); ok {
+			t.Fatal("unsupported image unexpectedly retained source capability")
 		}
 	}
 	if editable.ID == "" || unsupported != 2 {
 		t.Fatalf("editable image ID = %q unsupported = %d, want non-empty/2", editable.ID, unsupported)
 	}
-	if editable.ImageSource.DestinationRange != editable.ContentRange || !editable.ImageSource.AngleDestination || !editable.ImageSource.HasTitle {
-		t.Fatalf("editable image mapping = %+v content = %v", editable.ImageSource, editable.ContentRange)
+	mapping, ok := remapImageSource(source, editable)
+	if !editable.Editable || !ok || mapping.DestinationRange != editable.ContentRange || !mapping.AngleDestination || !mapping.HasTitle {
+		t.Fatalf("editable image capability = editable %v mapping %+v content = %v", editable.Editable, mapping, editable.ContentRange)
 	}
 	if got := string(source[editable.ContentRange.Start:editable.ContentRange.End]); got != "old path" {
 		t.Fatalf("image destination bytes = %q, want old path", got)

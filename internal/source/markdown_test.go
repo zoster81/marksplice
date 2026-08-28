@@ -65,6 +65,9 @@ func TestMapTableRowMapsAllCellsWithOneRowBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MapTableRow() error = %v", err)
 	}
+	if row.Anchor != anchor {
+		t.Fatalf("row anchor = %d, want semantic anchor %d", row.Anchor, anchor)
+	}
 	if row.Range != (Range{Start: anchor, End: anchor + len("| alpha | beta  |")}) {
 		t.Fatalf("row range = %v, want physical table row", row.Range)
 	}
@@ -307,6 +310,16 @@ func TestMapFencedCodeRejectsUnprovenShape(t *testing.T) {
 		{
 			name:    "closing fence uses different delimiter",
 			source:  []byte("```\nold\n~~~\n"),
+			content: Range{Start: 4, End: 7},
+		},
+		{
+			name:    "semantic payload claims closing fence",
+			source:  []byte("```\n```\n"),
+			content: Range{Start: 4, End: 7},
+		},
+		{
+			name:    "undeclared body line precedes closing fence",
+			source:  []byte("```\none\ntwo\n```\n"),
 			content: Range{Start: 4, End: 7},
 		},
 	}

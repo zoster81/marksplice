@@ -78,7 +78,7 @@ func (d *Document) FootnoteDefinitions() []FootnoteDefinition {
 		if !ok {
 			continue
 		}
-		definition, ok := publicFootnoteDefinition(node)
+		definition, ok := publicFootnoteDefinition(d.document, node)
 		if ok {
 			result = append(result, definition)
 		}
@@ -92,7 +92,7 @@ func (d *Document) FootnoteDefinition(id NodeID) (FootnoteDefinition, bool) {
 	if !ok {
 		return FootnoteDefinition{}, false
 	}
-	return publicFootnoteDefinition(node)
+	return publicFootnoteDefinition(d.document, node)
 }
 
 // FootnoteDefinitionBodyRanges returns caller-owned parser-proven body segments
@@ -129,9 +129,12 @@ func (d *Document) FootnoteReferences() []FootnoteReference {
 	return result
 }
 
-func publicFootnoteDefinition(node splice.Node) (FootnoteDefinition, bool) {
-	mapping := node.FootnoteSource
-	if node.Kind != splice.KindFootnoteDefinition || !node.Editable || !node.TopLevel ||
+func publicFootnoteDefinition(document *splice.Document, node splice.Node) (FootnoteDefinition, bool) {
+	if document == nil || node.Kind != splice.KindFootnoteDefinition || !node.Editable || !node.TopLevel {
+		return FootnoteDefinition{}, false
+	}
+	mapping, ok := document.FootnoteSource(node.ID)
+	if !ok ||
 		mapping.Range.Start >= mapping.Range.End || mapping.LabelRange.Start >= mapping.LabelRange.End {
 		return FootnoteDefinition{}, false
 	}

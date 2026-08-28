@@ -6,8 +6,9 @@ This document records the planned product and engineering sequence after the Nat
 
 ## Release targets
 
-The roadmap has two explicit release horizons:
+The roadmap has three explicit release horizons:
 
+- **Pre-M116 performance campaign -> `v0.5.0-beta.1`**. This beta is dedicated to parser/document-model throughput, allocation, and memory improvements before new product surface is added. Additional `v0.5.0-beta.N` iterations are allowed only when further measured optimization or correctness work justifies them.
 - **M116–M124 -> `v1.0.0`**. M124 is the v1.0 stabilization, performance, API-review, and release-readiness gate.
 - **M125–M126 -> `v1.5.0`**. PDF work is intentionally queued after v1.0 and must not delay the first stable release.
 
@@ -36,6 +37,7 @@ Small adjacent milestones may share one commit only when they form one coherent 
 
 Refactoring is part of development, not deferred cleanup.
 
+- **Pre-M116 / v0.5:** dedicated whole-parse-path performance campaign before feature development resumes. Prioritize compact internal node/storage layout, Native inline candidate scanning, parse/model allocation and copy reduction, then follow new profiler evidence rather than speculative rewrites.
 - **Every milestone:** focused refactor before freeze; remove duplication/dead state, keep responsibilities narrow, and keep production cyclomatic complexity at 15 or lower per function.
 - **M117:** first broad post-M115 review of filesystem discovery/resolution code, including traversal scaling and allocation behavior.
 - **M119:** broad review of Native semantic-walk changes to prove there is no second parser or permanently retained rendering AST.
@@ -44,6 +46,29 @@ Refactoring is part of development, not deferred cleanup.
 - **M124:** full repository refactor, profiling, allocation/CPU review, pathological-input review, API stability audit, documentation audit, and release-quality recertification before v1.0.
 
 Performance conclusions must come from measurements. Avoid persistent caches/indexes or architectural complexity merely to optimize an unmeasured path.
+
+## Pre-M116 — `v0.5.0-beta.1` performance campaign
+
+**Status: released as `v0.5.0-beta.1` on 2026-08-28.**
+
+The campaign materially reduced parser/document-model CPU, allocation count, and allocated bytes without adding product surface, reintroducing Goldmark, or weakening source-preservation, stale-source, conformance, or authority-boundary contracts.
+
+The frozen comparison workload is the byte-certified real-world corpus of 6,857 Markdown documents / 60,778,570 bytes from 195 repositories, preloaded in memory so timed results exclude filesystem I/O. Five complete same-host runs on the final tree measured:
+
+| Path | Baseline throughput | Final throughput | Baseline B/op | Final B/op | Baseline allocs/op | Final allocs/op |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `marksplice.Parse` | 15.04 MB/s | **25.06 MB/s** | ~4.49 GB | **~2.702 GB** | ~13.05 M | **~10.402 M** |
+| Native parser only | 19.23 MB/s | **30.87 MB/s** | ~2.54 GB | **~1.902 GB** | ~10.62 M | **~9.015 M** |
+
+That is approximately **+66.6%** public-Parse throughput, **+60.5%** Native throughput, **-39.8%** public allocated bytes, **-25.1%** Native allocated bytes, **-20.3%** public allocations, and **-15.1%** Native allocations relative to the frozen V05-A baseline. These are same-harness engineering ratios, not cross-machine performance promises.
+
+The accepted implementation keeps the public API and source-ownership model intact while compacting broad internal node/detail storage, reducing temporary parse/model state, adding measured Native scanner/index fast paths, removing repeated source-mapping work, and preserving source-ordered/monotonic algorithms instead of adding persistent caches. Fuzzing during the freeze also found three identity-mutation edge cases; byte-identical replacements of already source-proven content now produce snapshot-bound no-op `ChangeSet`s while genuinely new invalid payloads remain rejected.
+
+All six hard V05 performance gates are satisfied. The retained M108 pathological/scaling matrix has no unexplained regression greater than 10%; all 6,857 certified real-world documents parse through the public API; exact CommonMark 0.31.2 and published-GFM contracts pass; bounded fuzzing, malformed derivatives, race, vet/build, Staticcheck, golangci-lint, `gocyclo <= 15`, `unparam`, vulnerability/secret/workflow checks, Go 1.26/1.27 verification, and Linux/macOS cross-build gates are green on the freeze candidate.
+
+Goldmark v2 remains only a private external comparison and is not a production dependency, semantic oracle, or release requirement. The campaign's stretch throughput targets of 30 MB/s public and 35 MB/s Native were intentionally not used to delay the beta once the hard gates were exceeded cleanly.
+
+M116 is the next engineering boundary after the `v0.5.0-beta.1` performance release. It is not part of the v0.5 release and starts only as a separate engineering phase.
 
 ## M116 — Filesystem workspace foundation
 
