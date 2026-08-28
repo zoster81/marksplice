@@ -91,7 +91,8 @@ For one document:
 For filesystem-backed documentation:
 
 - `workspacefs.Scan` discovers `.md`/`.markdown` files under one explicit `fs.FS` root and assigns deterministic slash-relative keys;
-- `workspacefs.Follow` starts from explicit entries and follows only conservatively recognized local Markdown relationships, visiting cycles once;
+- `workspacefs.Follow` starts from explicit entries and follows reviewed local Markdown URI paths, normalizing relative dot segments against each source document, percent-decoding path components once, ignoring query text for file lookup, preserving target fragments, and visiting cycles once;
+- absolute/scheme/protocol-relative paths, backslashes, encoded traversal or separators, directory targets, and extensionless targets are not followed. Case and symlink behavior comes from the `fs.FS` supplied by your application;
 - both operations enforce caller-supplied document, byte, depth, and relationship limits and perform no writes, network access, or command execution.
 
 For several documents that your application already loaded, or for the documents returned by `workspacefs`:

@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"net/url"
 	"path"
 	"sort"
 	"strings"
@@ -80,8 +81,12 @@ func Scan(fsys fs.FS, root string, options Options) (*Workspace, error) {
 	return newWorkspace(loader.documents), nil
 }
 
-// Follow loads explicit entry documents and follows only conservatively
-// recognized local Markdown relationships. Cycles are visited once.
+// Follow loads explicit entry documents and follows reviewed local Markdown
+// URI-path relationships. Relative dot segments are normalized inside the supplied
+// fs.FS namespace, path components are percent-decoded once, query text is ignored
+// for file lookup, fragments are preserved, and cycles are visited once. Absolute,
+// scheme/protocol-relative, backslash, encoded-traversal/separator, directory, and
+// extensionless targets are not treated as filesystem documents.
 func Follow(fsys fs.FS, root string, entries []string, options Options) (*Workspace, error) {
 	scoped, limits, err := prepare(fsys, root, options)
 	if err != nil {
@@ -93,15 +98,13 @@ func Follow(fsys fs.FS, root string, entries []string, options Options) (*Worksp
 	}
 	loader := workspaceLoader{fsys: scoped, limits: limits}
 	availability := make(map[marksplice.DocumentKey]bool)
-	checked := make(map[marksplice.DocumentKey]bool)
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
+	for head := 0; head < len(queue); head++ {
+		current := queue[head]
 		relationships, loadErr := loader.addDocument(string(current.key))
 		if loadErr != nil {
 			return nil, loadErr
 		}
-		if err := followRelationships(scoped, relationships, current, limits.MaxDepth, discovered, availability, checked, &queue); err != nil {
+		if err := followRelationships(scoped, relationships, current, limits.MaxDepth, discovered, availability, &queue); err != nil {
 			return nil, err
 		}
 	}
@@ -220,13 +223,13 @@ func initialQueue(entries []string) ([]followItem, map[marksplice.DocumentKey]bo
 	return queue, discovered, nil
 }
 
-func followRelationships(fsys fs.FS, relationships []marksplice.LinkRelationship, current followItem, maxDepth int, discovered, availability, checked map[marksplice.DocumentKey]bool, queue *[]followItem) error {
+func followRelationships(fsys fs.FS, relationships []marksplice.LinkRelationship, current followItem, maxDepth int, discovered, availability map[marksplice.DocumentKey]bool, queue *[]followItem) error {
 	for _, relationship := range relationships {
 		target, _, local := localTarget(current.key, relationship)
 		if !local || discovered[target] {
 			continue
 		}
-		exists, err := targetExists(fsys, target, availability, checked)
+		exists, err := targetExists(fsys, target, availability)
 		if err != nil {
 			return err
 		}
@@ -243,13 +246,13 @@ func followRelationships(fsys fs.FS, relationships []marksplice.LinkRelationship
 	return nil
 }
 
-func targetExists(fsys fs.FS, target marksplice.DocumentKey, availability, checked map[marksplice.DocumentKey]bool) (bool, error) {
-	if checked[target] {
-		return availability[target], nil
+func targetExists(fsys fs.FS, target marksplice.DocumentKey, availability map[marksplice.DocumentKey]bool) (bool, error) {
+	if exists, checked := availability[target]; checked {
+		return exists, nil
 	}
 	info, err := fs.Stat(fsys, string(target))
-	checked[target] = true
 	if errors.Is(err, fs.ErrNotExist) {
+		availability[target] = false
 		return false, nil
 	}
 	if err != nil {
@@ -361,27 +364,95 @@ func localTarget(source marksplice.DocumentKey, relationship marksplice.LinkRela
 	if relationship.IsEmail() {
 		return "", "", false
 	}
-	destination := relationship.Destination()
-	targetText, fragmentText, hasFragment := strings.Cut(destination, "#")
-	if targetText == "" || !isConservativeLocalPath(targetText) {
+	rawPath, fragment := splitLocalDestination(relationship.Destination())
+	decodedPath, ok := decodeLocalPath(rawPath)
+	if !ok {
 		return "", "", false
 	}
-	targetText = path.Clean(path.Join(path.Dir(string(source)), targetText))
+	targetText := path.Clean(path.Join(path.Dir(string(source)), decodedPath))
 	if !fs.ValidPath(targetText) || targetText == "." || !isMarkdownPath(targetText) {
 		return "", "", false
-	}
-	fragment := ""
-	if hasFragment {
-		fragment = "#" + fragmentText
 	}
 	return marksplice.DocumentKey(targetText), fragment, true
 }
 
-func isConservativeLocalPath(value string) bool {
-	if strings.HasPrefix(value, "/") {
+func splitLocalDestination(destination string) (string, string) {
+	pathAndQuery := destination
+	fragment := ""
+	if index := strings.IndexByte(pathAndQuery, '#'); index >= 0 {
+		fragment = pathAndQuery[index:]
+		pathAndQuery = pathAndQuery[:index]
+	}
+	if index := strings.IndexByte(pathAndQuery, '?'); index >= 0 {
+		pathAndQuery = pathAndQuery[:index]
+	}
+	return pathAndQuery, fragment
+}
+
+func decodeLocalPath(rawPath string) (string, bool) {
+	if rawPath == "" || rawPath[0] == '/' || strings.HasSuffix(rawPath, "/") || strings.Contains(rawPath, "//") || strings.Contains(rawPath, `\`) || hasURIScheme(rawPath) {
+		return "", false
+	}
+	if !strings.Contains(rawPath, "%") {
+		return rawPath, true
+	}
+	var decoded strings.Builder
+	decoded.Grow(len(rawPath))
+	remaining := rawPath
+	first := true
+	for {
+		segment, rest, found := strings.Cut(remaining, "/")
+		value, err := url.PathUnescape(segment)
+		if err != nil || !validDecodedPathSegment(segment, value) {
+			return "", false
+		}
+		if !first {
+			decoded.WriteByte('/')
+		}
+		decoded.WriteString(value)
+		if !found {
+			break
+		}
+		first = false
+		remaining = rest
+	}
+	return decoded.String(), true
+}
+
+func validDecodedPathSegment(raw, decoded string) bool {
+	if decoded == "" || strings.ContainsAny(decoded, `/\`) || strings.IndexByte(decoded, 0) >= 0 {
 		return false
 	}
-	return !strings.ContainsAny(value, "\\?%:")
+	if (decoded == "." || decoded == "..") && raw != decoded {
+		return false
+	}
+	return true
+}
+
+func hasURIScheme(value string) bool {
+	colon := strings.IndexByte(value, ':')
+	if colon <= 0 {
+		return false
+	}
+	if slash := strings.IndexByte(value, '/'); slash >= 0 && slash < colon {
+		return false
+	}
+	for index := 0; index < colon; index++ {
+		if !uriSchemeByte(value[index], index == 0) {
+			return false
+		}
+	}
+	return true
+}
+
+func uriSchemeByte(value byte, first bool) bool {
+	if value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z' {
+		return true
+	}
+	if first {
+		return false
+	}
+	return value >= '0' && value <= '9' || value == '+' || value == '-' || value == '.'
 }
 
 func isMarkdownPath(name string) bool {

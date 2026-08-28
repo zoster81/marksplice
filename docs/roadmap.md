@@ -68,7 +68,7 @@ All six hard V05 performance gates are satisfied. The retained M108 pathological
 
 Goldmark v2 remains only a private external comparison and is not a production dependency, semantic oracle, or release requirement. The campaign's stretch throughput targets of 30 MB/s public and 35 MB/s Native were intentionally not used to delay the beta once the hard gates were exceeded cleanly.
 
-M116 is the next engineering boundary after the `v0.5.0-beta.1` performance release. It is not part of the v0.5 release and starts only as a separate engineering phase.
+M116 is the first engineering boundary after the `v0.5.0-beta.1` performance release. It is not part of the v0.5 release.
 
 ## M116 — Filesystem workspace foundation
 
@@ -76,9 +76,9 @@ M116 is the next engineering boundary after the `v0.5.0-beta.1` performance rele
 
 **Goal:** make the existing explicit multi-document graph practical for documentation already stored in a caller-authorized filesystem, without moving filesystem authority into Marksplice core.
 
-Introduce a separate filesystem-facing package, provisionally `workspacefs`, that consumes an explicit `fs.FS` supplied by the caller.
+M116 introduced the separate `workspacefs` package over an explicit `fs.FS` supplied by the caller.
 
-Initial responsibilities:
+Its foundation responsibilities are:
 
 - discover Markdown documents under an authorized filesystem root;
 - load and parse discovered documents through ordinary `marksplice.Parse`;
@@ -90,25 +90,26 @@ Initial responsibilities:
 
 Acceptance covers deterministic traversal, nested directories, cycles, missing targets, local fragments, bounded resource use, and hostile/malformed path input.
 
-The implemented `workspacefs` package now provides `Scan`, `Follow`, finite `Limits`, immutable `Workspace.Documents`, and direct `BuildGraph`/`Validate` delegation to the existing root APIs. It accepts only caller-provided `fs.FS` authority, performs no writes/network/commands, reads files through a bounded reader, visits followed cycles once, and uses deterministic slash-relative `.md`/`.markdown` keys. M116 deliberately keeps relationship-path recognition conservative: ambiguous/non-local destination forms are ignored rather than guessed. Exact path/query/encoding/backslash/case/symlink semantics remain the explicit M117 hardening boundary.
-
-M117 is the next engineering milestone. No M117 implementation is included in the M116 closure.
+The implemented `workspacefs` package provides `Scan`, `Follow`, finite `Limits`, immutable `Workspace.Documents`, and direct `BuildGraph`/`Validate` delegation to the existing root APIs. It accepts only caller-provided `fs.FS` authority, performs no writes/network/commands, reads files through a bounded reader, visits followed cycles once, and uses deterministic slash-relative `.md`/`.markdown` keys. M116 deliberately left ambiguous relationship-path families fail-closed; M117 completed their reviewed resolution policy without changing the M116 public API.
 
 ## M117 — Filesystem resolution hardening
 
+**Status: complete on 2026-08-28; unreleased.**
+
 **Goal:** close path and traversal ambiguity before building more features on top of filesystem discovery.
 
-Define and test the exact handling of:
+The completed resolver uses one policy for `Follow`, `Workspace.BuildGraph`, and `Workspace.Validate`:
 
-- `file.md`, `./file.md`, `../file.md`, nested relative paths, and local `#fragment` links;
-- percent-encoded path components and traversal attempts;
-- query/fragment components;
-- backslash-looking input versus slash-based `fs.FS` paths;
-- extensionless/directory targets only if an explicit reviewed convention is adopted;
-- external schemes, protocol-relative targets, and other non-local relationships as non-filesystem data;
-- caller-filesystem case and symlink semantics without pretending `fs.FS` is a universal security sandbox.
+- ordinary relative `.md`/`.markdown` paths, `./`, nested paths, and literal `..` are resolved against the source document, but the normalized result must remain a valid path in the supplied `fs.FS` namespace;
+- each URI path component is percent-decoded exactly once; encoded traversal components and encoded slash or backslash separators fail closed;
+- query text is excluded from filesystem lookup, while the target fragment is preserved for the existing fragment-resolution machinery;
+- raw backslashes, empty path segments, malformed encoding, absolute paths, URI schemes, protocol-relative targets, directories, and extensionless targets are not treated as filesystem documents;
+- no implicit `index.md`, extension inference, case rewriting, or host-path conversion is performed;
+- case sensitivity, symlink behavior, and other host semantics remain properties of the caller-provided `fs.FS`; Marksplice does not present `fs.FS` as a universal security sandbox.
 
-The milestone ends with a broad `workspacefs` refactor/profiling pass. Traversal and relationship processing should remain linear or near-linear in discovered files/relationships under explicit budgets.
+M117 also completed the first broad `workspacefs` refactor/profiling pass. The URI-path resolver introduced no measured allocation-count regression in the frozen 256-document workloads. A profiler-driven traversal refactor replaced queue reslicing and two target-state maps with index-based breadth-first traversal and one operation-local availability map. Follow allocation bytes/counts decreased, and 4x document scaling from 256 to 1024 measured approximately 4.69x for `Scan`, 4.22x for chained `Follow`, and 4.31x for dense `Follow`; resource growth remained approximately proportional to input. Parser/document construction remains the dominant cost, so no persistent workspace cache or secondary index was added.
+
+M117 changes no exported API and no Markdown parser semantics. M118 is the next engineering milestone.
 
 ## M118 — Native semantic walk foundation
 

@@ -71,7 +71,9 @@ workspace, err := workspacefs.Follow(
 
 Both operations are read-only and require finite document, byte, depth, and relationship limits. `Scan` interprets `MaxDepth` as directory depth below the workspace root; `Follow` interprets it as relationship-hop depth. Budget exhaustion fails with `workspacefs.ErrBudgetExceeded`.
 
-The current filesystem resolver is deliberately conservative: it follows slash-relative `.md`/`.markdown` destinations, separates a normal `#fragment`, and ignores absolute paths, protocol/scheme targets, query-bearing paths, percent-bearing paths, backslash-looking paths, and other ambiguous/non-local forms. It does not fetch URLs, execute commands, or write files. `fs.FS` case, symlink, and other host semantics remain properties of the filesystem implementation supplied by the caller.
+`Follow` treats a relationship destination as a URI reference and uses only its path component for filesystem lookup. Literal relative `.` and `..` segments are normalized against the source document and must remain inside the supplied `fs.FS` namespace. Each path component is percent-decoded exactly once, so `docs/My%20Guide.md` can address `docs/My Guide.md`, while encoded traversal such as `%2e%2e/secret.md` and encoded separators such as `docs%2Fsecret.md` are rejected. Query text does not affect lookup: `guide/setup.md?print=1#install` looks up `guide/setup.md` and preserves `#install` for ordinary fragment resolution.
+
+Absolute paths, URI schemes, protocol-relative targets, raw backslashes, empty path segments such as `docs//guide.md`, malformed encoding, directory targets, and extensionless targets are not followed. Marksplice does not invent `index.md`, append extensions, or rewrite case. Case sensitivity, symlink behavior, and other host semantics remain properties of the `fs.FS` supplied by your application. The adapter never fetches URLs, executes commands, or writes files.
 
 Once loaded, `Workspace.BuildGraph` and `Workspace.Validate` delegate to the same immutable graph and validation APIs described below.
 

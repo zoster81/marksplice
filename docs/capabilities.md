@@ -60,7 +60,7 @@ The root package keeps multi-document graph/validation APIs explicit and in-memo
 | Capability | API | Boundary |
 | --- | --- | --- |
 | Filesystem discovery | `workspacefs.Scan` | Read-only `.md`/`.markdown` discovery under one caller-supplied `fs.FS` root; deterministic slash-relative keys |
-| Filesystem relationship following | `workspacefs.Follow` | Starts from explicit Markdown entries, visits reviewed local Markdown targets once, and stops at finite caller limits |
+| Filesystem relationship following | `workspacefs.Follow` | Starts from explicit Markdown entries; resolves reviewed relative slash-based Markdown URI paths with source-relative dot-segment normalization, one percent-decode of path components, query/file separation, preserved fragments, cycle-safe traversal, and finite caller limits. Absolute/scheme/protocol-relative/backslash/encoded-traversal-or-separator/directory/extensionless forms are not filesystem targets; case/symlink semantics come from the supplied `fs.FS`. |
 | Filesystem resource limits | `workspacefs.Options`, `workspacefs.Limits` | Positive document/byte/relationship limits plus a non-negative scan-depth or follow-hop limit; exhaustion fails with `workspacefs.ErrBudgetExceeded` |
 | Explicit document graph | `BuildDocumentGraph` | No discovery in the root package; resolver may target only documents already supplied |
 | Outgoing links/backlinks | `Outgoing`, `Backlinks` | Immutable graph results |

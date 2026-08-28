@@ -3376,7 +3376,7 @@ Discovers `.md` and `.markdown` files under `root`, parses them through ordinary
 func Follow(fsys fs.FS, root string, entries []string, options Options) (*Workspace, error)
 ```
 
-Loads explicit Markdown entries and follows conservatively recognized local Markdown relationships. Entry paths are validated, deduplicated, and deterministically ordered; cycles are visited once. Missing local targets remain available to workspace validation instead of causing discovery to invent a document.
+Loads explicit Markdown entries and follows reviewed relative Markdown URI-path relationships. Entry paths are validated, deduplicated, and deterministically ordered; cycles are visited once. Relationship paths normalize literal dot segments relative to the source document, percent-decode components exactly once, ignore query text for filesystem lookup, and preserve fragments. Absolute/scheme/protocol-relative/backslash/encoded-traversal-or-separator/directory/extensionless forms are not filesystem targets. Missing reviewed local targets remain available to workspace validation instead of causing discovery to invent a document.
 
 ### `Workspace` methods
 
@@ -3404,7 +3404,9 @@ Delegates to the existing immutable document-graph implementation using the work
 func (w *Workspace) Validate(options marksplice.WorkspaceValidationOptions) (*marksplice.WorkspaceReport, error)
 ```
 
-Delegates to the existing workspace validator. Reviewed local targets present in the loaded workspace are resolved; reviewed local targets absent from the loaded workspace are classified as missing; non-local or deliberately unsupported destination forms are ignored by the filesystem adapter.
+Delegates to the existing workspace validator through the same local relationship resolver used by `Follow` and `BuildGraph`. Reviewed local targets present in the loaded workspace are resolved; reviewed local targets absent from the loaded workspace are classified as missing; non-filesystem destination forms are ignored by the adapter.
+
+Path resolution is slash-based and relative to the source document key. Path components are percent-decoded once, query text is excluded from lookup, and fragments are preserved for ordinary fragment resolution. Absolute/scheme/protocol-relative/backslash/encoded-traversal-or-separator/directory/extensionless forms are not filesystem targets. Case sensitivity, symlink behavior, and other host semantics remain properties of the caller-supplied `fs.FS`.
 
 For path-policy details and examples, see [Links and Workspaces](recipes/links-workspaces.md).
 
