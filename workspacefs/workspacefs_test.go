@@ -1,0 +1,248 @@
+package workspacefs_test
+
+import (
+	"errors"
+	"reflect"
+	"testing"
+	"testing/fstest"
+
+	"github.com/zoster81/marksplice"
+	"github.com/zoster81/marksplice/workspacefs"
+)
+
+func TestScanDiscoversNestedMarkdownDeterministicallyAndBuildsExistingGraph(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"site/README.md":           markdown("# Home\n\n[guide](docs/guide.md#guide) [local](#home) [external](https://example.com)\n"),
+		"site/docs/guide.md":       markdown("# Guide\n\n[home](../README.md)\n"),
+		"site/docs/notes.markdown": markdown("# Notes\n"),
+		"site/docs/asset.txt":      {Data: []byte("not markdown")},
+	}
+
+	workspace, err := workspacefs.Scan(files, "site", testOptions())
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if got := documentKeys(workspace.Documents()); !reflect.DeepEqual(got, []marksplice.DocumentKey{"README.md", "docs/guide.md", "docs/notes.markdown"}) {
+		t.Fatalf("document keys = %#v", got)
+	}
+
+	graph, err := workspace.BuildGraph()
+	if err != nil {
+		t.Fatalf("BuildGraph() error = %v", err)
+	}
+	if got := graph.DocumentKeys(); !reflect.DeepEqual(got, []marksplice.DocumentKey{"README.md", "docs/guide.md", "docs/notes.markdown"}) {
+		t.Fatalf("graph document keys = %#v", got)
+	}
+	if edges := graph.Edges(); len(edges) != 3 {
+		t.Fatalf("graph edges = %d, want 3 (guide, local fragment, home)", len(edges))
+	}
+	if got, ok := graph.ReachableFrom("README.md"); !ok || !reflect.DeepEqual(got, []marksplice.DocumentKey{"docs/guide.md"}) {
+		t.Fatalf("ReachableFrom(README.md) = %#v/%v", got, ok)
+	}
+
+	report, err := workspace.Validate(marksplice.WorkspaceValidationOptions{Roots: []marksplice.DocumentKey{"README.md"}})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if diagnostics := report.Diagnostics(); len(diagnostics) != 1 || diagnostics[0].Kind() != marksplice.WorkspaceDiagnosticOrphanDocument {
+		t.Fatalf("diagnostics = %#v, want one orphan document", diagnostics)
+	}
+	if target, ok := report.Diagnostics()[0].TargetDocument(); !ok || target != "docs/notes.markdown" {
+		t.Fatalf("orphan target = %q/%v", target, ok)
+	}
+}
+
+func TestFollowTraversesLocalMarkdownOnceAcrossCyclesAndReportsMissingTargets(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"README.md": markdown("# Root\n\n[a](docs/a.md) [missing](missing.md#part) [external](https://example.com/x.md)\n"),
+		"docs/a.md": markdown("# A\n\n[root](../README.md) [b](b.md)\n"),
+		"docs/b.md": markdown("# B\n\n[local](#b) [mail](mailto:test@example.com)\n"),
+	}
+
+	workspace, err := workspacefs.Follow(files, ".", []string{"README.md"}, testOptions())
+	if err != nil {
+		t.Fatalf("Follow() error = %v", err)
+	}
+	if got := documentKeys(workspace.Documents()); !reflect.DeepEqual(got, []marksplice.DocumentKey{"README.md", "docs/a.md", "docs/b.md"}) {
+		t.Fatalf("document keys = %#v", got)
+	}
+
+	graph, err := workspace.BuildGraph()
+	if err != nil {
+		t.Fatalf("BuildGraph() error = %v", err)
+	}
+	if edges := graph.Edges(); len(edges) != 4 {
+		t.Fatalf("graph edges = %d, want 4 local/resolved edges", len(edges))
+	}
+	if got, ok := graph.ReachableFrom("README.md"); !ok || !reflect.DeepEqual(got, []marksplice.DocumentKey{"docs/a.md", "docs/b.md"}) {
+		t.Fatalf("ReachableFrom(README.md) = %#v/%v", got, ok)
+	}
+
+	report, err := workspace.Validate(marksplice.WorkspaceValidationOptions{Roots: []marksplice.DocumentKey{"README.md"}})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	diagnostics := report.Diagnostics()
+	if len(diagnostics) != 1 || diagnostics[0].Kind() != marksplice.WorkspaceDiagnosticMissingDocument {
+		t.Fatalf("diagnostics = %#v, want one missing document", diagnostics)
+	}
+	if target, ok := diagnostics[0].TargetDocument(); !ok || target != "missing.md" {
+		t.Fatalf("missing target = %q/%v", target, ok)
+	}
+}
+
+func TestBudgetsFailClosed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		files   fstest.MapFS
+		options workspacefs.Options
+	}{
+		{
+			name: "documents",
+			files: fstest.MapFS{
+				"a.md": markdown("# A\n"),
+				"b.md": markdown("# B\n"),
+			},
+			options: optionsWith(workspacefs.Limits{MaxDocuments: 1, MaxBytes: 1024, MaxDepth: 8, MaxRelationships: 8}),
+		},
+		{
+			name:    "bytes",
+			files:   fstest.MapFS{"a.md": markdown("# 123456789\n")},
+			options: optionsWith(workspacefs.Limits{MaxDocuments: 8, MaxBytes: 4, MaxDepth: 8, MaxRelationships: 8}),
+		},
+		{
+			name:    "depth",
+			files:   fstest.MapFS{"nested/a.md": markdown("# A\n")},
+			options: optionsWith(workspacefs.Limits{MaxDocuments: 8, MaxBytes: 1024, MaxDepth: 0, MaxRelationships: 8}),
+		},
+		{
+			name: "relationships",
+			files: fstest.MapFS{
+				"a.md": markdown("# A\n\n[b](b.md) [c](c.md)\n"),
+				"b.md": markdown("# B\n"),
+				"c.md": markdown("# C\n"),
+			},
+			options: optionsWith(workspacefs.Limits{MaxDocuments: 8, MaxBytes: 4096, MaxDepth: 8, MaxRelationships: 1}),
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := workspacefs.Scan(test.files, ".", test.options); !errors.Is(err, workspacefs.ErrBudgetExceeded) {
+				t.Fatalf("Scan() error = %v, want ErrBudgetExceeded", err)
+			}
+		})
+	}
+
+	followFiles := fstest.MapFS{
+		"a.md": markdown("# A\n\n[b](b.md)\n"),
+		"b.md": markdown("# B\n"),
+	}
+	followOptions := optionsWith(workspacefs.Limits{MaxDocuments: 8, MaxBytes: 4096, MaxDepth: 0, MaxRelationships: 8})
+	if _, err := workspacefs.Follow(followFiles, ".", []string{"a.md"}, followOptions); !errors.Is(err, workspacefs.ErrBudgetExceeded) {
+		t.Fatalf("Follow() depth error = %v, want ErrBudgetExceeded", err)
+	}
+}
+
+func TestHostileOrNonLocalDestinationsAreNotFollowedAndMalformedInputsFail(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"root.md":   markdown("# Root\n\n[escape](../inside.md) [absolute](/inside.md) [protocol](//example.com/inside.md) [scheme](https://example.com/inside.md) [query](inside.md?x=1) [encoded](%2e%2e/inside.md) [backslash](docs\\inside.md)\n"),
+		"inside.md": markdown("# Inside\n"),
+	}
+	workspace, err := workspacefs.Follow(files, ".", []string{"root.md"}, testOptions())
+	if err != nil {
+		t.Fatalf("Follow() error = %v", err)
+	}
+	if got := documentKeys(workspace.Documents()); !reflect.DeepEqual(got, []marksplice.DocumentKey{"root.md"}) {
+		t.Fatalf("non-local destinations were followed: %#v", got)
+	}
+	report, err := workspace.Validate(marksplice.WorkspaceValidationOptions{Roots: []marksplice.DocumentKey{"root.md"}})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if diagnostics := report.Diagnostics(); len(diagnostics) != 0 {
+		t.Fatalf("non-local destinations produced diagnostics: %#v", diagnostics)
+	}
+
+	if _, err := workspacefs.Scan(files, "../escape", testOptions()); !errors.Is(err, workspacefs.ErrInvalidInput) {
+		t.Fatalf("Scan(invalid root) error = %v, want ErrInvalidInput", err)
+	}
+	if _, err := workspacefs.Follow(files, ".", []string{"../escape.md"}, testOptions()); !errors.Is(err, workspacefs.ErrInvalidInput) {
+		t.Fatalf("Follow(invalid entry) error = %v, want ErrInvalidInput", err)
+	}
+	if _, err := workspacefs.Scan(files, ".", workspacefs.Options{}); !errors.Is(err, workspacefs.ErrInvalidInput) {
+		t.Fatalf("Scan(zero options) error = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestWorkspaceOwnershipDefaultsAndEntryOrdering(t *testing.T) {
+	t.Parallel()
+
+	defaults := workspacefs.DefaultOptions().Limits
+	if defaults.MaxDocuments <= 0 || defaults.MaxBytes <= 0 || defaults.MaxDepth < 0 || defaults.MaxRelationships <= 0 {
+		t.Fatalf("DefaultOptions() returned non-finite limits: %+v", defaults)
+	}
+
+	files := fstest.MapFS{
+		"a.md": markdown("# A\n"),
+		"b.md": markdown("# B\n"),
+	}
+	workspace, err := workspacefs.Follow(files, ".", []string{"b.md", "a.md", "b.md"}, testOptions())
+	if err != nil {
+		t.Fatalf("Follow() error = %v", err)
+	}
+	if got := documentKeys(workspace.Documents()); !reflect.DeepEqual(got, []marksplice.DocumentKey{"a.md", "b.md"}) {
+		t.Fatalf("entry ordering = %#v", got)
+	}
+	documents := workspace.Documents()
+	documents[0].Key = "mutated"
+	if got := documentKeys(workspace.Documents()); !reflect.DeepEqual(got, []marksplice.DocumentKey{"a.md", "b.md"}) {
+		t.Fatalf("Documents() caller mutation leaked: %#v", got)
+	}
+
+	var nilWorkspace *workspacefs.Workspace
+	if nilWorkspace.Documents() != nil {
+		t.Fatal("nil Workspace.Documents() should return nil")
+	}
+	if _, err := nilWorkspace.BuildGraph(); !errors.Is(err, workspacefs.ErrInvalidInput) {
+		t.Fatalf("nil BuildGraph() error = %v, want ErrInvalidInput", err)
+	}
+	if _, err := nilWorkspace.Validate(marksplice.WorkspaceValidationOptions{}); !errors.Is(err, workspacefs.ErrInvalidInput) {
+		t.Fatalf("nil Validate() error = %v, want ErrInvalidInput", err)
+	}
+}
+
+func markdown(source string) *fstest.MapFile {
+	return &fstest.MapFile{Data: []byte(source)}
+}
+
+func testOptions() workspacefs.Options {
+	return optionsWith(workspacefs.Limits{
+		MaxDocuments:     64,
+		MaxBytes:         1 << 20,
+		MaxDepth:         16,
+		MaxRelationships: 256,
+	})
+}
+
+func optionsWith(limits workspacefs.Limits) workspacefs.Options {
+	return workspacefs.Options{Limits: limits}
+}
+
+func documentKeys(documents []marksplice.GraphDocument) []marksplice.DocumentKey {
+	result := make([]marksplice.DocumentKey, len(documents))
+	for index, document := range documents {
+		result[index] = document.Key
+	}
+	return result
+}

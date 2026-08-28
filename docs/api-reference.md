@@ -1,6 +1,6 @@
 # Public API Reference
 
-This is the exhaustive exported callable reference for `github.com/zoster81/marksplice`. Go source and pkg.go.dev remain canonical for signatures. If you are learning the library, start with [Getting Started](getting-started.md); if you already know the task, use the goal index below before dropping into the alphabetical type/method reference.
+This is the exhaustive exported callable reference for `github.com/zoster81/marksplice`, with the separate filesystem adapter `github.com/zoster81/marksplice/workspacefs` documented in its own section below. Go source and pkg.go.dev remain canonical for signatures. If you are learning the library, start with [Getting Started](getting-started.md); if you already know the task, use the goal index below before dropping into the alphabetical type/method reference.
 
 ## Find the API by goal
 
@@ -30,7 +30,7 @@ Recipe: [Lists, sections, and tables](recipes/lists-sections-tables.md).
 
 ### Links, navigation, and workspaces
 
-Single-document navigation/relationship methods live under [`Document`](#document-methods). Cross-document APIs start with [`BuildDocumentGraph`](#builddocumentgraph) and [`ValidateWorkspace`](#validateworkspace), with results on [`DocumentGraph`](#documentgraph-methods), [`GraphEdge`](#graphedge-methods), [`WorkspaceReport`](#workspacereport-methods), and [`WorkspaceDiagnostic`](#workspacediagnostic-methods). Knowledge metadata starts with [`BuildKnowledgeIndex`](#buildknowledgeindex) and [`KnowledgeIndex`](#knowledgeindex-methods).
+Single-document navigation/relationship methods live under [`Document`](#document-methods). Cross-document APIs start with [`BuildDocumentGraph`](#builddocumentgraph) and [`ValidateWorkspace`](#validateworkspace), with results on [`DocumentGraph`](#documentgraph-methods), [`GraphEdge`](#graphedge-methods), [`WorkspaceReport`](#workspacereport-methods), and [`WorkspaceDiagnostic`](#workspacediagnostic-methods). Filesystem discovery/following lives only in the separate [`workspacefs`](#workspacefs-package) package. Knowledge metadata starts with [`BuildKnowledgeIndex`](#buildknowledgeindex) and [`KnowledgeIndex`](#knowledgeindex-methods).
 
 Recipe: [Links and workspaces](recipes/links-workspaces.md).
 
@@ -42,7 +42,7 @@ Recipe: [Read-only extensions](recipes/extensions.md).
 
 ## Error model
 
-Public operations classify failure families with `errors.Is`. The exported sentinels are `ErrNodeNotFound`, `ErrInvalidReplacement`, `ErrInvalidTargetKind`, `ErrSourceConflict`, `ErrInvalidConstruction`, `ErrInvalidQuery`, `ErrInvalidGraph`, `ErrInvalidWorkspace`, `ErrInvalidKnowledge`, and `ErrInvalidExtension`. Diagnostic strings are not compatibility contracts.
+Public operations classify failure families with `errors.Is`. The root-package sentinels are `ErrNodeNotFound`, `ErrInvalidReplacement`, `ErrInvalidTargetKind`, `ErrSourceConflict`, `ErrInvalidConstruction`, `ErrInvalidQuery`, `ErrInvalidGraph`, `ErrInvalidWorkspace`, `ErrInvalidKnowledge`, and `ErrInvalidExtension`. The `workspacefs` package separately exports `ErrInvalidInput` and `ErrBudgetExceeded`. Diagnostic strings are not compatibility contracts.
 
 ## Type index (alphabetical)
 
@@ -3315,6 +3315,99 @@ func (r *WorkspaceReport) RepairPlan() WorkspaceRepairPlan
 
 RepairPlan returns the immutable conservative repair plan.
 
+## `workspacefs` package
+
+Import path:
+
+```go
+import "github.com/zoster81/marksplice/workspacefs"
+```
+
+`workspacefs` is a read-only adapter over a caller-supplied `fs.FS`. It performs no network access, command execution, or filesystem writes. Filesystem discovery remains outside the root document core.
+
+### Exported limits and errors
+
+```go
+const (
+    DefaultMaxDocuments     = 10_000
+    DefaultMaxBytes   int64 = 256 << 20
+    DefaultMaxDepth         = 64
+    DefaultMaxRelationships = 250_000
+)
+
+var (
+    ErrInvalidInput    error
+    ErrBudgetExceeded error
+)
+
+type Limits struct {
+    MaxDocuments     int
+    MaxBytes         int64
+    MaxDepth         int
+    MaxRelationships int
+}
+
+type Options struct {
+    Limits Limits
+}
+```
+
+All operations require positive document/byte/relationship limits and a non-negative depth limit. `MaxDepth` means directory depth below `root` for `Scan` and relationship-hop depth for `Follow`.
+
+### `DefaultOptions`
+
+```go
+func DefaultOptions() Options
+```
+
+Returns finite default limits for ordinary documentation workspaces.
+
+### `Scan`
+
+```go
+func Scan(fsys fs.FS, root string, options Options) (*Workspace, error)
+```
+
+Discovers `.md` and `.markdown` files under `root`, parses them through ordinary `marksplice.Parse`, and assigns deterministic slash-relative `DocumentKey` values. Discovery is read-only and budget bounded.
+
+### `Follow`
+
+```go
+func Follow(fsys fs.FS, root string, entries []string, options Options) (*Workspace, error)
+```
+
+Loads explicit Markdown entries and follows conservatively recognized local Markdown relationships. Entry paths are validated, deduplicated, and deterministically ordered; cycles are visited once. Missing local targets remain available to workspace validation instead of causing discovery to invent a document.
+
+### `Workspace` methods
+
+`Workspace` is immutable after a successful load and is safe for concurrent reads.
+
+#### `Documents`
+
+```go
+func (w *Workspace) Documents() []marksplice.GraphDocument
+```
+
+Returns a caller-owned copy of the parsed graph inputs in deterministic workspace order.
+
+#### `BuildGraph`
+
+```go
+func (w *Workspace) BuildGraph() (*marksplice.DocumentGraph, error)
+```
+
+Delegates to the existing immutable document-graph implementation using the workspace's reviewed local relationship mapping.
+
+#### `Validate`
+
+```go
+func (w *Workspace) Validate(options marksplice.WorkspaceValidationOptions) (*marksplice.WorkspaceReport, error)
+```
+
+Delegates to the existing workspace validator. Reviewed local targets present in the loaded workspace are resolved; reviewed local targets absent from the loaded workspace are classified as missing; non-local or deliberately unsupported destination forms are ignored by the filesystem adapter.
+
+For path-policy details and examples, see [Links and Workspaces](recipes/links-workspaces.md).
+
 ## Maintenance rule
 
-When the exported API changes, update this reference in the same change. Maintainer verification compares the exported callable inventory from `go doc -all .` with this file so undocumented functions or methods fail the documentation gate.
+When the exported API changes, update this reference in the same change. Maintainer verification compares the exported callable inventories from `go doc -all .` and `go doc -all ./workspacefs` with this file so undocumented functions or methods fail the documentation gate.

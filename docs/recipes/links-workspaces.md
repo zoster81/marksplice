@@ -1,6 +1,6 @@
 # Links and Workspaces
 
-Marksplice can reason about navigation and relationships while leaving filesystem, URL, and authorization policy to your application.
+Marksplice can reason about navigation and relationships without hidden I/O. The root package stays in-memory; the optional `workspacefs` package performs read-only discovery only through an `fs.FS` explicitly supplied by your application.
 
 Run the complete multi-file example:
 
@@ -8,7 +8,7 @@ Run the complete multi-file example:
 go run ./examples/workspace
 ```
 
-It loads four Markdown files from [`../../examples/workspace/docs/`](../../examples/workspace/docs/), builds a graph, checks backlinks/reachability, and reports `troubleshooting.md` as unreachable from the configured root while all local links remain valid.
+It gives `workspacefs` an `os.DirFS`, scans four Markdown files under [`../../examples/workspace/docs/`](../../examples/workspace/docs/), builds the existing graph, checks backlinks/reachability, and reports `troubleshooting.md` as unreachable from the configured root while all reviewed local links remain valid.
 
 ## Start with one document
 
@@ -38,6 +38,42 @@ for _, relationship := range doc.LinkRelationships() {
 ```
 
 Relationships cover parser-resolved links, images, references, and autolinks in source order. The relationship view can be broader than ordinary editable link-node promotion; relationship intelligence does not grant a generic mutation span.
+
+## Load a caller-authorized filesystem workspace
+
+Use `workspacefs.Scan` when you want every Markdown document under one supplied filesystem root:
+
+```go
+workspace, err := workspacefs.Scan(
+    os.DirFS("."),
+    "docs",
+    workspacefs.DefaultOptions(),
+)
+if err != nil {
+    return err
+}
+
+graph, err := workspace.BuildGraph()
+```
+
+`Scan` discovers `.md` and `.markdown` files in deterministic slash-relative order. The returned document keys are paths relative to the supplied workspace root, such as `README.md` or `guide/setup.md`.
+
+Use `workspacefs.Follow` instead when you want to start from explicit entry documents and load only reviewed local Markdown targets:
+
+```go
+workspace, err := workspacefs.Follow(
+    os.DirFS("."),
+    "docs",
+    []string{"README.md"},
+    workspacefs.DefaultOptions(),
+)
+```
+
+Both operations are read-only and require finite document, byte, depth, and relationship limits. `Scan` interprets `MaxDepth` as directory depth below the workspace root; `Follow` interprets it as relationship-hop depth. Budget exhaustion fails with `workspacefs.ErrBudgetExceeded`.
+
+The current filesystem resolver is deliberately conservative: it follows slash-relative `.md`/`.markdown` destinations, separates a normal `#fragment`, and ignores absolute paths, protocol/scheme targets, query-bearing paths, percent-bearing paths, backslash-looking paths, and other ambiguous/non-local forms. It does not fetch URLs, execute commands, or write files. `fs.FS` case, symlink, and other host semantics remain properties of the filesystem implementation supplied by the caller.
+
+Once loaded, `Workspace.BuildGraph` and `Workspace.Validate` delegate to the same immutable graph and validation APIs described below.
 
 ## Build a graph from documents you already loaded
 
@@ -106,9 +142,9 @@ Diagnostics can report:
 - documents unreachable from caller-provided roots;
 - stale or unrecognized caller-managed TOCs.
 
-The only automatic repair planning is for deterministic managed-TOC synchronization. Workspace validation does not crawl for files that were not supplied by the caller.
+The only automatic repair planning is for deterministic managed-TOC synchronization. Root `ValidateWorkspace` does not discover files beyond the caller-provided document set; `workspacefs.Workspace.Validate` validates exactly the finite set loaded by its preceding `Scan` or `Follow` operation.
 
-See [`examples/workspace/main.go`](../../examples/workspace/main.go) for a resolver that maps actual Markdown destinations to the files loaded by the example and uses caller-provided roots to surface an orphan-document diagnostic.
+See [`examples/workspace/main.go`](../../examples/workspace/main.go) for the complete `workspacefs.Scan` flow and a caller-provided root that surfaces an orphan-document diagnostic.
 
 ## Add syntax-independent knowledge metadata
 
@@ -134,7 +170,9 @@ Knowledge queries include alias resolution, tags, logical references/backlinks, 
 | --- | --- |
 | Resolve `#fragment` in one document | `ResolveFragment` |
 | Enumerate semantic outgoing links | `LinkRelationships` |
-| Backlinks/reachability across an explicit set | `BuildDocumentGraph` |
+| Discover all Markdown under an explicit `fs.FS` root | `workspacefs.Scan` |
+| Follow local Markdown from explicit entries | `workspacefs.Follow` |
+| Backlinks/reachability across an explicit set | `BuildDocumentGraph` or `workspacefs.Workspace.BuildGraph` |
 | Diagnose link/fragment/workspace state | `ValidateWorkspace` |
 | Add application-owned aliases/tags/logical edges | `BuildKnowledgeIndex` |
 

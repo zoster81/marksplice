@@ -20,7 +20,7 @@ Normal users should not need milestone records or parser-transition documentatio
 Use these when changing Marksplice itself or when you need the design rationale behind a boundary:
 
 - [Architecture](architecture.md) — durable package, source-preservation, mutation, construction, performance, and authority decisions.
-- [Roadmap](roadmap.md) — approved M116–M126 development sequence, refactor/profiling cadence, and v1.0/v1.5 release targets.
+- [Roadmap](roadmap.md) — approved post-M115 development sequence; M116 is complete, M117 is next, and M124/M126 remain the v1.0/v1.5 release gates.
 - [Markdown Conformance Policy](gfm-conformance.md) — normative CommonMark/GFM hierarchy, pinned external specification inputs, and update procedure.
 - [Capability and Third-Party Extensibility Strategy](extension-strategy.md) — what belongs in core versus independent read-only extensions.
 - [Release and Versioning Policy](releasing.md) — public module/release procedure.
@@ -31,7 +31,7 @@ Use these when changing Marksplice itself or when you need the design rationale 
 
 These files preserve decisions and verification evidence but are not part of the normal user journey:
 
-- [`milestones/`](milestones/) — M0–M115 feature/design/test records.
+- [`milestones/`](milestones/) — M0–M116 feature/design/test records.
 - [Goldmark capability matrix](goldmark-capability-matrix.md) — historical pre-M115 parser/source transition record.
 - [`CHANGELOG.md`](../CHANGELOG.md) — public release history and unreleased user-visible changes.
 
@@ -47,15 +47,22 @@ History remains tracked so maintainers can reconstruct why a contract exists wit
 ├── doc.go                   package documentation
 ├── example_test.go          compact pkg.go.dev examples
 ├── examples/                runnable file-based user examples
+├── workspacefs/             caller-authorized read-only fs.FS workspace adapter
 ├── internal/                private parser/source/splice implementation and tests
 ├── docs/                    user, reference, advanced, and historical documentation
 └── README.md                single public entry point
 ```
 
-The public Go package stays at the module root so consumers import exactly:
+The primary public Go package stays at the module root so consumers import:
 
 ```text
 github.com/zoster81/marksplice
+```
+
+Filesystem-backed workspace discovery is an explicit separate package:
+
+```text
+github.com/zoster81/marksplice/workspacefs
 ```
 
 Do not create a duplicate public documentation tree or a cosmetic top-level `src/` package. New documentation should have one clear responsibility and link to the existing source of truth instead of copying it.

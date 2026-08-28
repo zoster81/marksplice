@@ -72,6 +72,8 @@ M116 is the next engineering boundary after the `v0.5.0-beta.1` performance rele
 
 ## M116 — Filesystem workspace foundation
 
+**Status: complete on 2026-08-28; unreleased.**
+
 **Goal:** make the existing explicit multi-document graph practical for documentation already stored in a caller-authorized filesystem, without moving filesystem authority into Marksplice core.
 
 Introduce a separate filesystem-facing package, provisionally `workspacefs`, that consumes an explicit `fs.FS` supplied by the caller.
@@ -86,7 +88,11 @@ Initial responsibilities:
 - expose explicit document, byte, depth, and relationship budgets;
 - perform no network access, command execution, or writes.
 
-Acceptance must cover deterministic traversal, nested directories, cycles, missing targets, local fragments, bounded resource use, and hostile/malformed path input.
+Acceptance covers deterministic traversal, nested directories, cycles, missing targets, local fragments, bounded resource use, and hostile/malformed path input.
+
+The implemented `workspacefs` package now provides `Scan`, `Follow`, finite `Limits`, immutable `Workspace.Documents`, and direct `BuildGraph`/`Validate` delegation to the existing root APIs. It accepts only caller-provided `fs.FS` authority, performs no writes/network/commands, reads files through a bounded reader, visits followed cycles once, and uses deterministic slash-relative `.md`/`.markdown` keys. M116 deliberately keeps relationship-path recognition conservative: ambiguous/non-local destination forms are ignored rather than guessed. Exact path/query/encoding/backslash/case/symlink semantics remain the explicit M117 hardening boundary.
+
+M117 is the next engineering milestone. No M117 implementation is included in the M116 closure.
 
 ## M117 — Filesystem resolution hardening
 

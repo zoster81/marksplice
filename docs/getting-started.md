@@ -7,7 +7,7 @@ This guide takes you from installation to a real source-preserving edit. It assu
 Marksplice requires Go 1.26 or newer. The current published beta is installed explicitly:
 
 ```sh
-go get github.com/zoster81/marksplice@v0.1.0-beta.1
+go get github.com/zoster81/marksplice@v0.5.0-beta.1
 ```
 
 Import the root package:
@@ -52,7 +52,7 @@ if err != nil {
 
 `Document` is an immutable snapshot of those bytes. Keep the original `source` if you intend to apply a prepared edit later.
 
-Marksplice does not read other files, follow URLs, or crawl directories during `Parse`.
+`Parse` does not read other files, follow URLs, or crawl directories. For an explicit read-only multi-file workflow, the separate `workspacefs` package can scan or follow Markdown inside a caller-supplied `fs.FS` under finite resource limits; see [Links and workspaces](recipes/links-workspaces.md).
 
 ## 4. Inspect useful structure
 
@@ -200,7 +200,7 @@ It creates front matter, typed inline content, tasks, a table, and fenced shell 
 ## Where to go next
 
 - [User Guide](guide.md): choose a task and find the right API family.
-- [Recipes](recipes/README.md): focused workflows for inspection, editing, creation, tables/lists/sections, workspaces, and extensions.
+- [Recipes](recipes/README.md): focused workflows for inspection, editing, creation, tables/lists/sections, filesystem workspaces, and extensions.
 - [Examples](../examples/README.md): all runnable file-based programs.
 - [API Reference](api-reference.md): exact signatures and exhaustive callable coverage.
 - [Capabilities](capabilities.md): what is supported today and where Marksplice intentionally stops.

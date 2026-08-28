@@ -10,7 +10,7 @@ Use this page to choose the shortest path to the task you have. If this is your 
 | Rename, replace, check, remove, insert, move, or combine edits | [Edit an existing document](recipes/edit-existing-document.md) | `go run ./examples/edit` |
 | Create Markdown from structured Go values | [Create a document](recipes/create-document.md) | `go run ./examples/build` |
 | Work with list hierarchies, sections, or GFM tables | [Lists, sections, and tables](recipes/lists-sections-tables.md) | `go run ./examples/query` |
-| Resolve fragments, inspect links, build backlinks, or validate a document set | [Links and workspaces](recipes/links-workspaces.md) | `go run ./examples/workspace` |
+| Discover/follow Markdown files, resolve fragments, build backlinks, or validate a document set | [Links and workspaces](recipes/links-workspaces.md) | `go run ./examples/workspace` |
 | Observe application-specific syntax without changing core GFM | [Read-only extensions](recipes/extensions.md) | `go run ./examples/extensions` |
 | Check whether a feature is supported | [Capability matrix](capabilities.md) | — |
 | Find an exact function or method signature | [API Reference](api-reference.md) | — |
@@ -79,7 +79,7 @@ See [Create a document](recipes/create-document.md).
 
 ## Navigation and multi-document work
 
-Marksplice can understand document relationships without owning your filesystem or URL policy.
+Marksplice can understand document relationships without hidden filesystem or URL authority. Root graph APIs remain in-memory; `workspacefs` is a separate read-only adapter that operates only on a caller-supplied `fs.FS` under explicit finite limits.
 
 For one document:
 
@@ -88,7 +88,13 @@ For one document:
 - generate and conservatively synchronize managed TOCs;
 - enumerate semantic link/image/autolink relationships.
 
-For several documents that your application already loaded:
+For filesystem-backed documentation:
+
+- `workspacefs.Scan` discovers `.md`/`.markdown` files under one explicit `fs.FS` root and assigns deterministic slash-relative keys;
+- `workspacefs.Follow` starts from explicit entries and follows only conservatively recognized local Markdown relationships, visiting cycles once;
+- both operations enforce caller-supplied document, byte, depth, and relationship limits and perform no writes, network access, or command execution.
+
+For several documents that your application already loaded, or for the documents returned by `workspacefs`:
 
 - `BuildDocumentGraph` creates an immutable graph over explicit caller keys;
 - a caller resolver decides which non-local relationships map to which already-supplied documents;
@@ -119,11 +125,13 @@ Use `errors.Is` with public sentinel families rather than comparing messages:
 - `ErrInvalidKnowledge`
 - `ErrInvalidExtension`
 
+The separate `workspacefs` package classifies malformed filesystem-workspace input with `workspacefs.ErrInvalidInput` and exhausted load/traversal limits with `workspacefs.ErrBudgetExceeded`.
+
 Diagnostic strings are not compatibility contracts.
 
 ## Concurrency and ownership
 
-Successfully built immutable `Document`, `DocumentGraph`, `KnowledgeIndex`, `WorkspaceReport`, and prepared `ChangeSet` values may be read concurrently.
+Successfully built immutable `Document`, `DocumentGraph`, `KnowledgeIndex`, `WorkspaceReport`, `workspacefs.Workspace`, and prepared `ChangeSet` values may be read concurrently.
 
 `DocumentBuilder` is mutable and requires caller synchronization for concurrent use. Resolver and extension callbacks are invoked synchronously and are not retained after the build/parse call returns.
 
@@ -131,6 +139,6 @@ Public variable-length results are caller-owned unless an API explicitly states 
 
 ## What Marksplice does not own
 
-Marksplice performs no implicit filesystem, network, or command I/O. It does not render HTML/PDF, execute fenced languages, serialize arbitrary YAML/TOML, render LaTeX, or normalize an existing document as a side effect of a structural edit.
+The root document/graph APIs perform no implicit filesystem, network, or command I/O. `workspacefs` adds only explicit read-only filesystem access through the caller's `fs.FS`; it does not write files, fetch URLs, or execute commands. Marksplice does not render HTML/PDF, execute fenced languages, serialize arbitrary YAML/TOML, render LaTeX, or normalize an existing document as a side effect of a structural edit.
 
 Those boundaries are summarized in [Capabilities](capabilities.md). Architecture and conformance rationale live in the [advanced documentation](README.md#advanced-and-maintainer-documentation).

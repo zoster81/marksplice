@@ -64,7 +64,7 @@ When changing documentation, check relative links, run every affected example, p
 
 ## Repository layout
 
-The canonical public package stays at the module root so its import path remains `github.com/zoster81/marksplice`. Root Go files are grouped by responsibility: `api*.go` for parsed-document/read/edit APIs, `builder*.go` for new-document construction, plus `doc.go` and `example_test.go`. Private parser/source/splice implementation and black-box tests live under `internal/`; longer-form documentation lives under `docs/` and is indexed by [`docs/README.md`](docs/README.md).
+The canonical document package stays at the module root so its import path remains `github.com/zoster81/marksplice`. Root Go files are grouped by responsibility: `api*.go` for parsed-document/read/edit APIs, `builder*.go` for new-document construction, plus `doc.go` and `example_test.go`. The separate public `workspacefs/` package owns only caller-authorized read-only `fs.FS` workspace loading; it must delegate parsing, graph, and validation semantics instead of becoming a second document core. Private parser/source/splice implementation and black-box tests live under `internal/`; longer-form documentation lives under `docs/` and is indexed by [`docs/README.md`](docs/README.md).
 
 Do not introduce a top-level `src/` package merely for visual separation: in a Go module that would change the natural consumer import path or force a redundant forwarding facade. New directories should represent real package or documentation boundaries.
 
@@ -88,4 +88,4 @@ Public module versioning, beta policy, release preparation, and publication veri
 
 ## Scope discipline
 
-Do not add Scripthold-specific MCP adapters or host filesystem/security responsibilities to this repository. Future public API and document-intelligence work must extend the proven architecture and source-preservation invariants rather than bypassing them or promoting parser/source internals wholesale.
+Do not add Scripthold-specific MCP adapters or host-specific filesystem/security policy to this repository. `workspacefs` may consume only caller-supplied `fs.FS` read authority under explicit finite limits; host authorization, writes, URL fetching, commands, and security policy remain outside Marksplice. Future public API and document-intelligence work must extend the proven architecture and source-preservation invariants rather than bypassing them or promoting parser/source internals wholesale.

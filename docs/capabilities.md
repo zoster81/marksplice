@@ -51,15 +51,18 @@ A valid Markdown construct can be understood internally without receiving public
 | Fragment resolution | `ResolveFragment`, `ValidateFragment` | Heading-derived and supported explicit HTML anchors |
 | TOC generation | `GenerateTOC` | Deterministic from current section hierarchy |
 | Existing TOC synchronization | `TOCStale`, `PrepareSyncTOC` | Only caller-designated conservative managed-TOC bodies |
-| Link intelligence | `LinkRelationships` | Read-only semantic relationships; destinations outside the current document remain caller-interpreted data |
+| Link intelligence | `LinkRelationships` | Read-only semantic relationships; destinations outside the current document remain caller-interpreted data unless an explicit adapter such as `workspacefs` is used |
 
 ## Multi-document capabilities
 
-Marksplice works across documents only when the caller supplies the document set and resolution policy.
+The root package keeps multi-document graph/validation APIs explicit and in-memory. The separate `workspacefs` package can load that input from a caller-supplied `fs.FS`; the filesystem object and finite limits are the caller's explicit authority boundary.
 
 | Capability | API | Boundary |
 | --- | --- | --- |
-| Explicit document graph | `BuildDocumentGraph` | No discovery; resolver may target only documents already supplied |
+| Filesystem discovery | `workspacefs.Scan` | Read-only `.md`/`.markdown` discovery under one caller-supplied `fs.FS` root; deterministic slash-relative keys |
+| Filesystem relationship following | `workspacefs.Follow` | Starts from explicit Markdown entries, visits reviewed local Markdown targets once, and stops at finite caller limits |
+| Filesystem resource limits | `workspacefs.Options`, `workspacefs.Limits` | Positive document/byte/relationship limits plus a non-negative scan-depth or follow-hop limit; exhaustion fails with `workspacefs.ErrBudgetExceeded` |
+| Explicit document graph | `BuildDocumentGraph` | No discovery in the root package; resolver may target only documents already supplied |
 | Outgoing links/backlinks | `Outgoing`, `Backlinks` | Immutable graph results |
 | Reachability/related documents | `ReachableFrom`, `RelatedDocuments` | Deterministic graph traversal |
 | Workspace validation | `ValidateWorkspace` | Caller resolver classifies ignored/resolved/missing targets |
@@ -102,7 +105,7 @@ Marksplice does not provide:
 
 - HTML or PDF rendering;
 - Markdown-to-Markdown whole-document formatting/normalization as the ordinary edit path;
-- filesystem crawling or implicit file loading;
+- hidden/implicit filesystem crawling or file loading outside an explicitly supplied `workspacefs` `fs.FS`;
 - URL fetching or network resolution;
 - command execution or embedded-language execution;
 - syntax highlighting or diagram rendering;

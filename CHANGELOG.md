@@ -6,7 +6,8 @@ The project uses Semantic Versioning-compatible Go module tags. Until v1, the pu
 
 ## Unreleased
 
-No unreleased changes yet.
+- Add the read-only `workspacefs` package for caller-authorized Markdown workspaces over `fs.FS`, with deterministic `.md`/`.markdown` scanning, cycle-safe relationship following, slash-relative document keys, finite document/byte/depth/relationship budgets, and direct reuse of the existing document graph/workspace validator.
+- Keep filesystem authority outside the root document core: `workspacefs` performs no writes, network access, or command execution and deliberately ignores ambiguous/non-local destination forms pending the dedicated filesystem-resolution hardening milestone.
 
 ## v0.5.0-beta.1 — 2026-08-28
 
