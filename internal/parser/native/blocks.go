@@ -70,6 +70,10 @@ func ParseBlocks(source []byte) ([]parser.Node, error) {
 }
 
 func parseBlockLines(source []byte, lines []physicalLine, topLevel bool) blockParseResult {
+	return parseBlockLinesSemantic(source, lines, topLevel, nil, -1)
+}
+
+func parseBlockLinesSemantic(source []byte, lines []physicalLine, topLevel bool, capture *semanticBlockCapture, parent int) blockParseResult {
 	result := blockParseResult{nodes: make([]parser.Node, 0, len(lines)/2)}
 	blankBeforeRoot := false
 	referenceParagraphOpen := false
@@ -85,24 +89,24 @@ func parseBlockLines(source []byte, lines []physicalLine, topLevel bool) blockPa
 			continue
 		}
 		if referenceParagraphOpen && referenceDefinitionParagraphContinuation(source, lines, index) {
-			index = appendParagraphBlock(&result, source, lines, index, topLevel, blankBeforeRoot)
+			index = appendParagraphBlock(&result, source, lines, index, topLevel, blankBeforeRoot, capture, parent)
 			blankBeforeRoot = false
 			referenceParagraphOpen = false
 			continue
 		}
 		referenceParagraphOpen = false
-		if next, handled, reference := parseLeafBlock(&result, source, lines, index, topLevel, blankBeforeRoot); handled {
+		if next, handled, reference := parseLeafBlock(&result, source, lines, index, topLevel, blankBeforeRoot, capture, parent); handled {
 			index = next
 			blankBeforeRoot = false
 			referenceParagraphOpen = reference
 			continue
 		}
-		if next, blankAfter, handled := parseStructuralBlock(&result, source, lines, index, topLevel, blankBeforeRoot); handled {
+		if next, blankAfter, handled := parseStructuralBlock(&result, source, lines, index, topLevel, blankBeforeRoot, capture, parent); handled {
 			index = next
 			blankBeforeRoot = blankAfter
 			continue
 		}
-		index = appendParagraphBlock(&result, source, lines, index, topLevel, blankBeforeRoot)
+		index = appendParagraphBlock(&result, source, lines, index, topLevel, blankBeforeRoot, capture, parent)
 		blankBeforeRoot = false
 	}
 	return result
@@ -125,7 +129,7 @@ func referenceParagraphContinuationLine(source []byte, line physicalLine) bool {
 	return !setext
 }
 
-func appendParagraphBlock(result *blockParseResult, source []byte, lines []physicalLine, index int, topLevel, blankBeforeRoot bool) int {
+func appendParagraphBlock(result *blockParseResult, source []byte, lines []physicalLine, index int, topLevel, blankBeforeRoot bool, capture *semanticBlockCapture, parent int) int {
 	line := lines[index]
 	node, semantic, next := parseParagraphOrSetext(source, lines, index)
 	node.TopLevel = topLevel
@@ -134,6 +138,11 @@ func appendParagraphBlock(result *blockParseResult, source []byte, lines []physi
 		inlineLast--
 	}
 	appendInlineLines(result, source, lines, index, inlineLast)
+	semanticKind := parser.SemanticParagraph
+	if node.Kind == parser.KindHeading {
+		semanticKind = parser.SemanticHeading
+	}
+	capture.add(parent, parser.SemanticEvent{Kind: semanticKind, Range: node.Range, ContentRange: node.Range, Level: node.Level}, node.Range)
 	if node.Kind == parser.KindParagraph {
 		nodeIndex := len(result.nodes)
 		result.nodes = append(result.nodes, node)
@@ -149,40 +158,21 @@ func appendParagraphBlock(result *blockParseResult, source []byte, lines []physi
 	return next
 }
 
-func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLine, index int, topLevel, blankBeforeRoot bool) (int, bool, bool) {
+func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLine, index int, topLevel, blankBeforeRoot bool, capture *semanticBlockCapture, parent int) (int, bool, bool) {
 	line := lines[index]
-	if _, _, ok := parseBlockquoteOpening(source, line); ok {
-		quoted := parseBlockquote(source, lines, index)
-		child := quoted.child
-		if !quoted.childReady {
-			child = parseBlockLines(source, quoted.content, false)
-		}
-		if topLevel {
-			detail := parser.BlockquoteDetail{
-				Anchor:         quoted.node.Range.Start,
-				SemanticRanges: nonNilBlockRanges(child.semantic),
-			}
-			if simpleBlockquoteParagraph(child) {
-				detail.ContentRange = child.nodes[0].Range
-			}
-			result.nodes = append(result.nodes, quoted.node)
-			result.blockquoteDetails = append(result.blockquoteDetails, detail)
-		}
-		result.nodes = append(result.nodes, child.nodes...)
-		result.blockquoteDetails = append(result.blockquoteDetails, child.blockquoteDetails...)
-		result.fencedCodeDetails = append(result.fencedCodeDetails, child.fencedCodeDetails...)
-		result.tableDetails = append(result.tableDetails, child.tableDetails...)
-		result.tableRowDetails = append(result.tableRowDetails, child.tableRowDetails...)
-		result.tableCellDetails = append(result.tableCellDetails, child.tableCellDetails...)
-		result.semantic = append(result.semantic, child.semantic...)
-		result.inlines = append(result.inlines, child.inlines...)
-		result.references = append(result.references, child.references...)
-		result.lastLeafParagraph = child.lastLeafParagraph
-		recordRoot(result, rootBlock{kind: rootBlockOther}, blankBeforeRoot)
-		return quoted.next, true, false
+	if next, handled := parseBlockquoteLeaf(result, source, lines, index, topLevel, blankBeforeRoot, capture, parent); handled {
+		return next, true, false
 	}
 	if indentedCodeLine(source, line) {
 		semantic, next := parseIndentedCodeLines(source, lines, index)
+		range_ := semanticPhysicalBlockRange(lines, index, next, line.physicalStart)
+		capture.add(parent, parser.SemanticEvent{
+			Kind:         parser.SemanticCodeBlock,
+			Range:        range_,
+			ContentRange: semanticRangesEnvelope(semantic),
+			Value:        semanticIndentedCodeValue(source, lines[index:next]),
+			Fenced:       false,
+		}, parser.Range{})
 		result.semantic = append(result.semantic, semantic...)
 		result.lastLeafParagraph = false
 		recordRoot(result, rootBlock{kind: rootBlockOther, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
@@ -195,6 +185,19 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 			result.nodes = append(result.nodes, node)
 			result.fencedCodeDetails = append(result.fencedCodeDetails, detail)
 		}
+		content := parser.Range{}
+		if len(detail.ContentRanges) == 1 {
+			content = detail.ContentRanges[0]
+		}
+		capture.add(parent, parser.SemanticEvent{
+			Kind:         parser.SemanticCodeBlock,
+			Range:        node.Range,
+			ContentRange: content,
+			Value:        semanticRangesValue(source, detail.ContentRanges),
+			Info:         detail.Info,
+			Language:     detail.Language,
+			Fenced:       true,
+		}, parser.Range{})
 		result.semantic = append(result.semantic, semantic...)
 		result.lastLeafParagraph = false
 		recordRoot(result, rootBlock{kind: rootBlockOther}, blankBeforeRoot)
@@ -203,6 +206,7 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 	if opening, ok := htmlBlockStart(source, line); ok {
 		node, semantic, next := parseHTMLBlock(source, lines, index, opening)
 		result.nodes = append(result.nodes, node)
+		capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticHTMLBlock, Range: node.Range, ContentRange: node.Range, Value: semanticSourceValue(source, node.Range)}, parser.Range{})
 		result.semantic = append(result.semantic, semantic...)
 		result.lastLeafParagraph = false
 		recordRoot(result, rootBlock{kind: rootBlockOther, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
@@ -211,6 +215,18 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 	if node, semantic, reference, next, ok := parseReferenceDefinition(source, lines, index); ok {
 		if node.Kind != parser.KindUnknown {
 			result.nodes = append(result.nodes, node)
+		}
+		if reference.projectable && reference.destination != "" {
+			range_ := semanticReferenceDefinitionRange(lines, reference, node.Range.Start)
+			capture.add(parent, parser.SemanticEvent{
+				Kind:         parser.SemanticReferenceDefinition,
+				Range:        range_,
+				ContentRange: semanticRangesEnvelope(semantic),
+				Destination:  reference.destination,
+				Title:        reference.title,
+				HasTitle:     reference.hasTitle,
+				Label:        reference.label,
+			}, parser.Range{})
 		}
 		result.semantic = append(result.semantic, semantic...)
 		result.references = append(result.references, reference)
@@ -221,12 +237,60 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 	return index, false, false
 }
 
-func parseStructuralBlock(result *blockParseResult, source []byte, lines []physicalLine, index int, topLevel, blankBeforeRoot bool) (int, bool, bool) {
+func parseBlockquoteLeaf(result *blockParseResult, source []byte, lines []physicalLine, index int, topLevel, blankBeforeRoot bool, capture *semanticBlockCapture, parent int) (int, bool) {
+	if _, _, ok := parseBlockquoteOpening(source, lines[index]); !ok {
+		return index, false
+	}
+	quoted := parseBlockquote(source, lines, index)
+	child := quoted.child
+	if capture != nil {
+		range_ := semanticPhysicalBlockRange(lines, index, quoted.next, quoted.node.Range.Start)
+		if alert, body, ok := semanticAlertEvent(source, quoted, range_); ok {
+			alertParent := capture.add(parent, alert, parser.Range{})
+			semanticBody := parseBlockLinesSemantic(source, body, false, capture, alertParent)
+			capture.addInlineBlocks(semanticBody.inlines)
+			if !quoted.childReady {
+				child = parseBlockLines(source, quoted.content, false)
+			}
+		} else {
+			quoteParent := capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticBlockquote, Range: range_}, parser.Range{})
+			child = parseBlockLinesSemantic(source, quoted.content, false, capture, quoteParent)
+		}
+	} else if !quoted.childReady {
+		child = parseBlockLines(source, quoted.content, false)
+	}
+	if topLevel {
+		detail := parser.BlockquoteDetail{
+			Anchor:         quoted.node.Range.Start,
+			SemanticRanges: nonNilBlockRanges(child.semantic),
+		}
+		if simpleBlockquoteParagraph(child) {
+			detail.ContentRange = child.nodes[0].Range
+		}
+		result.nodes = append(result.nodes, quoted.node)
+		result.blockquoteDetails = append(result.blockquoteDetails, detail)
+	}
+	result.nodes = append(result.nodes, child.nodes...)
+	result.blockquoteDetails = append(result.blockquoteDetails, child.blockquoteDetails...)
+	result.fencedCodeDetails = append(result.fencedCodeDetails, child.fencedCodeDetails...)
+	result.tableDetails = append(result.tableDetails, child.tableDetails...)
+	result.tableRowDetails = append(result.tableRowDetails, child.tableRowDetails...)
+	result.tableCellDetails = append(result.tableCellDetails, child.tableCellDetails...)
+	result.semantic = append(result.semantic, child.semantic...)
+	result.inlines = append(result.inlines, child.inlines...)
+	result.references = append(result.references, child.references...)
+	result.lastLeafParagraph = child.lastLeafParagraph
+	recordRoot(result, rootBlock{kind: rootBlockOther}, blankBeforeRoot)
+	return quoted.next, true
+}
+
+func parseStructuralBlock(result *blockParseResult, source []byte, lines []physicalLine, index int, topLevel, blankBeforeRoot bool, capture *semanticBlockCapture, parent int) (int, bool, bool) {
 	line := lines[index]
 	if node, ok := parseATXHeading(source, line); ok {
 		result.lastLeafParagraph = false
 		node.TopLevel = topLevel
 		if node.Range.Start != node.Range.End {
+			capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticHeading, Range: node.Range, ContentRange: node.Range, Level: node.Level}, node.Range)
 			result.semantic = append(result.semantic, parser.Range{Start: node.Range.Start, End: line.end})
 			appendInlineRange(result, node.Range)
 			if topLevel {
@@ -236,7 +300,7 @@ func parseStructuralBlock(result *blockParseResult, source []byte, lines []physi
 		recordRoot(result, rootBlock{kind: rootBlockOther, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
 		return index + 1, false, true
 	}
-	if list, next, ok := parseList(source, lines, index); ok {
+	if list, next, ok := parseListSemantic(source, lines, index, capture, parent); ok {
 		result.nodes = append(result.nodes, list.nodes...)
 		result.blockquoteDetails = append(result.blockquoteDetails, list.blockquoteDetails...)
 		result.fencedCodeDetails = append(result.fencedCodeDetails, list.fencedCodeDetails...)
@@ -253,11 +317,13 @@ func parseStructuralBlock(result *blockParseResult, source []byte, lines []physi
 	if node, ok := parseThematicBreak(source, line); ok {
 		result.lastLeafParagraph = false
 		node.TopLevel = topLevel
+		capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticThematicBreak, Range: node.Range}, parser.Range{})
 		result.nodes = append(result.nodes, node)
 		recordRoot(result, rootBlock{kind: rootBlockOther}, blankBeforeRoot)
 		return index + 1, false, true
 	}
 	if nodes, details, semantic, next, ok := parseTable(source, lines, index); ok {
+		captureSemanticTable(capture, parent, nodes, details)
 		result.nodes = append(result.nodes, nodes...)
 		result.tableDetails = append(result.tableDetails, details.tables...)
 		result.tableRowDetails = append(result.tableRowDetails, details.rows...)

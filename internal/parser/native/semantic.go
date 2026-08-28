@@ -1,10 +1,103 @@
 package native
 
 import (
+	"cmp"
+	"slices"
 	"strings"
 
 	"github.com/zoster81/marksplice/internal/parser"
+	sourcepkg "github.com/zoster81/marksplice/internal/source"
 )
+
+type semanticCapturedBlock struct {
+	parent      int
+	event       parser.SemanticEvent
+	inlineRange parser.Range
+}
+
+type semanticBlockCapture struct {
+	blocks               []semanticCapturedBlock
+	paragraphs           []int
+	paragraphSearchLimit int
+	extraInlines         []inlineBlock
+}
+
+func newSemanticBlockCapture(lineCount int) semanticBlockCapture {
+	blockCapacity := max(32, lineCount-lineCount/8)
+	return semanticBlockCapture{
+		blocks:     make([]semanticCapturedBlock, 0, blockCapacity),
+		paragraphs: make([]int, 0, max(8, lineCount/3)),
+	}
+}
+
+func (capture *semanticBlockCapture) add(parent int, event parser.SemanticEvent, inlineRange parser.Range) int {
+	if capture == nil {
+		return -1
+	}
+	index := len(capture.blocks)
+	capture.blocks = append(capture.blocks, semanticCapturedBlock{parent: parent, event: event, inlineRange: inlineRange})
+	if event.Kind == parser.SemanticParagraph {
+		capture.paragraphs = append(capture.paragraphs, index)
+	}
+	return index
+}
+
+func (capture *semanticBlockCapture) update(index int, update func(*parser.SemanticEvent)) {
+	if capture == nil || index < 0 || index >= len(capture.blocks) {
+		return
+	}
+	update(&capture.blocks[index].event)
+}
+
+func (capture *semanticBlockCapture) addInlineBlocks(blocks []inlineBlock) {
+	if capture == nil || len(blocks) == 0 {
+		return
+	}
+	capture.extraInlines = append(capture.extraInlines, blocks...)
+}
+
+func (capture *semanticBlockCapture) replace(index int, event parser.SemanticEvent, inlineRange parser.Range) {
+	if capture == nil || index < 0 || index >= len(capture.blocks) {
+		return
+	}
+	capture.blocks[index].event = event
+	capture.blocks[index].inlineRange = inlineRange
+}
+
+func (capture *semanticBlockCapture) freezeParagraphIndex() {
+	if capture == nil {
+		return
+	}
+	slices.SortStableFunc(capture.paragraphs, func(left, right int) int {
+		return cmp.Compare(capture.blocks[left].event.Range.Start, capture.blocks[right].event.Range.Start)
+	})
+	capture.paragraphSearchLimit = len(capture.paragraphs)
+}
+
+func (capture *semanticBlockCapture) paragraphContaining(start, end int) int {
+	if capture == nil || capture.paragraphSearchLimit == 0 {
+		return -1
+	}
+	low, high := 0, capture.paragraphSearchLimit
+	for low < high {
+		middle := low + (high-low)/2
+		index := capture.paragraphs[middle]
+		if capture.blocks[index].event.Range.Start <= start {
+			low = middle + 1
+		} else {
+			high = middle
+		}
+	}
+	if low == 0 {
+		return -1
+	}
+	index := capture.paragraphs[low-1]
+	range_ := capture.blocks[index].event.Range
+	if range_.Start <= start && range_.End >= end {
+		return index
+	}
+	return -1
+}
 
 // WalkSemantic emits an on-demand semantic event stream from Native parser
 // ownership. It does not retain source or semantic events after return.
@@ -12,9 +105,32 @@ func (*Backend) WalkSemantic(source []byte, visit parser.SemanticVisitor) error 
 	if visit == nil {
 		return parser.ErrSemanticVisitorRequired
 	}
-	blocks := parseBlockLines(source, physicalLines(source), true)
-	analyses := analyzeInlineBlocks(source, blocks.inlines, blocks.references)
+	frontMatter, hasFrontMatter := sourcepkg.MapLeadingFrontMatter(source)
+	lines := physicalLines(source)
+	if hasFrontMatter {
+		lines = semanticMarkdownLines(lines, frontMatter.Range.End)
+	}
+	capture := newSemanticBlockCapture(len(lines))
+	blocks := parseBlockLinesSemantic(source, lines, true, &capture, -1)
+	capture.freezeParagraphIndex()
+	minimumOverlayStart := 0
+	if hasFrontMatter {
+		minimumOverlayStart = frontMatter.Range.End
+	}
+	footnotes := semanticFootnoteDefinitions(source, minimumOverlayStart)
+	promoteSemanticFootnoteDefinitions(source, footnotes, &capture)
+	inlineBlocks := blocks.inlines
+	if len(capture.extraInlines) != 0 {
+		inlineBlocks = append(append([]inlineBlock(nil), blocks.inlines...), capture.extraInlines...)
+	}
+	analyses := analyzeInlineBlocks(source, inlineBlocks, blocks.references)
+	inline := mergeInlineAnalyses(analyses, 0)
+	mathExpressions := nativeMathExpressionObservations(source, blocks, analyses, inline.nodes)
+	mathExpressions = mergeNativeMathExpressions(mathExpressions, semanticCapturedBlockMathObservations(source, capture))
+	promoteSemanticBlockMath(source, mathExpressions, &capture)
+	footnoteReferences := semanticFootnoteReferences(source, blocks, footnotes)
 	projection := newSemanticProjectionIndex(blocks, analyses)
+	projection.terminals = semanticInlineTerminals(source, footnoteReferences, mathExpressions)
 	if err := visit(parser.SemanticEvent{
 		Phase: parser.SemanticEnter,
 		Kind:  parser.SemanticDocument,
@@ -22,10 +138,12 @@ func (*Backend) WalkSemantic(source []byte, visit parser.SemanticVisitor) error 
 	}); err != nil {
 		return err
 	}
-	if err := emitSemanticBlocks(source, blocks, projection, visit); err != nil {
-		return err
+	if hasFrontMatter {
+		if err := visit(semanticFrontMatterEvent(source, frontMatter)); err != nil {
+			return err
+		}
 	}
-	if err := emitSemanticSupplemental(source, blocks, analyses, visit); err != nil {
+	if err := emitSemanticCapturedBlocks(source, capture, projection, visit); err != nil {
 		return err
 	}
 	return visit(parser.SemanticEvent{
@@ -38,22 +156,15 @@ func (*Backend) WalkSemantic(source []byte, visit parser.SemanticVisitor) error 
 type semanticProjectionIndex struct {
 	analyses     []inlineAnalysis
 	byStart      map[int]int
-	listItems    map[int][]parser.Node
+	terminals    []parser.SemanticEvent
 	tasksByStart map[int][]parser.Node
-	tableDetails map[int]parser.TableDetail
-	tableCells   map[int][]parser.TableCellDetail
-	fencedCode   map[int]parser.FencedCodeDetail
 }
 
 func newSemanticProjectionIndex(blocks blockParseResult, analyses []inlineAnalysis) semanticProjectionIndex {
 	index := semanticProjectionIndex{
 		analyses:     analyses,
 		byStart:      make(map[int]int, len(analyses)),
-		listItems:    make(map[int][]parser.Node),
 		tasksByStart: make(map[int][]parser.Node),
-		tableDetails: make(map[int]parser.TableDetail, len(blocks.tableDetails)),
-		tableCells:   make(map[int][]parser.TableCellDetail, len(blocks.tableDetails)),
-		fencedCode:   make(map[int]parser.FencedCodeDetail, len(blocks.fencedCodeDetails)),
 	}
 	for analysisIndex, analysis := range analyses {
 		if len(analysis.block.segments) == 0 {
@@ -65,21 +176,9 @@ func newSemanticProjectionIndex(blocks blockParseResult, analyses []inlineAnalys
 		}
 	}
 	for _, node := range blocks.nodes {
-		switch node.Kind {
-		case parser.KindListItem:
-			index.listItems[node.ListContainerAnchor] = append(index.listItems[node.ListContainerAnchor], node)
-		case parser.KindTask:
+		if node.Kind == parser.KindTask {
 			index.tasksByStart[node.Range.Start] = append(index.tasksByStart[node.Range.Start], node)
 		}
-	}
-	for _, detail := range blocks.tableDetails {
-		index.tableDetails[detail.Anchor] = detail
-	}
-	for _, detail := range blocks.tableCellDetails {
-		index.tableCells[detail.TableAnchor] = append(index.tableCells[detail.TableAnchor], detail)
-	}
-	for _, detail := range blocks.fencedCodeDetails {
-		index.fencedCode[detail.Anchor] = detail
 	}
 	return index
 }
@@ -92,184 +191,383 @@ func (index semanticProjectionIndex) analysis(range_ parser.Range) (inlineAnalys
 	return index.analyses[analysisIndex], true
 }
 
-type semanticBlockEmitter struct {
-	source     []byte
-	projection semanticProjectionIndex
-	visit      parser.SemanticVisitor
-	seenLists  map[int]struct{}
-	seenTables map[int]struct{}
+func semanticFootnoteDefinitions(source []byte, minimumStart int) []nativeFootnoteDefinition {
+	definitions := scanNativeFootnoteDefinitions(source)
+	if minimumStart <= 0 || len(definitions) == 0 {
+		return definitions
+	}
+	kept := definitions[:0]
+	for _, definition := range definitions {
+		if definition.observation.Anchor >= minimumStart {
+			kept = append(kept, definition)
+		}
+	}
+	return kept
 }
 
-func emitSemanticBlocks(source []byte, blocks blockParseResult, projection semanticProjectionIndex, visit parser.SemanticVisitor) error {
-	emitter := semanticBlockEmitter{
-		source:     source,
-		projection: projection,
-		visit:      visit,
-		seenLists:  make(map[int]struct{}),
-		seenTables: make(map[int]struct{}),
+func promoteSemanticFootnoteDefinitions(source []byte, definitions []nativeFootnoteDefinition, capture *semanticBlockCapture) {
+	for _, definition := range definitions {
+		observation := definition.observation
+		end := observation.Anchor
+		if len(observation.BodyRanges) != 0 {
+			end = observation.BodyRanges[len(observation.BodyRanges)-1].End
+		}
+		index := capture.paragraphContaining(observation.Anchor, end)
+		event := parser.SemanticEvent{
+			Kind:         parser.SemanticFootnoteDefinition,
+			Range:        parser.Range{Start: observation.Anchor, End: end},
+			ContentRange: semanticRangesEnvelope(observation.BodyRanges),
+			Label:        observation.Label,
+		}
+		if index < 0 {
+			index = capture.add(-1, event, parser.Range{})
+		} else {
+			capture.replace(index, event, parser.Range{})
+		}
+		body := parseBlockLinesSemantic(source, definition.childLines, false, capture, index)
+		capture.addInlineBlocks(body.inlines)
 	}
-	for _, node := range blocks.nodes {
-		if err := emitter.emit(node); err != nil {
+}
+
+func semanticFootnoteReferences(source []byte, blocks blockParseResult, definitions []nativeFootnoteDefinition) []parser.FootnoteReferenceObservation {
+	if len(definitions) == 0 {
+		return nil
+	}
+	observations := make([]parser.FootnoteDefinitionObservation, len(definitions))
+	for index, definition := range definitions {
+		observations[index] = definition.observation
+	}
+	ordinary := nativeOrdinaryReferenceDefinitions(source, blocks.references, observations)
+	return scanNativeFootnoteReferences(source, blocks.inlines, definitions, ordinary)
+}
+
+func semanticCapturedBlockMathObservations(source []byte, capture semanticBlockCapture) []parser.MathExpressionObservation {
+	result := make([]parser.MathExpressionObservation, 0)
+	for _, block := range capture.blocks {
+		if block.event.Kind != parser.SemanticParagraph {
+			continue
+		}
+		if observation, ok := nativeBlockDollarMathObservation(source, block.event.Range); ok {
+			result = append(result, observation)
+		}
+	}
+	return result
+}
+
+func promoteSemanticBlockMath(source []byte, expressions []parser.MathExpressionObservation, capture *semanticBlockCapture) {
+	for _, expression := range expressions {
+		if expression.Style != parser.MathExpressionBlockDollar {
+			continue
+		}
+		for index, block := range capture.blocks {
+			if block.event.Kind != parser.SemanticParagraph || block.event.Range != expression.Range {
+				continue
+			}
+			capture.replace(index, semanticMathEvent(source, expression), parser.Range{})
+			break
+		}
+	}
+}
+
+func semanticInlineTerminals(source []byte, references []parser.FootnoteReferenceObservation, expressions []parser.MathExpressionObservation) []parser.SemanticEvent {
+	result := make([]parser.SemanticEvent, 0, len(references)+len(expressions))
+	for _, reference := range references {
+		result = append(result, parser.SemanticEvent{
+			Phase:            parser.SemanticLeaf,
+			Kind:             parser.SemanticFootnoteReference,
+			Range:            reference.Range,
+			ContentRange:     reference.LabelRange,
+			Label:            reference.Label,
+			DefinitionAnchor: reference.DefinitionAnchor,
+			Occurrence:       reference.Occurrence,
+		})
+	}
+	for _, expression := range expressions {
+		if expression.Style != parser.MathExpressionBlockDollar {
+			result = append(result, semanticMathEvent(source, expression))
+		}
+	}
+	if len(result) > 1 {
+		slices.SortStableFunc(result, func(left, right parser.SemanticEvent) int {
+			if byStart := cmp.Compare(left.Range.Start, right.Range.Start); byStart != 0 {
+				return byStart
+			}
+			return cmp.Compare(right.Range.End, left.Range.End)
+		})
+	}
+	return result
+}
+
+func semanticMathEvent(source []byte, expression parser.MathExpressionObservation) parser.SemanticEvent {
+	return parser.SemanticEvent{
+		Phase:        parser.SemanticLeaf,
+		Kind:         parser.SemanticMath,
+		Range:        expression.Range,
+		ContentRange: expression.PayloadRange,
+		Value:        semanticSourceValue(source, expression.PayloadRange),
+		MathStyle:    expression.Style,
+	}
+}
+
+func semanticMarkdownLines(lines []physicalLine, envelopeEnd int) []physicalLine {
+	first := 0
+	for first < len(lines) && lines[first].physicalStart < envelopeEnd {
+		first++
+	}
+	return lines[first:]
+}
+
+func semanticFrontMatterEvent(source []byte, mapping sourcepkg.FrontMatterMapping) parser.SemanticEvent {
+	range_ := parser.Range{Start: mapping.Range.Start, End: mapping.Range.End}
+	contentStart := semanticNextLineStart(source, mapping.OpeningRange.End)
+	contentRange := parser.Range{Start: contentStart, End: mapping.ClosingRange.Start}
+	return parser.SemanticEvent{
+		Phase:             parser.SemanticLeaf,
+		Kind:              parser.SemanticFrontMatter,
+		Range:             range_,
+		ContentRange:      contentRange,
+		Value:             semanticSourceValue(source, range_),
+		FrontMatterFormat: semanticFrontMatterFormat(mapping.Format),
+	}
+}
+
+func semanticNextLineStart(source []byte, end int) int {
+	if end < len(source) && source[end] == '\r' {
+		end++
+		if end < len(source) && source[end] == '\n' {
+			end++
+		}
+	} else if end < len(source) && source[end] == '\n' {
+		end++
+	}
+	return end
+}
+
+func semanticFrontMatterFormat(format sourcepkg.FrontMatterFormat) parser.SemanticFrontMatterFormat {
+	switch format {
+	case sourcepkg.FrontMatterYAML:
+		return parser.SemanticFrontMatterYAML
+	case sourcepkg.FrontMatterTOML:
+		return parser.SemanticFrontMatterTOML
+	default:
+		return parser.SemanticFrontMatterUnknown
+	}
+}
+
+func semanticAlertEvent(source []byte, quoted blockquoteParseResult, range_ parser.Range) (parser.SemanticEvent, []physicalLine, bool) {
+	if len(quoted.content) < 2 {
+		return parser.SemanticEvent{}, nil, false
+	}
+	markerLine := quoted.content[0]
+	if markerLine.start < 0 || markerLine.start > markerLine.end || markerLine.end > len(source) {
+		return parser.SemanticEvent{}, nil, false
+	}
+	kind := semanticAlertKind(sourcepkg.AlertKindFromMarker(source[markerLine.start:markerLine.end]))
+	if kind == parser.SemanticAlertUnknown {
+		return parser.SemanticEvent{}, nil, false
+	}
+	body := quoted.content[1:]
+	if !semanticAlertHasBody(body) {
+		return parser.SemanticEvent{}, nil, false
+	}
+	contentRange := parser.Range{Start: body[0].start, End: body[len(body)-1].end}
+	return parser.SemanticEvent{
+		Kind:         parser.SemanticAlert,
+		Range:        range_,
+		ContentRange: contentRange,
+		AlertKind:    kind,
+	}, body, true
+}
+
+func semanticAlertHasBody(lines []physicalLine) bool {
+	for _, line := range lines {
+		if line.start < line.end {
+			return true
+		}
+	}
+	return false
+}
+
+func semanticAlertKind(kind sourcepkg.AlertKind) parser.SemanticAlertKind {
+	switch kind {
+	case sourcepkg.AlertNote:
+		return parser.SemanticAlertNote
+	case sourcepkg.AlertTip:
+		return parser.SemanticAlertTip
+	case sourcepkg.AlertImportant:
+		return parser.SemanticAlertImportant
+	case sourcepkg.AlertWarning:
+		return parser.SemanticAlertWarning
+	case sourcepkg.AlertCaution:
+		return parser.SemanticAlertCaution
+	default:
+		return parser.SemanticAlertUnknown
+	}
+}
+
+func semanticPhysicalBlockRange(lines []physicalLine, first, next, start int) parser.Range {
+	if first < 0 || first >= len(lines) || next <= first {
+		return parser.Range{Start: start, End: start}
+	}
+	last := min(next, len(lines)) - 1
+	return parser.Range{Start: start, End: lines[last].end}
+}
+
+func semanticReferenceDefinitionRange(lines []physicalLine, reference referenceDefinitionParse, start int) parser.Range {
+	if reference.firstLine < 0 || reference.firstLine >= len(lines) || reference.lastLine < reference.firstLine || reference.lastLine >= len(lines) {
+		return parser.Range{Start: start, End: start}
+	}
+	return parser.Range{Start: start, End: lines[reference.lastLine].end}
+}
+
+func semanticIndentedCodeValue(source []byte, lines []physicalLine) string {
+	lastContent := len(lines)
+	for lastContent > 0 && blankLine(source, lines[lastContent-1]) {
+		lastContent--
+	}
+	var result strings.Builder
+	for _, line := range lines[:lastContent] {
+		if blankLine(source, line) {
+			if line.next > line.end {
+				result.WriteByte('\n')
+			}
+			continue
+		}
+		stripped := stripIndentColumns(source, line, 4)
+		if stripped.start < stripped.end {
+			result.Write(source[stripped.start:stripped.end])
+		}
+		if line.next > line.end {
+			result.WriteByte('\n')
+		}
+	}
+	return result.String()
+}
+
+func semanticListSourceRange(items []listItemSource, start int) parser.Range {
+	if len(items) == 0 {
+		return parser.Range{Start: start, End: start}
+	}
+	return parser.Range{Start: start, End: semanticListItemSourceRange(items[len(items)-1]).End}
+}
+
+func semanticListItemSourceRange(item listItemSource) parser.Range {
+	end := item.marker.physicalStart
+	if len(item.lines) != 0 {
+		end = item.lines[len(item.lines)-1].end
+	}
+	return parser.Range{Start: item.marker.physicalStart, End: end}
+}
+
+func captureSemanticTable(capture *semanticBlockCapture, parent int, nodes []parser.Node, details tableParseDetails) {
+	if capture == nil || len(nodes) == 0 || len(details.tables) == 0 || len(details.cells) == 0 {
+		return
+	}
+	table := details.tables[0]
+	range_ := semanticTableRange(nodes[0].Range, details.cells)
+	tableIndex := capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticTable, Range: range_, Columns: table.ColumnCount}, parser.Range{})
+	for first := 0; first < len(details.cells); {
+		last := semanticTableRowEnd(details.cells, first)
+		captureSemanticTableRow(capture, tableIndex, details.cells[first:last], table)
+		first = last
+	}
+}
+
+func captureSemanticTableRow(capture *semanticBlockCapture, parent int, row []parser.TableCellDetail, table parser.TableDetail) {
+	if len(row) == 0 {
+		return
+	}
+	range_ := semanticTableRowRange(row)
+	rowIndex := capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticTableRow, Range: range_, Header: row[0].Header, Columns: table.ColumnCount}, parser.Range{})
+	for _, cell := range row {
+		capture.add(rowIndex, parser.SemanticEvent{
+			Kind:         parser.SemanticTableCell,
+			Range:        cell.Range,
+			ContentRange: cell.Range,
+			Header:       cell.Header,
+			Column:       cell.Column,
+			Alignment:    semanticTableAlignment(table.Alignments, cell.Column),
+		}, cell.Range)
+	}
+}
+
+func emitSemanticCapturedBlocks(source []byte, capture semanticBlockCapture, projection semanticProjectionIndex, visit parser.SemanticVisitor) error {
+	firstChild, nextSibling := semanticCapturedChildIndex(capture.blocks)
+	for childRef := firstChild[0]; childRef != 0; childRef = nextSibling[childRef-1] {
+		if err := emitSemanticCapturedBlock(source, capture.blocks, firstChild, nextSibling, projection, childRef-1, visit); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (emitter *semanticBlockEmitter) emit(node parser.Node) error {
-	switch node.Kind {
-	case parser.KindParagraph, parser.KindHeading:
-		return emitter.emitText(node)
-	case parser.KindBlockquote:
-		return emitter.emitBlockquote(node)
-	case parser.KindListItem:
-		return emitter.emitList(node)
-	case parser.KindTable:
-		return emitter.emitTable(node)
-	case parser.KindFencedCode:
-		return emitter.emitFencedCode(node)
-	case parser.KindHTMLBlock:
-		return emitter.visit(parser.SemanticEvent{Phase: parser.SemanticLeaf, Kind: parser.SemanticHTMLBlock, Range: node.Range, ContentRange: node.Range, Value: semanticSourceValue(emitter.source, node.Range)})
-	case parser.KindThematicBreak:
-		return emitter.emitThematicBreak(node)
-	default:
-		return nil
-	}
-}
-
-func (emitter *semanticBlockEmitter) emitText(node parser.Node) error {
-	if !node.TopLevel {
-		return nil
-	}
-	return emitSemanticTextBlock(emitter.source, node, emitter.projection, emitter.visit)
-}
-
-func (emitter *semanticBlockEmitter) emitBlockquote(node parser.Node) error {
-	if !node.TopLevel {
-		return nil
-	}
-	return emitSemanticPair(parser.SemanticBlockquote, node.Range, parser.SemanticEvent{}, emitter.visit)
-}
-
-func (emitter *semanticBlockEmitter) emitList(node parser.Node) error {
-	anchor := node.ListContainerAnchor
-	if _, emitted := emitter.seenLists[anchor]; emitted {
-		return nil
-	}
-	emitter.seenLists[anchor] = struct{}{}
-	return emitSemanticList(emitter.source, anchor, emitter.projection, emitter.visit)
-}
-
-func (emitter *semanticBlockEmitter) emitTable(node parser.Node) error {
-	anchor := node.Range.Start
-	if _, emitted := emitter.seenTables[anchor]; emitted {
-		return nil
-	}
-	emitter.seenTables[anchor] = struct{}{}
-	return emitSemanticTable(emitter.source, anchor, node.Range, emitter.projection, emitter.visit)
-}
-
-func (emitter *semanticBlockEmitter) emitFencedCode(node parser.Node) error {
-	if !node.TopLevel {
-		return nil
-	}
-	return emitSemanticFencedCode(emitter.source, node, emitter.projection, emitter.visit)
-}
-
-func (emitter *semanticBlockEmitter) emitThematicBreak(node parser.Node) error {
-	if !node.TopLevel {
-		return nil
-	}
-	return emitter.visit(parser.SemanticEvent{Phase: parser.SemanticLeaf, Kind: parser.SemanticThematicBreak, Range: node.Range})
-}
-
-func emitSemanticTextBlock(source []byte, node parser.Node, projection semanticProjectionIndex, visit parser.SemanticVisitor) error {
-	analysis, ok := projection.analysis(node.Range)
-	if !ok {
-		return nil
-	}
-	kind := parser.SemanticParagraph
-	if node.Kind == parser.KindHeading {
-		kind = parser.SemanticHeading
-	}
-	if err := visit(parser.SemanticEvent{Phase: parser.SemanticEnter, Kind: kind, Range: node.Range, ContentRange: node.Range, Level: node.Level}); err != nil {
-		return err
-	}
-	if err := emitSemanticInline(source, analysis, visit); err != nil {
-		return err
-	}
-	return visit(parser.SemanticEvent{Phase: parser.SemanticExit, Kind: kind, Range: node.Range, Level: node.Level})
-}
-
-func emitSemanticPair(kind parser.SemanticKind, range_ parser.Range, fields parser.SemanticEvent, visit parser.SemanticVisitor) error {
-	fields.Phase = parser.SemanticEnter
-	fields.Kind = kind
-	fields.Range = range_
-	if err := visit(fields); err != nil {
-		return err
-	}
-	return visit(parser.SemanticEvent{Phase: parser.SemanticExit, Kind: kind, Range: range_})
-}
-
-func emitSemanticList(source []byte, anchor int, projection semanticProjectionIndex, visit parser.SemanticVisitor) error {
-	items := projection.listItems[anchor]
-	if len(items) == 0 {
-		return nil
-	}
-	range_ := items[0].Range
-	if anchor >= 0 && anchor < range_.Start {
-		range_.Start = anchor
-	}
-	for _, item := range items[1:] {
-		if item.Range.End > range_.End {
-			range_.End = item.Range.End
+func semanticCapturedChildIndex(blocks []semanticCapturedBlock) ([]int, []int) {
+	firstChild := make([]int, len(blocks)+1)
+	nextSibling := make([]int, len(blocks))
+	for index := len(blocks) - 1; index >= 0; index-- {
+		parent := blocks[index].parent
+		if parent < -1 || parent >= len(blocks) {
+			parent = -1
 		}
+		owner := parent + 1
+		nextSibling[index] = firstChild[owner]
+		firstChild[owner] = index + 1
 	}
-	first := items[0]
-	if err := visit(parser.SemanticEvent{Phase: parser.SemanticEnter, Kind: parser.SemanticList, Range: range_, Ordered: first.Ordered, Marker: first.Marker}); err != nil {
+	return firstChild, nextSibling
+}
+
+func emitSemanticCapturedBlock(source []byte, blocks []semanticCapturedBlock, firstChild, nextSibling []int, projection semanticProjectionIndex, index int, visit parser.SemanticVisitor) error {
+	block := blocks[index]
+	event := block.event
+	if !semanticCapturedContainer(event.Kind) {
+		event.Phase = parser.SemanticLeaf
+		return visit(event)
+	}
+	event.Phase = parser.SemanticEnter
+	if err := visit(event); err != nil {
 		return err
 	}
-	for _, item := range items {
-		if err := visit(parser.SemanticEvent{Phase: parser.SemanticEnter, Kind: parser.SemanticListItem, Range: item.Range, ContentRange: item.Range, Ordered: item.Ordered, Marker: item.Marker}); err != nil {
+	if event.Kind == parser.SemanticListItem {
+		if err := emitSemanticCapturedTasks(event, projection, visit); err != nil {
 			return err
 		}
-		for _, task := range projection.tasksByStart[item.Range.Start] {
-			if semanticRangeContains(item.Range, task.Range) {
-				if err := visit(parser.SemanticEvent{Phase: parser.SemanticLeaf, Kind: parser.SemanticTaskItem, Range: task.Range, Checked: task.Checked}); err != nil {
-					return err
-				}
-			}
-		}
-		if analysis, ok := projection.analysis(item.Range); ok {
-			if err := emitSemanticInline(source, analysis, visit); err != nil {
+	}
+	if block.inlineRange != (parser.Range{}) {
+		if analysis, ok := projection.analysis(block.inlineRange); ok {
+			if err := emitSemanticInlineProjected(source, analysis, projection.terminals, visit); err != nil {
 				return err
 			}
 		}
-		if err := visit(parser.SemanticEvent{Phase: parser.SemanticExit, Kind: parser.SemanticListItem, Range: item.Range}); err != nil {
+	}
+	for childRef := firstChild[index+1]; childRef != 0; childRef = nextSibling[childRef-1] {
+		if err := emitSemanticCapturedBlock(source, blocks, firstChild, nextSibling, projection, childRef-1, visit); err != nil {
 			return err
 		}
 	}
-	return visit(parser.SemanticEvent{Phase: parser.SemanticExit, Kind: parser.SemanticList, Range: range_})
+	return visit(parser.SemanticEvent{Phase: parser.SemanticExit, Kind: event.Kind, Range: event.Range, Level: event.Level})
 }
 
-func emitSemanticTable(source []byte, anchor int, fallback parser.Range, projection semanticProjectionIndex, visit parser.SemanticVisitor) error {
-	detail, ok := projection.tableDetails[anchor]
-	if !ok {
-		return emitSemanticPair(parser.SemanticTable, fallback, parser.SemanticEvent{}, visit)
+func semanticCapturedContainer(kind parser.SemanticKind) bool {
+	switch kind {
+	case parser.SemanticParagraph, parser.SemanticHeading, parser.SemanticBlockquote, parser.SemanticAlert,
+		parser.SemanticFootnoteDefinition, parser.SemanticList, parser.SemanticListItem, parser.SemanticTable,
+		parser.SemanticTableRow, parser.SemanticTableCell:
+		return true
+	default:
+		return false
 	}
-	cells := projection.tableCells[anchor]
-	range_ := semanticTableRange(fallback, cells)
-	if err := visit(parser.SemanticEvent{Phase: parser.SemanticEnter, Kind: parser.SemanticTable, Range: range_, Columns: detail.ColumnCount}); err != nil {
-		return err
+}
+
+func emitSemanticCapturedTasks(item parser.SemanticEvent, projection semanticProjectionIndex, visit parser.SemanticVisitor) error {
+	if item.ContentRange == (parser.Range{}) {
+		return nil
 	}
-	for first := 0; first < len(cells); {
-		last := semanticTableRowEnd(cells, first)
-		if err := emitSemanticTableRow(source, cells[first:last], detail, projection, visit); err != nil {
+	for _, task := range projection.tasksByStart[item.ContentRange.Start] {
+		if err := visit(parser.SemanticEvent{Phase: parser.SemanticLeaf, Kind: parser.SemanticTaskItem, Range: task.Range, Checked: task.Checked}); err != nil {
 			return err
 		}
-		first = last
 	}
-	return visit(parser.SemanticEvent{Phase: parser.SemanticExit, Kind: parser.SemanticTable, Range: range_})
+	return nil
 }
 
 func semanticTableRange(fallback parser.Range, cells []parser.TableCellDetail) parser.Range {
@@ -293,22 +591,6 @@ func semanticTableRowEnd(cells []parser.TableCellDetail, first int) int {
 	return last
 }
 
-func emitSemanticTableRow(source []byte, row []parser.TableCellDetail, detail parser.TableDetail, projection semanticProjectionIndex, visit parser.SemanticVisitor) error {
-	if len(row) == 0 {
-		return nil
-	}
-	range_ := semanticTableRowRange(row)
-	if err := visit(parser.SemanticEvent{Phase: parser.SemanticEnter, Kind: parser.SemanticTableRow, Range: range_, Header: row[0].Header, Columns: detail.ColumnCount}); err != nil {
-		return err
-	}
-	for _, cell := range row {
-		if err := emitSemanticTableCell(source, cell, detail, projection, visit); err != nil {
-			return err
-		}
-	}
-	return visit(parser.SemanticEvent{Phase: parser.SemanticExit, Kind: parser.SemanticTableRow, Range: range_})
-}
-
 func semanticTableRowRange(row []parser.TableCellDetail) parser.Range {
 	range_ := row[0].Range
 	for _, cell := range row[1:] {
@@ -319,71 +601,11 @@ func semanticTableRowRange(row []parser.TableCellDetail) parser.Range {
 	return range_
 }
 
-func emitSemanticTableCell(source []byte, cell parser.TableCellDetail, detail parser.TableDetail, projection semanticProjectionIndex, visit parser.SemanticVisitor) error {
-	alignment := semanticTableAlignment(detail.Alignments, cell.Column)
-	enter := parser.SemanticEvent{Phase: parser.SemanticEnter, Kind: parser.SemanticTableCell, Range: cell.Range, ContentRange: cell.Range, Header: cell.Header, Column: cell.Column, Alignment: alignment}
-	if err := visit(enter); err != nil {
-		return err
-	}
-	if analysis, found := projection.analysis(cell.Range); found {
-		if err := emitSemanticInline(source, analysis, visit); err != nil {
-			return err
-		}
-	}
-	return visit(parser.SemanticEvent{Phase: parser.SemanticExit, Kind: parser.SemanticTableCell, Range: cell.Range})
-}
-
 func semanticTableAlignment(alignments []parser.TableAlignment, column int) parser.TableAlignment {
 	if column < 0 || column >= len(alignments) {
 		return parser.TableAlignmentDefault
 	}
 	return alignments[column]
-}
-
-func emitSemanticFencedCode(source []byte, node parser.Node, projection semanticProjectionIndex, visit parser.SemanticVisitor) error {
-	detail, ok := projection.fencedCode[node.Anchor]
-	if !ok {
-		return visit(parser.SemanticEvent{Phase: parser.SemanticLeaf, Kind: parser.SemanticCodeBlock, Range: node.Range, Fenced: true})
-	}
-	content := parser.Range{}
-	if len(detail.ContentRanges) == 1 {
-		content = detail.ContentRanges[0]
-	}
-	return visit(parser.SemanticEvent{
-		Phase:        parser.SemanticLeaf,
-		Kind:         parser.SemanticCodeBlock,
-		Range:        node.Range,
-		ContentRange: content,
-		Value:        semanticRangesValue(source, detail.ContentRanges),
-		Info:         detail.Info,
-		Language:     detail.Language,
-		Fenced:       true,
-	})
-}
-
-func emitSemanticSupplemental(source []byte, blocks blockParseResult, analyses []inlineAnalysis, visit parser.SemanticVisitor) error {
-	definitions, references, _ := nativeFootnoteObservations(source, blocks)
-	for _, definition := range definitions {
-		range_ := parser.Range{Start: definition.Anchor, End: definition.Anchor}
-		if len(definition.BodyRanges) != 0 {
-			range_.End = definition.BodyRanges[len(definition.BodyRanges)-1].End
-		}
-		if err := emitSemanticPair(parser.SemanticFootnoteDefinition, range_, parser.SemanticEvent{Label: definition.Label, ContentRange: semanticRangesEnvelope(definition.BodyRanges)}, visit); err != nil {
-			return err
-		}
-	}
-	for _, reference := range references {
-		if err := visit(parser.SemanticEvent{Phase: parser.SemanticLeaf, Kind: parser.SemanticFootnoteReference, Range: reference.Range, ContentRange: reference.LabelRange, Label: reference.Label, DefinitionAnchor: reference.DefinitionAnchor, Occurrence: reference.Occurrence}); err != nil {
-			return err
-		}
-	}
-	inline := mergeInlineAnalyses(analyses, len(blocks.nodes))
-	for _, expression := range nativeMathExpressionObservations(source, blocks, analyses, inline.nodes) {
-		if err := visit(parser.SemanticEvent{Phase: parser.SemanticLeaf, Kind: parser.SemanticMath, Range: expression.Range, ContentRange: expression.PayloadRange, Value: semanticSourceValue(source, expression.PayloadRange), MathStyle: expression.Style}); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func semanticRangesEnvelope(ranges []parser.Range) parser.Range {
@@ -410,15 +632,11 @@ func semanticRangesValue(source []byte, ranges []parser.Range) string {
 	return result.String()
 }
 
-func semanticRangeContains(outer, inner parser.Range) bool {
-	return inner.Start >= outer.Start && inner.End <= outer.End
-}
-
-func emitSemanticInline(source []byte, analysis inlineAnalysis, visit parser.SemanticVisitor) error {
+func emitSemanticInlineProjected(source []byte, analysis inlineAnalysis, terminals []parser.SemanticEvent, visit parser.SemanticVisitor) error {
 	if len(analysis.block.segments) == 0 {
 		return nil
 	}
-	nodes := collectConstructionSemantics(analysis.owners, analysis.delimiters)
+	nodes := semanticConstructionSemantics(source, analysis.owners, analysis.delimiters)
 	assignConstructionParents(nodes)
 	children := make([][]int, len(nodes)+1)
 	for index, node := range nodes {
@@ -426,28 +644,62 @@ func emitSemanticInline(source []byte, analysis inlineAnalysis, visit parser.Sem
 	}
 	first := analysis.block.segments[0].Start
 	last := analysis.block.segments[len(analysis.block.segments)-1].End
-	return emitSemanticInlineRegion(source, analysis.block, nodes, children, -1, parser.Range{Start: first, End: last}, visit)
+	return emitSemanticInlineRegion(source, analysis.block, nodes, children, -1, parser.Range{Start: first, End: last}, terminals, visit)
 }
 
-func emitSemanticInlineRegion(source []byte, block inlineBlock, nodes []constructionSemantic, children [][]int, parent int, region parser.Range, visit parser.SemanticVisitor) error {
+func emitSemanticInlineRegion(source []byte, block inlineBlock, nodes []constructionSemantic, children [][]int, parent int, region parser.Range, terminals []parser.SemanticEvent, visit parser.SemanticVisitor) error {
 	cursor := region.Start
 	for _, child := range children[parent+1] {
 		node := nodes[child]
 		if node.syntax.Start < cursor || node.syntax.End > region.End {
 			continue
 		}
-		if err := emitSemanticTextGap(source, block, parser.Range{Start: cursor, End: node.syntax.Start}, visit); err != nil {
+		if terminal, ok := semanticTerminalCoveringNode(terminals, node.syntax, region); ok {
+			if err := emitSemanticTextGapProjected(source, block, parser.Range{Start: cursor, End: terminal.Range.Start}, terminals, visit); err != nil {
+				return err
+			}
+			if err := visit(terminal); err != nil {
+				return err
+			}
+			cursor = terminal.Range.End
+			continue
+		}
+		if err := emitSemanticTextGapProjected(source, block, parser.Range{Start: cursor, End: node.syntax.Start}, terminals, visit); err != nil {
 			return err
 		}
-		if err := emitSemanticInlineNode(source, block, nodes, children, child, visit); err != nil {
+		if err := emitSemanticInlineNode(source, block, nodes, children, child, terminals, visit); err != nil {
 			return err
 		}
 		cursor = node.syntax.End
 	}
-	return emitSemanticTextGap(source, block, parser.Range{Start: cursor, End: region.End}, visit)
+	return emitSemanticTextGapProjected(source, block, parser.Range{Start: cursor, End: region.End}, terminals, visit)
 }
 
-func emitSemanticInlineNode(source []byte, block inlineBlock, nodes []constructionSemantic, children [][]int, index int, visit parser.SemanticVisitor) error {
+func semanticTerminalCoveringNode(terminals []parser.SemanticEvent, syntax, region parser.Range) (parser.SemanticEvent, bool) {
+	for index := semanticTerminalIndex(terminals, syntax.Start); index < len(terminals); index++ {
+		terminal := terminals[index]
+		if terminal.Range.Start > syntax.Start {
+			break
+		}
+		if terminal.Range.Start >= region.Start && terminal.Range.End <= region.End &&
+			terminal.Range.Start <= syntax.Start && terminal.Range.End >= syntax.End {
+			return terminal, true
+		}
+	}
+	return parser.SemanticEvent{}, false
+}
+
+func semanticTerminalIndex(terminals []parser.SemanticEvent, offset int) int {
+	index, _ := slices.BinarySearchFunc(terminals, offset, func(event parser.SemanticEvent, target int) int {
+		return cmp.Compare(event.Range.Start, target)
+	})
+	if index > 0 && terminals[index-1].Range.End > offset {
+		index--
+	}
+	return index
+}
+
+func emitSemanticInlineNode(source []byte, block inlineBlock, nodes []constructionSemantic, children [][]int, index int, terminals []parser.SemanticEvent, visit parser.SemanticVisitor) error {
 	node := nodes[index]
 	kind := semanticKindForParserKind(node.kind)
 	if kind == parser.SemanticUnknown {
@@ -468,12 +720,17 @@ func emitSemanticInlineNode(source []byte, block inlineBlock, nodes []constructi
 		if err := visit(enter); err != nil {
 			return err
 		}
-		if err := emitSemanticInlineRegion(source, block, nodes, children, index, node.content, visit); err != nil {
+		if err := emitSemanticInlineRegion(source, block, nodes, children, index, node.content, terminals, visit); err != nil {
 			return err
 		}
 		return visit(parser.SemanticEvent{Phase: parser.SemanticExit, Kind: kind, Range: node.syntax})
 	case parser.SemanticCodeSpan, parser.SemanticRawHTML, parser.SemanticAutoLink:
 		value := semanticSourceValue(source, node.content)
+		if kind == parser.SemanticCodeSpan {
+			if normalized, ok := semanticCodeSpanValue(source, node.syntax); ok {
+				value = normalized
+			}
+		}
 		event := parser.SemanticEvent{
 			Phase:        parser.SemanticLeaf,
 			Kind:         kind,
@@ -482,7 +739,8 @@ func emitSemanticInlineNode(source []byte, block inlineBlock, nodes []constructi
 			Value:        value,
 		}
 		if kind == parser.SemanticAutoLink {
-			event.Destination = value
+			event.AutoLinkEmail = node.autoLinkEmail
+			event.Destination = semanticAutoLinkDestination(value, node.autoLinkEmail)
 		}
 		return visit(event)
 	default:
@@ -513,7 +771,91 @@ func semanticKindForParserKind(kind parser.Kind) parser.SemanticKind {
 	}
 }
 
-func emitSemanticTextGap(source []byte, block inlineBlock, gap parser.Range, visit parser.SemanticVisitor) error {
+func semanticConstructionSemantics(source []byte, owners []inlineSpan, delimiters delimiterParseResult) []constructionSemantic {
+	result := collectConstructionSemantics(owners, delimiters)
+	for _, owner := range owners {
+		if owner.kind != parser.KindUnknown || owner.start < 0 || owner.start >= len(source) || source[owner.start] != '`' {
+			continue
+		}
+		syntax := parser.Range{Start: owner.start, End: owner.end}
+		if _, ok := semanticCodeSpanValue(source, syntax); !ok {
+			continue
+		}
+		result = append(result, constructionSemantic{kind: parser.KindCodeSpan, syntax: syntax, parent: -1})
+	}
+	if len(result) > 1 {
+		slices.SortStableFunc(result, func(left, right constructionSemantic) int {
+			if order := cmp.Compare(left.syntax.Start, right.syntax.Start); order != 0 {
+				return order
+			}
+			return cmp.Compare(right.syntax.End, left.syntax.End)
+		})
+	}
+	return result
+}
+
+func semanticCodeSpanValue(source []byte, syntax parser.Range) (string, bool) {
+	payload, ok := semanticCodeSpanPayload(source, syntax)
+	if !ok {
+		return "", false
+	}
+	value := semanticNormalizeCodeSpanPayload(payload)
+	if len(value) >= 2 && value[0] == ' ' && value[len(value)-1] == ' ' && !onlyASCIISpaces([]byte(value)) {
+		value = value[1 : len(value)-1]
+	}
+	return value, true
+}
+
+func semanticCodeSpanPayload(source []byte, syntax parser.Range) ([]byte, bool) {
+	if !syntax.Valid(len(source)) || syntax.End-syntax.Start < 2 || source[syntax.Start] != '`' {
+		return nil, false
+	}
+	run := 1
+	for syntax.Start+run < syntax.End && source[syntax.Start+run] == '`' {
+		run++
+	}
+	if syntax.End-syntax.Start < run*2 {
+		return nil, false
+	}
+	closingStart := syntax.End - run
+	for position := closingStart; position < syntax.End; position++ {
+		if source[position] != '`' {
+			return nil, false
+		}
+	}
+	return source[syntax.Start+run : closingStart], true
+}
+
+func semanticNormalizeCodeSpanPayload(payload []byte) string {
+	var normalized strings.Builder
+	normalized.Grow(len(payload))
+	for index := 0; index < len(payload); index++ {
+		switch payload[index] {
+		case '\r':
+			if index+1 < len(payload) && payload[index+1] == '\n' {
+				index++
+			}
+			normalized.WriteByte(' ')
+		case '\n':
+			normalized.WriteByte(' ')
+		default:
+			normalized.WriteByte(payload[index])
+		}
+	}
+	return normalized.String()
+}
+
+func semanticAutoLinkDestination(value string, email bool) string {
+	if email {
+		return "mailto:" + value
+	}
+	if strings.HasPrefix(value, "www.") {
+		return "http://" + value
+	}
+	return value
+}
+
+func emitSemanticTextGapProjected(source []byte, block inlineBlock, gap parser.Range, terminals []parser.SemanticEvent, visit parser.SemanticVisitor) error {
 	if gap.Start >= gap.End {
 		return nil
 	}
@@ -531,13 +873,8 @@ func emitSemanticTextGap(source []byte, block inlineBlock, gap parser.Range, vis
 		if end > textEnd {
 			end = textEnd
 		}
-		if start < end {
-			value := semanticDecodedText(source[start:end])
-			if value != "" {
-				if err := visit(parser.SemanticEvent{Phase: parser.SemanticLeaf, Kind: parser.SemanticText, Range: parser.Range{Start: start, End: end}, ContentRange: parser.Range{Start: start, End: end}, Value: value}); err != nil {
-					return err
-				}
-			}
+		if err := emitSemanticTextRangeExcluding(source, parser.Range{Start: start, End: end}, block.prefixExclusion, terminals, visit); err != nil {
+			return err
 		}
 		if index+1 >= len(block.segments) || gap.End < block.segments[index+1].Start || gap.Start > segment.End {
 			continue
@@ -548,6 +885,59 @@ func emitSemanticTextGap(source []byte, block inlineBlock, gap parser.Range, vis
 		}
 	}
 	return nil
+}
+
+func emitSemanticTextRangeExcluding(source []byte, range_, exclusion parser.Range, terminals []parser.SemanticEvent, visit parser.SemanticVisitor) error {
+	if exclusion.Start >= exclusion.End || exclusion.End <= range_.Start || exclusion.Start >= range_.End {
+		return emitSemanticTextRangeProjected(source, range_, terminals, visit)
+	}
+	before := parser.Range{Start: range_.Start, End: min(range_.End, exclusion.Start)}
+	if err := emitSemanticTextRangeProjected(source, before, terminals, visit); err != nil {
+		return err
+	}
+	after := parser.Range{Start: max(range_.Start, exclusion.End), End: range_.End}
+	return emitSemanticTextRangeProjected(source, after, terminals, visit)
+}
+
+func emitSemanticTextRangeProjected(source []byte, range_ parser.Range, terminals []parser.SemanticEvent, visit parser.SemanticVisitor) error {
+	if range_.Start >= range_.End {
+		return nil
+	}
+	cursor := range_.Start
+	for index := semanticTerminalIndex(terminals, cursor); index < len(terminals); index++ {
+		terminal := terminals[index]
+		if terminal.Range.Start >= range_.End {
+			break
+		}
+		if terminal.Range.Start < cursor || terminal.Range.End > range_.End {
+			continue
+		}
+		if err := emitSemanticTextRange(source, parser.Range{Start: cursor, End: terminal.Range.Start}, visit); err != nil {
+			return err
+		}
+		if err := visit(terminal); err != nil {
+			return err
+		}
+		cursor = terminal.Range.End
+	}
+	return emitSemanticTextRange(source, parser.Range{Start: cursor, End: range_.End}, visit)
+}
+
+func emitSemanticTextRange(source []byte, range_ parser.Range, visit parser.SemanticVisitor) error {
+	if range_.Start >= range_.End {
+		return nil
+	}
+	value := semanticDecodedText(source[range_.Start:range_.End])
+	if value == "" {
+		return nil
+	}
+	return visit(parser.SemanticEvent{
+		Phase:        parser.SemanticLeaf,
+		Kind:         parser.SemanticText,
+		Range:        range_,
+		ContentRange: range_,
+		Value:        value,
+	})
 }
 
 func semanticLineEnd(source []byte, segment parser.Range) (int, parser.SemanticKind) {

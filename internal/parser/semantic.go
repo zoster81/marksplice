@@ -53,37 +53,60 @@ const (
 	SemanticFrontMatter
 )
 
+// SemanticAlertKind identifies one reviewed GitHub alert semantic kind.
+type SemanticAlertKind uint8
+
+const (
+	SemanticAlertUnknown SemanticAlertKind = iota
+	SemanticAlertNote
+	SemanticAlertTip
+	SemanticAlertImportant
+	SemanticAlertWarning
+	SemanticAlertCaution
+)
+
+// SemanticFrontMatterFormat identifies the source envelope format.
+type SemanticFrontMatterFormat uint8
+
+const (
+	SemanticFrontMatterUnknown SemanticFrontMatterFormat = iota
+	SemanticFrontMatterYAML
+	SemanticFrontMatterTOML
+)
+
 // SemanticEvent is one ephemeral renderer-oriented event. Range and
 // ContentRange are offsets into the exact source passed to WalkSemantic and are
 // snapshot-local metadata, not durable identities. Kind-specific scalar fields
 // are populated only when relevant to that event.
 type SemanticEvent struct {
-	Phase            SemanticPhase
-	Kind             SemanticKind
-	Range            Range
-	ContentRange     Range
-	Value            string
-	Level            int
-	Destination      string
-	Title            string
-	HasTitle         bool
-	Label            string
-	AutoLinkEmail    bool
-	Ordered          bool
-	Start            int
-	Tight            bool
-	Checked          bool
-	Marker           byte
-	Header           bool
-	Column           int
-	Columns          int
-	Alignment        TableAlignment
-	Info             string
-	Language         string
-	Fenced           bool
-	MathStyle        MathExpressionStyle
-	DefinitionAnchor int
-	Occurrence       int
+	Phase             SemanticPhase
+	Kind              SemanticKind
+	Range             Range
+	ContentRange      Range
+	Value             string
+	Level             int
+	Destination       string
+	Title             string
+	HasTitle          bool
+	Label             string
+	AutoLinkEmail     bool
+	Ordered           bool
+	Start             int
+	Tight             bool
+	Checked           bool
+	Marker            byte
+	Header            bool
+	Column            int
+	Columns           int
+	Alignment         TableAlignment
+	Info              string
+	Language          string
+	Fenced            bool
+	MathStyle         MathExpressionStyle
+	AlertKind         SemanticAlertKind
+	FrontMatterFormat SemanticFrontMatterFormat
+	DefinitionAnchor  int
+	Occurrence        int
 }
 
 // SemanticVisitor consumes events synchronously. Implementations must stop

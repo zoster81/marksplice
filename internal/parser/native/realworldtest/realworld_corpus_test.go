@@ -150,6 +150,117 @@ func TestNativeRealWorldMarkdownCorpus(t *testing.T) {
 		nonUTF8Files, bomFiles, crlfFiles, tabFiles, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
+func TestM119NativeSemanticRealWorldCorpus(t *testing.T) {
+	files := loadRealWorldCorpus(t)
+	backend := native.New()
+	var totalBytes int64
+	var totalEvents int64
+	for _, file := range files {
+		before := bytes.Clone(file.source)
+		count, digest, panicValue, err := walkSemanticRealWorld(backend, file.source)
+		if panicValue != nil {
+			t.Fatalf("WalkSemantic(%s) panic: %v", filepath.ToSlash(file.relative), panicValue)
+		}
+		if err != nil {
+			t.Fatalf("WalkSemantic(%s): %v", filepath.ToSlash(file.relative), err)
+		}
+		if !bytes.Equal(file.source, before) {
+			t.Fatalf("WalkSemantic(%s) mutated corpus source", filepath.ToSlash(file.relative))
+		}
+		secondCount, secondDigest, secondPanic, secondErr := walkSemanticRealWorld(backend, file.source)
+		if secondPanic != nil {
+			t.Fatalf("second WalkSemantic(%s) panic: %v", filepath.ToSlash(file.relative), secondPanic)
+		}
+		if secondErr != nil {
+			t.Fatalf("second WalkSemantic(%s): %v", filepath.ToSlash(file.relative), secondErr)
+		}
+		if count != secondCount || digest != secondDigest {
+			t.Fatalf("WalkSemantic(%s) is nondeterministic: count=%d/%d digest=%016x/%016x", filepath.ToSlash(file.relative), count, secondCount, digest, secondDigest)
+		}
+		totalBytes += int64(len(file.source))
+		totalEvents += int64(count)
+	}
+	t.Logf("semantic real-world corpus: files=%d bytes=%d events_per_pass=%d", len(files), totalBytes, totalEvents)
+}
+
+func walkSemanticRealWorld(backend *native.Backend, source []byte) (count int, digest uint64, panicValue any, err error) {
+	defer func() {
+		panicValue = recover()
+	}()
+	stack := make([]parser.SemanticKind, 0, 32)
+	digest = semanticDigestOffset
+	err = backend.WalkSemantic(source, func(event parser.SemanticEvent) error {
+		if !event.Range.Valid(len(source)) {
+			return fmt.Errorf("event %d range %v is outside source bytes %d", count, event.Range, len(source))
+		}
+		if event.ContentRange != (parser.Range{}) && !event.ContentRange.Valid(len(source)) {
+			return fmt.Errorf("event %d content range %v is outside source bytes %d", count, event.ContentRange, len(source))
+		}
+		switch event.Phase {
+		case parser.SemanticEnter:
+			stack = append(stack, event.Kind)
+		case parser.SemanticExit:
+			if len(stack) == 0 || stack[len(stack)-1] != event.Kind {
+				return fmt.Errorf("event %d unbalanced exit kind=%d stack=%v", count, event.Kind, stack)
+			}
+			stack = stack[:len(stack)-1]
+		case parser.SemanticLeaf:
+		default:
+			return fmt.Errorf("event %d has unknown phase %d", count, event.Phase)
+		}
+		digest = semanticDigestEvent(digest, event)
+		count++
+		return nil
+	})
+	if err == nil && len(stack) != 0 {
+		err = fmt.Errorf("semantic stack remains open: %v", stack)
+	}
+	return count, digest, nil, err
+}
+
+const (
+	semanticDigestOffset uint64 = 1469598103934665603
+	semanticDigestPrime  uint64 = 1099511628211
+)
+
+func semanticDigestEvent(digest uint64, event parser.SemanticEvent) uint64 {
+	for _, value := range []int{
+		int(event.Phase), int(event.Kind), event.Range.Start, event.Range.End,
+		event.ContentRange.Start, event.ContentRange.End, event.Level, event.Start,
+		event.Column, event.Columns, int(event.Alignment), int(event.MathStyle),
+		int(event.AlertKind), int(event.FrontMatterFormat), event.DefinitionAnchor, event.Occurrence,
+	} {
+		digest = semanticDigestInt(digest, value)
+	}
+	for _, value := range []bool{event.HasTitle, event.AutoLinkEmail, event.Ordered, event.Tight, event.Checked, event.Header, event.Fenced} {
+		if value {
+			digest = semanticDigestByte(digest, 1)
+		} else {
+			digest = semanticDigestByte(digest, 0)
+		}
+	}
+	digest = semanticDigestByte(digest, event.Marker)
+	for _, value := range []string{event.Value, event.Destination, event.Title, event.Label, event.Info, event.Language} {
+		for index := 0; index < len(value); index++ {
+			digest = semanticDigestByte(digest, value[index])
+		}
+		digest = semanticDigestByte(digest, 0xff)
+	}
+	return digest
+}
+
+func semanticDigestInt(digest uint64, value int) uint64 {
+	unsigned := uint64(value)
+	for shift := 0; shift < 64; shift += 8 {
+		digest = semanticDigestByte(digest, byte(unsigned>>shift))
+	}
+	return digest
+}
+
+func semanticDigestByte(digest uint64, value byte) uint64 {
+	return (digest ^ uint64(value)) * semanticDigestPrime
+}
+
 func TestNativeRealWorldDerivedMalformedCorpus(t *testing.T) {
 	files := selectMalformedRealWorldSeeds(loadRealWorldCorpus(t), 64)
 	backend := native.New()

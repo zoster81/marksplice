@@ -1,6 +1,9 @@
 package marksplice
 
-import "github.com/zoster81/marksplice/internal/splice"
+import (
+	"github.com/zoster81/marksplice/internal/source"
+	"github.com/zoster81/marksplice/internal/splice"
+)
 
 // AlertKind identifies one reviewed GitHub alert semantic kind.
 type AlertKind uint8
@@ -124,35 +127,43 @@ func alertHasBody(ranges []splice.Range) bool {
 }
 
 func alertKindFromMarker(marker []byte) AlertKind {
-	switch string(marker) {
-	case "[!NOTE]":
+	return publicAlertKind(source.AlertKindFromMarker(marker))
+}
+
+func publicAlertKind(kind source.AlertKind) AlertKind {
+	switch kind {
+	case source.AlertNote:
 		return AlertKindNote
-	case "[!TIP]":
+	case source.AlertTip:
 		return AlertKindTip
-	case "[!IMPORTANT]":
+	case source.AlertImportant:
 		return AlertKindImportant
-	case "[!WARNING]":
+	case source.AlertWarning:
 		return AlertKindWarning
-	case "[!CAUTION]":
+	case source.AlertCaution:
 		return AlertKindCaution
 	default:
 		return AlertKindUnknown
 	}
 }
 
-func alertMarker(kind AlertKind) (string, bool) {
+func sourceAlertKind(kind AlertKind) source.AlertKind {
 	switch kind {
 	case AlertKindNote:
-		return "[!NOTE]", true
+		return source.AlertNote
 	case AlertKindTip:
-		return "[!TIP]", true
+		return source.AlertTip
 	case AlertKindImportant:
-		return "[!IMPORTANT]", true
+		return source.AlertImportant
 	case AlertKindWarning:
-		return "[!WARNING]", true
+		return source.AlertWarning
 	case AlertKindCaution:
-		return "[!CAUTION]", true
+		return source.AlertCaution
 	default:
-		return "", false
+		return source.AlertUnknown
 	}
+}
+
+func alertMarker(kind AlertKind) (string, bool) {
+	return source.AlertMarker(sourceAlertKind(kind))
 }

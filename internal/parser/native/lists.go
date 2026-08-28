@@ -156,6 +156,10 @@ func listInterruptsParagraph(source []byte, line physicalLine) bool {
 }
 
 func parseList(source []byte, lines []physicalLine, index int) (blockParseResult, int, bool) {
+	return parseListSemantic(source, lines, index, nil, -1)
+}
+
+func parseListSemantic(source []byte, lines []physicalLine, index int, capture *semanticBlockCapture, parent int) (blockParseResult, int, bool) {
 	if _, ok := parseThematicBreak(source, lines[index]); ok {
 		return blockParseResult{}, index, false
 	}
@@ -164,8 +168,53 @@ func parseList(source []byte, lines []physicalLine, index int) (blockParseResult
 		return blockParseResult{}, index, false
 	}
 	collected := collectList(source, lines, index, first)
-	items, loose := parseListItems(source, collected.items)
-	result := assembleList(source, items, loose)
+	if capture == nil {
+		items, loose := parseListItems(source, collected.items)
+		result := assembleList(source, items, loose)
+		if len(collected.items) != 0 {
+			result.trailingBlank = collected.items[len(collected.items)-1].trailingBlank
+		}
+		return result, collected.next, true
+	}
+	return parseCapturedList(source, collected, first, capture, parent)
+}
+
+func parseCapturedList(source []byte, collected listSource, first listMarker, capture *semanticBlockCapture, parent int) (blockParseResult, int, bool) {
+	listRange := semanticListSourceRange(collected.items, first.physicalStart)
+	start := 0
+	if first.ordered {
+		start = first.startNumber
+	}
+	listIndex := capture.add(parent, parser.SemanticEvent{
+		Kind:    parser.SemanticList,
+		Range:   listRange,
+		Ordered: first.ordered,
+		Start:   start,
+		Marker:  first.marker,
+	}, parser.Range{})
+	parsed := make([]parsedListItem, len(collected.items))
+	loose := false
+	for index, item := range collected.items {
+		itemRange := semanticListItemSourceRange(item)
+		itemIndex := capture.add(listIndex, parser.SemanticEvent{
+			Kind:         parser.SemanticListItem,
+			Range:        itemRange,
+			ContentRange: itemRange,
+			Ordered:      item.marker.ordered,
+			Marker:       item.marker.marker,
+		}, parser.Range{})
+		child := parseBlockLinesSemantic(source, item.lines, false, capture, itemIndex)
+		if len(child.roots) != 0 && child.roots[0].range_ != (parser.Range{}) {
+			contentRange := child.roots[0].range_
+			capture.update(itemIndex, func(event *parser.SemanticEvent) { event.ContentRange = contentRange })
+		}
+		parsed[index] = parsedListItem{source: item, child: child}
+		if child.blankBetweenRoots || item.separatedAfter || referenceResidualMakesListLoose(child.roots) {
+			loose = true
+		}
+	}
+	capture.update(listIndex, func(event *parser.SemanticEvent) { event.Tight = !loose })
+	result := assembleList(source, parsed, loose)
 	if len(collected.items) != 0 {
 		result.trailingBlank = collected.items[len(collected.items)-1].trailingBlank
 	}

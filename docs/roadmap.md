@@ -134,6 +134,8 @@ Profiling rejected the first broader implementation because repeated analysis/de
 
 ## M119 — Semantic completeness and conformance harness
 
+**Status: complete on 2026-08-28; unreleased.**
+
 **Goal:** prove that the semantic walk is complete enough to support deterministic rendering before shipping a renderer API.
 
 Cover at least:
@@ -150,6 +152,12 @@ Cover at least:
 - footnotes, reviewed math forms, alerts, and front-matter envelope policy.
 
 Run the existing parser conformance and add semantic-walk-focused fixtures/tests without generating expectations from current Native output alone. Perform the first broad semantic-layer refactor here: no duplicate Markdown parser, no permanent second AST, no pointer-heavy structure unless profiling justifies it.
+
+The implementation now captures recursive block ownership at the Native parse point, exposes list start/tightness, indented code, reference definitions, renderer-ready autolinks/code spans, front matter, alerts, and source-ordered footnote/math replacement semantics, and removes the superseded M118 supplemental/block emitter path. A permanent semantic conformance harness uses manually reviewed expectations for selected official CommonMark/GFM examples loaded from the same hash-pinned external snapshots as parser conformance; current Native output is never the expected-output generator. A permanent retained-corpus invariant gate walks all 6,857 certified documents twice and verifies ranges, balanced nesting, deterministic event digests, and source immutability.
+
+Profiling rejected the first complete M119 draft at roughly 68.5 ms / 57.05 MB for the 256 KiB semantic workload. Ordered paragraph lookup, compact child adjacency, measured capture reservation, and merge-capacity cleanup reduce a stable post-refactor run to about 40.05 ms / 40.26 MB / 233k allocations. That is roughly +9.8% allocated bytes and +4.0% allocations versus the M118 semantic freeze while adding the missing rendering facts. Ordinary public `Parse` and Native `ParseDocument` allocation state remains structurally close to the M118 boundary because semantic capture is enabled only by `WalkSemantic`.
+
+M119 changes no exported API. The exact documented-tree local freeze stack is green. Its reviewed freeze commit must be pushed normally and verified by exact remote CI before M120 implementation begins.
 
 ## M120 — HTML fragment renderer
 

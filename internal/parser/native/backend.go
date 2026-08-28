@@ -437,15 +437,16 @@ func materializeNestedLines(source []byte, lines []physicalLine) []byte {
 }
 
 type constructionSemantic struct {
-	kind        parser.Kind
-	syntax      parser.Range
-	content     parser.Range
-	form        parser.LinkUsageForm
-	reference   string
-	destination string
-	title       string
-	hasTitle    bool
-	parent      int
+	kind          parser.Kind
+	syntax        parser.Range
+	content       parser.Range
+	form          parser.LinkUsageForm
+	reference     string
+	destination   string
+	title         string
+	hasTitle      bool
+	autoLinkEmail bool
+	parent        int
 }
 
 type constructionSemanticKey struct {
@@ -543,10 +544,11 @@ func collectConstructionSemantics(owners []inlineSpan, delimiters delimiterParse
 		switch owner.kind {
 		case parser.KindCodeSpan, parser.KindRawHTML, parser.KindAutoLink:
 			result = append(result, constructionSemantic{
-				kind:    owner.kind,
-				syntax:  parser.Range{Start: owner.start, End: owner.end},
-				content: owner.content,
-				parent:  -1,
+				kind:          owner.kind,
+				syntax:        parser.Range{Start: owner.start, End: owner.end},
+				content:       owner.content,
+				autoLinkEmail: owner.autoLinkEmail,
+				parent:        -1,
 			})
 		}
 	}

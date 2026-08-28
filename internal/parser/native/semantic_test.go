@@ -1,8 +1,11 @@
 package native_test
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/zoster81/marksplice/internal/parser"
@@ -204,6 +207,61 @@ func TestWalkSemanticIsDeterministicAndRetainsNoSourceSlice(t *testing.T) {
 	t.Fatalf("retained semantic values changed after caller source mutation: %#v", first)
 }
 
+func TestM119SemanticPathologicalInputsRemainBalanced(t *testing.T) {
+	t.Parallel()
+
+	deepQuote := []byte(strings.Repeat("> ", 256) + "body\n")
+	for _, tt := range []struct {
+		name   string
+		source []byte
+	}{
+		{name: "deep blockquote", source: deepQuote},
+		{name: "crlf overlays", source: []byte("---\r\ntitle: demo\r\n---\r\n\r\n> [!NOTE]\r\n> body\r\n\r\n`a\r\nb`\r\n")},
+		{name: "unclosed syntax", source: []byte("```go\n[broken **~~` <https://example.invalid\n")},
+		{name: "invalid utf8", source: []byte{0xff, 0x00, '>', ' ', '[', '!', 'N', 'O', 'T', 'E', ']', '\n', 0xfe}},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			first := collectSemanticEvents(t, tt.source)
+			second := collectSemanticEvents(t, tt.source)
+			if !reflect.DeepEqual(first, second) {
+				t.Fatalf("semantic walk is nondeterministic\nfirst:  %#v\nsecond: %#v", first, second)
+			}
+			assertSemanticEventsBalanced(t, first)
+		})
+	}
+}
+
+func FuzzM119SemanticWalkRemainsSourceBound(f *testing.F) {
+	for _, seed := range [][]byte{
+		[]byte("# Title\n\nparagraph with *em* [link](<target>)\n"),
+		[]byte("---\ntitle: demo\n---\n\n> [!NOTE]\n> body\n\n- [x] task\n"),
+		[]byte("[^n]: *note*\n\nuse[^n] and $x$ plus $`y`$\n"),
+		[]byte("| A | B |\n| :- | -: |\n| x | y |\n"),
+		[]byte("``\nfoo\nbar  \nbaz\n``\n"),
+		{0xff, 0x00, '#', ' ', 0xfe, '\r', '\n'},
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, source []byte) {
+		if len(source) > 64<<10 {
+			return
+		}
+		before := bytes.Clone(source)
+		first := collectSemanticEvents(t, source)
+		if !bytes.Equal(source, before) {
+			t.Fatal("WalkSemantic() mutated fuzz source")
+		}
+		second := collectSemanticEvents(t, source)
+		if !reflect.DeepEqual(first, second) {
+			t.Fatal("WalkSemantic() is nondeterministic for fuzz source")
+		}
+		assertSemanticEventsBalanced(t, first)
+	})
+}
+
 func TestWalkSemanticStopsDuringSupplementalEvents(t *testing.T) {
 	t.Parallel()
 
@@ -234,6 +292,309 @@ func TestSemanticVocabularyReservesM119PolicyFamilies(t *testing.T) {
 	}
 }
 
+func TestM119SemanticNestedBlockOwnershipAndListFacts(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("> outer\n>\n> 3. first\n>    - child\n> 4. second\n")
+	events := collectSemanticEvents(t, source)
+	got := semanticPhaseKinds(events)
+	want := []semanticPhaseKind{
+		{parser.SemanticEnter, parser.SemanticDocument},
+		{parser.SemanticEnter, parser.SemanticBlockquote},
+		{parser.SemanticEnter, parser.SemanticParagraph},
+		{parser.SemanticLeaf, parser.SemanticText},
+		{parser.SemanticExit, parser.SemanticParagraph},
+		{parser.SemanticEnter, parser.SemanticList},
+		{parser.SemanticEnter, parser.SemanticListItem},
+		{parser.SemanticEnter, parser.SemanticParagraph},
+		{parser.SemanticLeaf, parser.SemanticText},
+		{parser.SemanticExit, parser.SemanticParagraph},
+		{parser.SemanticEnter, parser.SemanticList},
+		{parser.SemanticEnter, parser.SemanticListItem},
+		{parser.SemanticEnter, parser.SemanticParagraph},
+		{parser.SemanticLeaf, parser.SemanticText},
+		{parser.SemanticExit, parser.SemanticParagraph},
+		{parser.SemanticExit, parser.SemanticListItem},
+		{parser.SemanticExit, parser.SemanticList},
+		{parser.SemanticExit, parser.SemanticListItem},
+		{parser.SemanticEnter, parser.SemanticListItem},
+		{parser.SemanticEnter, parser.SemanticParagraph},
+		{parser.SemanticLeaf, parser.SemanticText},
+		{parser.SemanticExit, parser.SemanticParagraph},
+		{parser.SemanticExit, parser.SemanticListItem},
+		{parser.SemanticExit, parser.SemanticList},
+		{parser.SemanticExit, parser.SemanticBlockquote},
+		{parser.SemanticExit, parser.SemanticDocument},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("semantic block hierarchy changed\ngot:  %#v\nwant: %#v", got, want)
+	}
+	lists := semanticEventsOfKind(events, parser.SemanticList, parser.SemanticEnter)
+	if len(lists) != 2 {
+		t.Fatalf("list enter events = %d, want 2", len(lists))
+	}
+	if !lists[0].Ordered || lists[0].Start != 3 || !lists[0].Tight {
+		t.Fatalf("outer list facts = %#v, want ordered start=3 tight", lists[0])
+	}
+	if lists[1].Ordered || lists[1].Start != 0 || !lists[1].Tight {
+		t.Fatalf("nested list facts = %#v, want unordered tight", lists[1])
+	}
+}
+
+func TestM119SemanticLooseListFacts(t *testing.T) {
+	t.Parallel()
+
+	events := collectSemanticEvents(t, []byte("3. one\n\n4. two\n"))
+	lists := semanticEventsOfKind(events, parser.SemanticList, parser.SemanticEnter)
+	if len(lists) != 1 {
+		t.Fatalf("list enter events = %d, want 1", len(lists))
+	}
+	if !lists[0].Ordered || lists[0].Start != 3 || lists[0].Tight {
+		t.Fatalf("loose list facts = %#v, want ordered start=3 loose", lists[0])
+	}
+}
+
+func TestM119SemanticIndentedCodeAndReferenceDefinition(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("    code\n    next\n\n[label]: /target \"title\"\n\n[use][label]\n")
+	events := collectSemanticEvents(t, source)
+	if !hasSemanticEvent(events, parser.SemanticCodeBlock, func(event parser.SemanticEvent) bool {
+		return !event.Fenced && event.Value == "code\nnext\n"
+	}) {
+		t.Fatalf("indented code semantics missing from %#v", events)
+	}
+	if !hasSemanticEvent(events, parser.SemanticReferenceDefinition, func(event parser.SemanticEvent) bool {
+		return event.Label == "label" && event.Destination == "/target" && event.Title == "title" && event.HasTitle
+	}) {
+		t.Fatalf("reference-definition semantics missing from %#v", events)
+	}
+}
+
+func TestM119SemanticFrontMatterEnvelope(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("---\ntitle: demo\n---\n\n# Body\n")
+	events := collectSemanticEvents(t, source)
+	got := semanticPhaseKinds(events)
+	want := []semanticPhaseKind{
+		{parser.SemanticEnter, parser.SemanticDocument},
+		{parser.SemanticLeaf, parser.SemanticFrontMatter},
+		{parser.SemanticEnter, parser.SemanticHeading},
+		{parser.SemanticLeaf, parser.SemanticText},
+		{parser.SemanticExit, parser.SemanticHeading},
+		{parser.SemanticExit, parser.SemanticDocument},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("front-matter semantic hierarchy changed\ngot:  %#v\nwant: %#v", got, want)
+	}
+	frontMatter := semanticEventsOfKind(events, parser.SemanticFrontMatter, parser.SemanticLeaf)
+	if len(frontMatter) != 1 {
+		t.Fatalf("front-matter events = %d, want 1", len(frontMatter))
+	}
+	if frontMatter[0].FrontMatterFormat != parser.SemanticFrontMatterYAML || frontMatter[0].Value != "---\ntitle: demo\n---" {
+		t.Fatalf("front-matter event = %#v", frontMatter[0])
+	}
+}
+
+func TestM119SemanticAlertOwnsBodyWithoutMarkerText(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("> [!NOTE]\n> **Body**\n")
+	events := collectSemanticEvents(t, source)
+	got := semanticPhaseKinds(events)
+	want := []semanticPhaseKind{
+		{parser.SemanticEnter, parser.SemanticDocument},
+		{parser.SemanticEnter, parser.SemanticAlert},
+		{parser.SemanticEnter, parser.SemanticParagraph},
+		{parser.SemanticEnter, parser.SemanticStrong},
+		{parser.SemanticLeaf, parser.SemanticText},
+		{parser.SemanticExit, parser.SemanticStrong},
+		{parser.SemanticExit, parser.SemanticParagraph},
+		{parser.SemanticExit, parser.SemanticAlert},
+		{parser.SemanticExit, parser.SemanticDocument},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("alert semantic hierarchy changed\ngot:  %#v\nwant: %#v", got, want)
+	}
+	alerts := semanticEventsOfKind(events, parser.SemanticAlert, parser.SemanticEnter)
+	if len(alerts) != 1 || alerts[0].AlertKind != parser.SemanticAlertNote {
+		t.Fatalf("alert event = %#v, want one NOTE", alerts)
+	}
+	if hasSemanticEvent(events, parser.SemanticText, func(event parser.SemanticEvent) bool { return event.Value == "[!NOTE]" }) {
+		t.Fatalf("alert marker leaked as semantic text: %#v", events)
+	}
+}
+
+func TestM119UnknownAlertMarkerRemainsBlockquote(t *testing.T) {
+	t.Parallel()
+
+	events := collectSemanticEvents(t, []byte("> [!CUSTOM]\n> body\n"))
+	if hasSemanticEvent(events, parser.SemanticAlert, nil) {
+		t.Fatalf("unknown alert marker promoted: %#v", events)
+	}
+	if !hasSemanticEvent(events, parser.SemanticBlockquote, nil) {
+		t.Fatalf("unknown alert marker lost blockquote semantics: %#v", events)
+	}
+}
+
+func TestM119SemanticFootnoteDefinitionAndReferenceInPlace(t *testing.T) {
+	t.Parallel()
+
+	events := collectSemanticEvents(t, []byte("before[^n] after\n\n[^n]: *note* body\n"))
+	before := semanticEventIndex(events, parser.SemanticText, func(event parser.SemanticEvent) bool { return event.Value == "before" })
+	reference := semanticEventIndex(events, parser.SemanticFootnoteReference, func(event parser.SemanticEvent) bool { return event.Label == "n" })
+	after := semanticEventIndex(events, parser.SemanticText, func(event parser.SemanticEvent) bool { return event.Value == " after" })
+	definition := semanticEventIndex(events, parser.SemanticFootnoteDefinition, func(event parser.SemanticEvent) bool {
+		return event.Label == "n" && event.Phase == parser.SemanticEnter
+	})
+	if before < 0 || reference <= before || after <= reference || definition <= after {
+		t.Fatalf("footnote source order invalid: before=%d reference=%d after=%d definition=%d events=%#v", before, reference, after, definition, events)
+	}
+	if hasSemanticEvent(events, parser.SemanticReferenceDefinition, func(event parser.SemanticEvent) bool { return event.Label == "^n" }) {
+		t.Fatalf("footnote leaked ordinary reference-definition semantics: %#v", events)
+	}
+	if !hasSemanticEvent(events[definition:], parser.SemanticEmphasis, nil) {
+		t.Fatalf("footnote body emphasis missing: %#v", events)
+	}
+}
+
+func TestM119SemanticInlineMathReplacesSourceText(t *testing.T) {
+	t.Parallel()
+
+	events := collectSemanticEvents(t, []byte("a $x$ b $`y`$ c\n"))
+	got := make([]string, 0)
+	for _, event := range events {
+		switch event.Kind {
+		case parser.SemanticText:
+			got = append(got, "text:"+event.Value)
+		case parser.SemanticMath:
+			got = append(got, fmt.Sprintf("math:%d:%s", event.MathStyle, event.Value))
+		}
+	}
+	want := []string{
+		"text:a ",
+		fmt.Sprintf("math:%d:x", parser.MathExpressionInlineDollar),
+		"text: b ",
+		fmt.Sprintf("math:%d:y", parser.MathExpressionInlineBacktick),
+		"text: c",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("inline math semantic sequence = %#v, want %#v", got, want)
+	}
+}
+
+func TestM119SemanticBlockMathReplacesParagraph(t *testing.T) {
+	t.Parallel()
+
+	events := collectSemanticEvents(t, []byte("$$x+y$$\n"))
+	got := semanticPhaseKinds(events)
+	want := []semanticPhaseKind{
+		{parser.SemanticEnter, parser.SemanticDocument},
+		{parser.SemanticLeaf, parser.SemanticMath},
+		{parser.SemanticExit, parser.SemanticDocument},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("block math hierarchy = %#v, want %#v", got, want)
+	}
+	math := semanticEventsOfKind(events, parser.SemanticMath, parser.SemanticLeaf)
+	if len(math) != 1 || math[0].MathStyle != parser.MathExpressionBlockDollar || math[0].Value != "x+y" {
+		t.Fatalf("block math event = %#v", math)
+	}
+}
+
+func TestM119SemanticTaskMarkerIsMetadataNotText(t *testing.T) {
+	t.Parallel()
+
+	events := collectSemanticEvents(t, []byte("- [ ] foo\n- [x] bar\n"))
+	texts := make([]string, 0)
+	checks := make([]bool, 0)
+	for _, event := range events {
+		switch event.Kind {
+		case parser.SemanticText:
+			texts = append(texts, event.Value)
+		case parser.SemanticTaskItem:
+			checks = append(checks, event.Checked)
+		}
+	}
+	if want := []string{" foo", " bar"}; !reflect.DeepEqual(texts, want) {
+		t.Fatalf("task semantic text = %#v, want %#v", texts, want)
+	}
+	if want := []bool{false, true}; !reflect.DeepEqual(checks, want) {
+		t.Fatalf("task checked states = %#v, want %#v", checks, want)
+	}
+}
+
+func TestM119SemanticEmailAutolinkCarriesEmailFact(t *testing.T) {
+	t.Parallel()
+
+	events := collectSemanticEvents(t, []byte("<foo@bar.example.com>\n"))
+	links := semanticEventsOfKind(events, parser.SemanticAutoLink, parser.SemanticLeaf)
+	if len(links) != 1 {
+		t.Fatalf("autolink events = %d, want 1: %#v", len(links), events)
+	}
+	if links[0].Value != "foo@bar.example.com" || links[0].Destination != "mailto:foo@bar.example.com" || !links[0].AutoLinkEmail {
+		t.Fatalf("email autolink = %#v", links[0])
+	}
+}
+
+func TestM119SemanticCodeSpanValueMatchesCommonMarkNormalization(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{name: "example 328", source: "`foo`\n", want: "foo"},
+		{name: "example 329", source: "`` foo ` bar ``\n", want: "foo ` bar"},
+		{name: "example 331", source: "`  ``  `\n", want: " `` "},
+		{name: "example 335", source: "``\nfoo\nbar  \nbaz\n``\n", want: "foo bar   baz"},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			events := collectSemanticEvents(t, []byte(tt.source))
+			spans := semanticEventsOfKind(events, parser.SemanticCodeSpan, parser.SemanticLeaf)
+			if len(spans) != 1 || spans[0].Value != tt.want {
+				t.Fatalf("code span = %#v, want value %q", spans, tt.want)
+			}
+		})
+	}
+}
+
+func semanticEventIndex(events []parser.SemanticEvent, kind parser.SemanticKind, match func(parser.SemanticEvent) bool) int {
+	for index, event := range events {
+		if event.Kind == kind && (match == nil || match(event)) {
+			return index
+		}
+	}
+	return -1
+}
+
+type semanticPhaseKind struct {
+	phase parser.SemanticPhase
+	kind  parser.SemanticKind
+}
+
+func semanticPhaseKinds(events []parser.SemanticEvent) []semanticPhaseKind {
+	result := make([]semanticPhaseKind, len(events))
+	for index, event := range events {
+		result[index] = semanticPhaseKind{phase: event.Phase, kind: event.Kind}
+	}
+	return result
+}
+
+func semanticEventsOfKind(events []parser.SemanticEvent, kind parser.SemanticKind, phase parser.SemanticPhase) []parser.SemanticEvent {
+	result := make([]parser.SemanticEvent, 0)
+	for _, event := range events {
+		if event.Kind == kind && event.Phase == phase {
+			result = append(result, event)
+		}
+	}
+	return result
+}
+
 func collectSemanticEvents(t *testing.T, source []byte) []parser.SemanticEvent {
 	t.Helper()
 	events := make([]parser.SemanticEvent, 0, 64)
@@ -241,12 +602,37 @@ func collectSemanticEvents(t *testing.T, source []byte) []parser.SemanticEvent {
 		if !event.Range.Valid(len(source)) {
 			t.Fatalf("event range = %v, source bytes = %d", event.Range, len(source))
 		}
+		if event.ContentRange != (parser.Range{}) && !event.ContentRange.Valid(len(source)) {
+			t.Fatalf("event content range = %v, source bytes = %d", event.ContentRange, len(source))
+		}
 		events = append(events, event)
 		return nil
 	}); err != nil {
 		t.Fatalf("WalkSemantic() error = %v", err)
 	}
 	return events
+}
+
+func assertSemanticEventsBalanced(t *testing.T, events []parser.SemanticEvent) {
+	t.Helper()
+	stack := make([]parser.SemanticKind, 0, 32)
+	for index, event := range events {
+		switch event.Phase {
+		case parser.SemanticEnter:
+			stack = append(stack, event.Kind)
+		case parser.SemanticExit:
+			if len(stack) == 0 || stack[len(stack)-1] != event.Kind {
+				t.Fatalf("event %d unbalanced exit kind=%d stack=%v", index, event.Kind, stack)
+			}
+			stack = stack[:len(stack)-1]
+		case parser.SemanticLeaf:
+		default:
+			t.Fatalf("event %d has unknown phase %d", index, event.Phase)
+		}
+	}
+	if len(stack) != 0 {
+		t.Fatalf("semantic stack remains open: %v", stack)
+	}
 }
 
 func hasSemanticEvent(events []parser.SemanticEvent, kind parser.SemanticKind, match func(parser.SemanticEvent) bool) bool {

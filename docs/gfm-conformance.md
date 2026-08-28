@@ -49,11 +49,13 @@ Then run the exact anchored gates:
 go test ./internal/testutil/commonmarkspec -run '^TestPublishedCommonMark0312Corpus$' -count=1
 go test ./internal/parser/native -run '^TestM115NativeMatchesPublishedCommonMark0312Contract$' -count=1
 go test ./internal/parser/native -run '^TestM115NativeMatchesPublishedGFM029Contract$' -count=1
+go test ./internal/parser/native -run '^TestM119PublishedCommonMarkSemanticContract$' -count=1
+go test ./internal/parser/native -run '^TestM119PublishedGFMSemanticContract$' -count=1
 ```
 
 Use the anchored exact test names shown above. `go test -run` can exit successfully after selecting zero tests, so shortened or guessed filters are not acceptable conformance evidence.
 
-The CommonMark gate verifies the approved snapshot identity and all 652 parser-neutral contracts. The GFM gate verifies the approved snapshot identity, the published corpus shape, the example/extension identities, and all 676 parser-applicable parser-neutral contracts. The explicit table, task-list, strikethrough, and extended-autolink examples are part of this GFM corpus and remain governed by their normative GFM sections. Inherited GFM core examples remain compatibility/regression evidence and cannot override a conflicting CommonMark 0.31.2 rule.
+The CommonMark parser gate verifies the approved snapshot identity and all 652 parser-neutral contracts. The GFM parser gate verifies the approved snapshot identity, the published corpus shape, the example/extension identities, and all 676 parser-applicable parser-neutral contracts. M119 adds separate renderer-facing semantic-walk gates for manually reviewed selected examples from those same hash-pinned snapshots; those selected expectations verify semantic event facts and are not a replacement for the complete parser-neutral corpus. The explicit table, task-list, strikethrough, and extended-autolink examples are part of the GFM corpus and remain governed by their normative GFM sections. Inherited GFM core examples remain compatibility/regression evidence and cannot override a conflicting CommonMark 0.31.2 rule.
 
 Marksplice does not expose HTML rendering. Therefore current parser conformance intentionally does not claim GFM rendering conformance and does not cover rendering-only `tagfilter` behavior. The M114/M115 transition records preserve the historical reference-renderer evidence that was used before the parser dependency was removed; it is not an active runtime or test dependency.
 
@@ -73,7 +75,7 @@ A CommonMark or GFM snapshot/contract update requires all of the following:
 8. run the complete conformance and repository regression gates;
 9. update this document and affected capability/milestone documentation in the same change.
 
-Mechanically serializing the current Native output and accepting it as the new expected fixture is not sufficient review: that would create a tautological test. If an implementation conflicts with the applicable published specification, record the discrepancy and follow the specification. If the specifications themselves do not determine the case, document the Marksplice decision and the secondary evidence used.
+Mechanically serializing the current Native output and accepting it as a new parser fixture or semantic-walk expectation is not sufficient review: that would create a tautological test. If an implementation conflicts with the applicable published specification, record the discrepancy and follow the specification. If the specifications themselves do not determine the case, document the Marksplice decision and the secondary evidence used.
 
 ## Parser implementation boundary
 
@@ -94,7 +96,7 @@ Historical M111–M114 records document the staged parser-substitution work and 
 
 Semantic Markdown parsing and HTML rendering are separate responsibilities. Marksplice does not yet expose HTML rendering in the current shipped capability set, so the active parser-conformance gate remains independent of renderer code.
 
-The approved post-M115 roadmap adds an on-demand semantic walk and HTML renderer before the v1.0 gate. Renderer conformance must use the specification's expected HTML as normative evidence where applicable rather than treating Native output as its own oracle. GFM `tagfilter` behavior and every other rendering-specific requirement become mandatory acceptance criteria before Marksplice can claim GFM HTML-rendering conformance. Parser conformance remains a separate gate even after rendering exists.
+M118–M119 provide the internal on-demand semantic walk and its specification-backed semantic completeness gate; no public renderer exists yet. The approved post-M115 roadmap adds the HTML renderer next. Renderer conformance must use the specification's expected HTML as normative evidence where applicable rather than treating Native or semantic-walk output as its own oracle. GFM `tagfilter` behavior and every other rendering-specific requirement become mandatory acceptance criteria before Marksplice can claim GFM HTML-rendering conformance. Parser conformance remains a separate gate even after rendering exists.
 
 ## Compatibility monitoring
 

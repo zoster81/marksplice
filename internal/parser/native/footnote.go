@@ -12,6 +12,7 @@ import (
 type nativeFootnoteDefinition struct {
 	observation parser.FootnoteDefinitionObservation
 	bodyBlocks  []inlineBlock
+	childLines  []physicalLine
 }
 
 func nativeFootnoteObservations(source []byte, blocks blockParseResult) ([]parser.FootnoteDefinitionObservation, []parser.FootnoteReferenceObservation, []parser.LinkUsage) {
@@ -59,6 +60,7 @@ func scanNativeFootnoteDefinitions(source []byte) []nativeFootnoteDefinition {
 				BodyRanges: bodyRanges,
 			},
 			bodyBlocks: append([]inlineBlock(nil), child.inlines...),
+			childLines: childLines,
 		})
 		index = next
 	}
