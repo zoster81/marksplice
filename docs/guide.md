@@ -9,7 +9,7 @@ Use this page to choose the shortest path to the task you have. If this is your 
 | Load a Markdown file and inspect its structure | [Inspect a document](recipes/inspect-document.md) | `go run ./examples/inspect` |
 | Rename, replace, check, remove, insert, move, or combine edits | [Edit an existing document](recipes/edit-existing-document.md) | `go run ./examples/edit` |
 | Create Markdown from structured Go values | [Create a document](recipes/create-document.md) | `go run ./examples/build` |
-| Render deterministic HTML fragments or standalone documents | [Render HTML](recipes/render-html.md) | `go run ./examples/render` |
+| Render deterministic HTML or correlate Markdown ranges with emitted HTML | [Render HTML](recipes/render-html.md) | `go run ./examples/render` / `go run ./examples/render --map` |
 | Work with list hierarchies, sections, or GFM tables | [Lists, sections, and tables](recipes/lists-sections-tables.md) | `go run ./examples/query` |
 | Discover/follow Markdown files, resolve fragments, build backlinks, or validate a document set | [Links and workspaces](recipes/links-workspaces.md) | `go run ./examples/workspace` |
 | Observe application-specific syntax without changing core GFM | [Read-only extensions](recipes/extensions.md) | `go run ./examples/extensions` |
@@ -88,7 +88,9 @@ Preserved raw HTML is not a sanitizer. Use `HTMLRawEscape` or an application-app
 
 Standalone `RenderHTMLDocument`/`HTMLDocument` wrap the same body renderer in deterministic doctype/html/head/charset/body markup. `HTMLDocumentOptions` reuses `HTMLRenderOptions` for the body and maps only exact lower-case `title`, `description`, `author`, and safe `lang` values from already source-proven simple top-level front matter. Complex, duplicate, nested, invalid-UTF-8, or escape-dependent values are omitted rather than interpreted by a YAML/TOML parser. `HTMLMetadataOmit` disables that mapping.
 
-See [Render HTML](recipes/render-html.md) and run `go run ./examples/render`.
+For preview/editor integration, the `...WithSourceMap` variants return caller-owned `HTMLSourceMapEntry` values that correlate snapshot-local Markdown byte ranges with byte ranges in the exact emitted HTML. The map is semantic-event granular rather than complete byte coverage: nested ranges may overlap, synthetic HTML can be unmapped, and standalone offsets are absolute from the beginning of the complete HTML document. Mapping is opt-in; ordinary rendering retains no result map.
+
+See [Render HTML](recipes/render-html.md), run `go run ./examples/render` for HTML, or `go run ./examples/render --map` to inspect source/output correlations.
 
 ## Navigation and multi-document work
 

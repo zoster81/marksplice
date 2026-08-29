@@ -57,6 +57,47 @@ go run ./examples/render
 
 It reads `examples/render/page.md` and streams a complete HTML document without modifying the fixture.
 
+## Map Markdown source ranges to HTML output
+
+Use the `...WithSourceMap` variants when an editor, preview, or inspection tool needs to correlate the parsed Markdown snapshot with the exact HTML produced by the same render:
+
+```go
+html, mappings, err := doc.HTMLDocumentWithSourceMap(
+    marksplice.DefaultHTMLDocumentOptions(),
+)
+if err != nil {
+    return err
+}
+
+for _, mapping := range mappings {
+    sourceRange := mapping.SourceRange()
+    outputRange := mapping.OutputRange()
+
+    markdownBytes := source[sourceRange.Start:sourceRange.End]
+    htmlBytes := html[outputRange.Start:outputRange.End]
+    fmt.Printf("%q -> %q\n", markdownBytes, htmlBytes)
+}
+```
+
+For streaming output, use `RenderHTMLWithSourceMap` or `RenderHTMLDocumentWithSourceMap`. Mapping is opt-in: ordinary `RenderHTML`/`RenderHTMLDocument` do not retain the source-map result.
+
+Both sides use half-open **byte** ranges. A source map is not total byte coverage. It describes emitted semantic events, so:
+
+- nested constructs can intentionally overlap, such as emphasis and its text child;
+- synthetic HTML such as fragment tags or the standalone doctype/body wrapper can be unmapped;
+- source declarations that emit no visible fragment bytes do not receive fabricated output ranges;
+- standalone metadata fields map to the exact `<title>`, `<meta>`, or `lang` bytes they emit;
+- standalone output offsets are absolute from byte zero of the complete HTML document;
+- no `NodeID` is stored in the map, because source/output offsets belong only to that exact snapshot/result pair.
+
+Results are sorted by output position, with an outer mapping before a nested mapping that begins at the same output byte. A render error returns no map. The writer may already contain partial HTML, so discard both partial output and mappings when an error is returned.
+
+Run the same tracked example in mapping mode:
+
+```sh
+go run ./examples/render --map
+```
+
 ## Front-matter metadata mapping
 
 The standalone zero value uses `HTMLMetadataFrontMatter`. Mapping is intentionally narrow and case-sensitive. Only these exact lower-case keys are recognized:

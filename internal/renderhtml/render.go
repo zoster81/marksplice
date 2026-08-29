@@ -60,17 +60,26 @@ type frame struct {
 	tightBlockOpen  bool
 	label           string
 	anchor          int
+	sourceRange     parser.Range
+	mappingStart    int
+	mappingTarget   mappingTarget
+	mappingEnabled  bool
 }
 
 type imageCapture struct {
-	event parser.SemanticEvent
-	alt   strings.Builder
-	depth int
+	event          parser.SemanticEvent
+	alt            strings.Builder
+	depth          int
+	mappingStart   int
+	mappingTarget  mappingTarget
+	mappingEnabled bool
 }
 
 type footnoteDefinition struct {
-	label string
-	body  []byte
+	label    string
+	body     []byte
+	source   parser.Range
+	mappings []SourceMapEntry
 }
 
 type renderer struct {
@@ -83,6 +92,10 @@ type renderer struct {
 	footnoteNumbers map[int]int
 	footnoteOrder   []int
 	footnoteLabels  map[int]string
+	counter         *countingWriter
+	collect         SourceMapCollector
+	captureMappings []SourceMapEntry
+	sourceLength    int
 }
 
 // Render walks source semantics on demand and streams one HTML fragment to writer.
@@ -93,14 +106,40 @@ func Render(writer io.Writer, source []byte, backend parser.SemanticBackend, opt
 	if err := validateOptions(options); err != nil {
 		return err
 	}
-	r := &renderer{
+	r := newRenderer(writer, options, len(source))
+	return backend.WalkSemantic(source, r.visit)
+}
+
+// RenderWithSourceMap streams one HTML fragment and synchronously reports
+// source-to-output byte mappings. A failed render may have invoked collect for
+// partial output, so callers must discard collected entries when an error returns.
+func RenderWithSourceMap(writer io.Writer, source []byte, backend parser.SemanticBackend, options Options, collect SourceMapCollector) error {
+	if writer == nil || backend == nil || collect == nil {
+		return ErrInvalidInput
+	}
+	if err := validateOptions(options); err != nil {
+		return err
+	}
+	counter := &countingWriter{writer: writer}
+	return renderMapped(counter, counter, source, backend, options, collect)
+}
+
+func renderMapped(writer io.Writer, counter *countingWriter, source []byte, backend parser.SemanticBackend, options Options, collect SourceMapCollector) error {
+	r := newRenderer(writer, options, len(source))
+	r.counter = counter
+	r.collect = collect
+	return backend.WalkSemantic(source, r.visitMapped)
+}
+
+func newRenderer(writer io.Writer, options Options, sourceLength int) *renderer {
+	return &renderer{
 		writer:          writer,
 		options:         options,
 		definitions:     make(map[int]footnoteDefinition),
 		footnoteNumbers: make(map[int]int),
 		footnoteLabels:  make(map[int]string),
+		sourceLength:    sourceLength,
 	}
-	return backend.WalkSemantic(source, r.visit)
 }
 
 func validateOptions(options Options) error {
@@ -130,6 +169,53 @@ func (r *renderer) visit(event parser.SemanticEvent) error {
 	}
 }
 
+func (r *renderer) visitMapped(event parser.SemanticEvent) error {
+	if r.image != nil {
+		return r.visitImage(event)
+	}
+	if event.Kind == parser.SemanticImage && event.Phase == parser.SemanticEnter {
+		target, start := r.currentMappingPosition()
+		r.image = &imageCapture{
+			event:          event,
+			depth:          1,
+			mappingStart:   start,
+			mappingTarget:  target,
+			mappingEnabled: event.Range.Valid(r.sourceLength) && event.Range.Start < event.Range.End,
+		}
+		return nil
+	}
+	switch event.Phase {
+	case parser.SemanticEnter:
+		target, start := r.currentMappingPosition()
+		if err := r.enter(event); err != nil {
+			return err
+		}
+		if event.Kind == parser.SemanticDocument || event.Kind == parser.SemanticFootnoteDefinition {
+			return nil
+		}
+		if len(r.stack) == 0 || r.stack[len(r.stack)-1].kind != event.Kind {
+			return fmt.Errorf("%w: mapped enter kind %d missing frame", ErrInvalidInput, event.Kind)
+		}
+		current := &r.stack[len(r.stack)-1]
+		current.sourceRange = event.Range
+		current.mappingStart = start
+		current.mappingTarget = target
+		current.mappingEnabled = event.Range.Valid(r.sourceLength) && event.Range.Start < event.Range.End
+		return nil
+	case parser.SemanticLeaf:
+		target, start := r.currentMappingPosition()
+		if err := r.leaf(event); err != nil {
+			return err
+		}
+		r.recordMapping(target, event.Range, start, r.mappingPosition(target))
+		return nil
+	case parser.SemanticExit:
+		return r.exitMapped(event)
+	default:
+		return fmt.Errorf("%w: unknown semantic phase %d", ErrInvalidInput, event.Phase)
+	}
+}
+
 func (r *renderer) visitImage(event parser.SemanticEvent) error {
 	if event.Kind == parser.SemanticImage {
 		switch event.Phase {
@@ -146,7 +232,13 @@ func (r *renderer) visitImage(event parser.SemanticEvent) error {
 			}
 			image := r.image
 			r.image = nil
-			return r.writeImage(image.event, image.alt.String())
+			if err := r.writeImage(image.event, image.alt.String()); err != nil {
+				return err
+			}
+			if image.mappingEnabled {
+				r.recordMapping(image.mappingTarget, image.event.Range, image.mappingStart, r.mappingPosition(image.mappingTarget))
+			}
+			return nil
 		}
 	}
 	switch event.Phase {
@@ -302,7 +394,14 @@ func (r *renderer) enterFootnoteDefinition(event parser.SemanticEvent) error {
 		return fmt.Errorf("%w: nested footnote definition", ErrInvalidInput)
 	}
 	r.capture = &bytes.Buffer{}
-	r.push(frame{kind: event.Kind, footnoteCapture: true, label: event.Label, anchor: event.Range.Start})
+	r.captureMappings = nil
+	r.push(frame{
+		kind:            event.Kind,
+		footnoteCapture: true,
+		label:           event.Label,
+		anchor:          event.Range.Start,
+		sourceRange:     event.Range,
+	})
 	return nil
 }
 
@@ -375,26 +474,44 @@ func (r *renderer) leafBlock(event parser.SemanticEvent) error {
 }
 
 func (r *renderer) exit(event parser.SemanticEvent) error {
-	current, err := r.pop(event.Kind)
+	_, err := r.exitEvent(event)
+	return err
+}
+
+func (r *renderer) exitMapped(event parser.SemanticEvent) error {
+	current, err := r.exitEvent(event)
 	if err != nil {
 		return err
 	}
+	if current.mappingEnabled {
+		r.recordMapping(current.mappingTarget, current.sourceRange, current.mappingStart, r.mappingPosition(current.mappingTarget))
+	}
+	return nil
+}
+
+func (r *renderer) exitEvent(event parser.SemanticEvent) (frame, error) {
+	current, err := r.pop(event.Kind)
+	if err != nil {
+		return frame{}, err
+	}
+	var exitErr error
 	switch event.Kind {
 	case parser.SemanticDocument, parser.SemanticParagraph, parser.SemanticHeading:
-		return r.exitDocumentBlock(event, current)
+		exitErr = r.exitDocumentBlock(event, current)
 	case parser.SemanticEmphasis, parser.SemanticStrong, parser.SemanticStrikethrough, parser.SemanticLink:
-		return r.exitInline(event)
+		exitErr = r.exitInline(event)
 	case parser.SemanticBlockquote, parser.SemanticAlert:
-		return r.exitQuote(event)
+		exitErr = r.exitQuote(event)
 	case parser.SemanticList, parser.SemanticListItem:
-		return r.exitList(event, current)
+		exitErr = r.exitList(event, current)
 	case parser.SemanticTable, parser.SemanticTableRow, parser.SemanticTableCell:
-		return r.exitTable(event, current)
+		exitErr = r.exitTable(event, current)
 	case parser.SemanticFootnoteDefinition:
-		return r.exitFootnoteDefinition(current)
+		exitErr = r.exitFootnoteDefinition(current)
 	default:
-		return fmt.Errorf("%w: unsupported exit kind %d", ErrInvalidInput, event.Kind)
+		exitErr = fmt.Errorf("%w: unsupported exit kind %d", ErrInvalidInput, event.Kind)
 	}
+	return current, exitErr
 }
 
 func (r *renderer) exitDocumentBlock(event parser.SemanticEvent, current frame) error {
@@ -478,8 +595,14 @@ func (r *renderer) exitFootnoteDefinition(current frame) error {
 	if !current.footnoteCapture || r.capture == nil {
 		return fmt.Errorf("%w: missing footnote capture", ErrInvalidInput)
 	}
-	r.definitions[current.anchor] = footnoteDefinition{label: current.label, body: append([]byte(nil), r.capture.Bytes()...)}
+	r.definitions[current.anchor] = footnoteDefinition{
+		label:    current.label,
+		body:     append([]byte(nil), r.capture.Bytes()...),
+		source:   current.sourceRange,
+		mappings: append([]SourceMapEntry(nil), r.captureMappings...),
+	}
 	r.capture = nil
+	r.captureMappings = nil
 	return nil
 }
 func (r *renderer) writeLinkOpen(event parser.SemanticEvent) error {
@@ -593,16 +716,20 @@ func (r *renderer) writeFootnotes() error {
 		if !ok {
 			continue
 		}
+		definitionStart := r.mappingPosition(mappingRoot)
 		label := footnoteID(definition.label)
 		if err := r.writeRootString("<li id=\"fn:" + escapeAttribute(label) + "\">\n"); err != nil {
 			return err
 		}
+		bodyStart := r.mappingPosition(mappingRoot)
 		if err := r.writeRootBytes(definition.body); err != nil {
 			return err
 		}
+		r.translateCaptureMappings(definition.mappings, bodyStart)
 		if err := r.writeRootString("<a href=\"#fnref:" + escapeAttribute(label) + "\" class=\"footnote-backref\">↩</a>\n</li>\n"); err != nil {
 			return err
 		}
+		r.recordMapping(mappingRoot, definition.source, definitionStart, r.mappingPosition(mappingRoot))
 	}
 	return r.writeRootString("</ol>\n</section>\n")
 }
@@ -901,6 +1028,51 @@ func alertPresentation(kind parser.SemanticAlertKind) (string, string) {
 
 func footnoteID(label string) string {
 	return strings.ReplaceAll(label, " ", "-")
+}
+
+func (r *renderer) currentMappingPosition() (mappingTarget, int) {
+	if r.capture != nil {
+		return mappingCapture, r.capture.Len()
+	}
+	return mappingRoot, r.mappingPosition(mappingRoot)
+}
+
+func (r *renderer) mappingPosition(target mappingTarget) int {
+	if target == mappingCapture {
+		if r.capture == nil {
+			return 0
+		}
+		return r.capture.Len()
+	}
+	if r.counter == nil {
+		return 0
+	}
+	return r.counter.offset
+}
+
+func (r *renderer) recordMapping(target mappingTarget, sourceRange parser.Range, start, end int) {
+	if !sourceRange.Valid(r.sourceLength) || sourceRange.Start == sourceRange.End || end <= start {
+		return
+	}
+	if target == mappingCapture {
+		appendSourceMap(&r.captureMappings, sourceRange, start, end)
+		return
+	}
+	emitSourceMap(r.collect, sourceRange, start, end)
+}
+
+func (r *renderer) translateCaptureMappings(mappings []SourceMapEntry, rootStart int) {
+	if r.collect == nil {
+		return
+	}
+	for _, mapping := range mappings {
+		emitSourceMap(
+			r.collect,
+			mapping.Source,
+			rootStart+mapping.Output.Start,
+			rootStart+mapping.Output.End,
+		)
+	}
 }
 
 func (r *renderer) push(value frame) {

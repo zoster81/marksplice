@@ -4,6 +4,7 @@ import (
 	"io"
 	"unicode/utf8"
 
+	"github.com/zoster81/marksplice/internal/parser"
 	"github.com/zoster81/marksplice/internal/renderhtml"
 	"github.com/zoster81/marksplice/internal/source"
 )
@@ -31,6 +32,18 @@ func (d *Document) RenderHTMLDocument(writer io.Writer, options HTMLDocumentOpti
 	return renderhtml.RenderDocument(writer, d.source, newSemanticBackend(), options, metadata)
 }
 
+// RenderHTMLDocumentWithSourceMap streams standalone HTML plus source mappings.
+func (d *Document) RenderHTMLDocumentWithSourceMap(writer io.Writer, options HTMLDocumentOptions, collect renderhtml.SourceMapCollector) error {
+	if d == nil {
+		return renderhtml.ErrInvalidInput
+	}
+	metadata := renderhtml.DocumentMetadata{}
+	if options.Metadata == renderhtml.MetadataFrontMatter {
+		metadata = d.htmlDocumentMetadata()
+	}
+	return renderhtml.RenderDocumentWithSourceMap(writer, d.source, newSemanticBackend(), options, metadata, collect)
+}
+
 func (d *Document) htmlDocumentMetadata() renderhtml.DocumentMetadata {
 	var metadata renderhtml.DocumentMetadata
 	if d == nil || d.frontMatter.Format == source.FrontMatterUnknown {
@@ -47,16 +60,17 @@ func (d *Document) htmlDocumentMetadata() renderhtml.DocumentMetadata {
 		if !ok {
 			continue
 		}
+		sourceRange := parser.Range{Start: node.ContentRange.Start, End: node.ContentRange.End}
 		switch node.Key {
 		case "title":
-			metadata.Title, metadata.HasTitle = value, true
+			metadata.Title, metadata.TitleRange, metadata.HasTitle = value, sourceRange, true
 		case "description":
-			metadata.Description, metadata.HasDescription = value, true
+			metadata.Description, metadata.DescriptionRange, metadata.HasDescription = value, sourceRange, true
 		case "author":
-			metadata.Author, metadata.HasAuthor = value, true
+			metadata.Author, metadata.AuthorRange, metadata.HasAuthor = value, sourceRange, true
 		case "lang":
 			if safeHTMLLanguage(value) {
-				metadata.Language, metadata.HasLanguage = value, true
+				metadata.Language, metadata.LanguageRange, metadata.HasLanguage = value, sourceRange, true
 			}
 		}
 	}

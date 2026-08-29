@@ -40,3 +40,11 @@ func (d *Document) RenderHTML(writer io.Writer, options HTMLRenderOptions) error
 	}
 	return renderhtml.Render(writer, d.source, newSemanticBackend(), options)
 }
+
+// RenderHTMLWithSourceMap streams an HTML fragment plus source mappings.
+func (d *Document) RenderHTMLWithSourceMap(writer io.Writer, options HTMLRenderOptions, collect renderhtml.SourceMapCollector) error {
+	if d == nil {
+		return renderhtml.ErrInvalidInput
+	}
+	return renderhtml.RenderWithSourceMap(writer, d.source, newSemanticBackend(), options, collect)
+}

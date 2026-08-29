@@ -39,16 +39,9 @@ func (d *Document) RenderHTMLDocument(writer io.Writer, options HTMLDocumentOpti
 	if d == nil || d.document == nil || writer == nil {
 		return ErrInvalidRender
 	}
-	body, err := internalHTMLRenderOptions(options.Body)
+	internal, err := internalHTMLDocumentOptions(options)
 	if err != nil {
 		return err
-	}
-	if options.Metadata > HTMLMetadataOmit {
-		return ErrInvalidRender
-	}
-	internal := splice.HTMLDocumentOptions{
-		Body:     body,
-		Metadata: splice.HTMLMetadataPolicy(options.Metadata),
 	}
 	if err := d.document.RenderHTMLDocument(writer, internal); err != nil {
 		if errors.Is(err, renderhtml.ErrInvalidInput) {
@@ -69,4 +62,18 @@ func (d *Document) HTMLDocument(options HTMLDocumentOptions) ([]byte, error) {
 		return nil, err
 	}
 	return output.Bytes(), nil
+}
+
+func internalHTMLDocumentOptions(options HTMLDocumentOptions) (splice.HTMLDocumentOptions, error) {
+	body, err := internalHTMLRenderOptions(options.Body)
+	if err != nil {
+		return splice.HTMLDocumentOptions{}, err
+	}
+	if options.Metadata > HTMLMetadataOmit {
+		return splice.HTMLDocumentOptions{}, ErrInvalidRender
+	}
+	return splice.HTMLDocumentOptions{
+		Body:     body,
+		Metadata: splice.HTMLMetadataPolicy(options.Metadata),
+	}, nil
 }

@@ -22,6 +22,12 @@ Use [`NewDocumentBuilder`](#newdocumentbuilder), [`DocumentBuilder` methods](#do
 
 Recipe: [Create a document](recipes/create-document.md).
 
+### Render HTML and source maps
+
+Use `Document.RenderHTML` / `Document.HTML` for deterministic fragments and `Document.RenderHTMLDocument` / `Document.HTMLDocument` for standalone output. When preview/editor tooling needs snapshot-local Markdown-byte to output-byte correlation, use the corresponding `...WithSourceMap` variants and inspect `HTMLSourceMapEntry` / `HTMLOutputRange`.
+
+Recipe: [Render HTML](recipes/render-html.md).
+
 ### Lists, sections, and tables
 
 Use [`Document` methods](#document-methods) for queries/navigation/mutations, with typed detail from [`ListItem`](#listitem-methods), [`Task`](#task-methods), [`Section`](#section-methods), [`Table`](#table-methods), [`TableRow`](#tablerow-methods), and [`TableCell`](#tablecell-methods).
@@ -85,8 +91,10 @@ Public operations classify failure families with `errors.Is`. The root-package s
 - `HTMLComment` — HTMLComment is immutable typed detail for one promoted single-line HTML comment payload.
 - `HTMLDocumentOptions` — HTMLDocumentOptions controls deterministic standalone HTML rendering; its zero value reuses fragment defaults and reviewed front-matter metadata mapping.
 - `HTMLMetadataPolicy` — HTMLMetadataPolicy controls reviewed front-matter metadata mapping versus explicit omission.
+- `HTMLOutputRange` — HTMLOutputRange is a half-open byte range in one exact emitted HTML result; its coordinate space is output bytes rather than Markdown source bytes.
 - `HTMLRawPolicy` — HTMLRawPolicy controls preservation versus escaping of parser-proven raw HTML during fragment rendering.
 - `HTMLRenderOptions` — HTMLRenderOptions controls deterministic HTML-fragment rendering. Its zero value preserves raw HTML, enables the GFM tag filter, and suppresses dangerous URL schemes.
+- `HTMLSourceMapEntry` — HTMLSourceMapEntry correlates one snapshot-local Markdown source byte range with one contiguous byte range in the exact HTML output produced by the same successful render.
 - `HTMLTagFilterPolicy` — HTMLTagFilterPolicy controls the GFM disallowed-raw-HTML tag filter.
 - `HTMLUnsafeURLPolicy` — HTMLUnsafeURLPolicy controls suppression versus explicit allowance of dangerous URL schemes.
 - `Heading` — Heading is immutable typed detail for one promoted top-level heading.
@@ -809,6 +817,22 @@ func (d *Document) HTMLDocument(options HTMLDocumentOptions) ([]byte, error)
 
 HTMLDocument renders a deterministic standalone HTML document into caller-owned bytes. It wraps the exact fragment renderer with doctype/html/head/charset/body markup and the selected reviewed metadata policy.
 
+#### `HTMLDocumentWithSourceMap`
+
+```go
+func (d *Document) HTMLDocumentWithSourceMap(options HTMLDocumentOptions) ([]byte, []HTMLSourceMapEntry, error)
+```
+
+HTMLDocumentWithSourceMap renders a deterministic standalone HTML document into caller-owned bytes and returns snapshot-local Markdown-to-output correlations for that exact successful result. Output offsets are absolute from byte zero of the complete document; synthetic wrapper bytes can remain unmapped.
+
+#### `HTMLWithSourceMap`
+
+```go
+func (d *Document) HTMLWithSourceMap(options HTMLRenderOptions) ([]byte, []HTMLSourceMapEntry, error)
+```
+
+HTMLWithSourceMap renders a deterministic HTML fragment into caller-owned bytes and returns the source-map entries for that exact successful output. Entries are semantic-event granular and may overlap when semantics nest.
+
 #### `Image`
 
 ```go
@@ -1356,6 +1380,22 @@ func (d *Document) RenderHTMLDocument(writer io.Writer, options HTMLDocumentOpti
 ```
 
 RenderHTMLDocument streams a deterministic standalone HTML document around the exact RenderHTML body. The zero metadata policy maps only exact lower-case `title`, `description`, `author`, and safe `lang` values from unique top-level source-proven simple front-matter scalars. `HTMLMetadataOmit` disables that mapping. The method performs no template, asset, filesystem, network, or command access and stops on writer error.
+
+#### `RenderHTMLDocumentWithSourceMap`
+
+```go
+func (d *Document) RenderHTMLDocumentWithSourceMap(writer io.Writer, options HTMLDocumentOptions) ([]HTMLSourceMapEntry, error)
+```
+
+RenderHTMLDocumentWithSourceMap streams the same standalone HTML bytes and returns output-ordered source correlations only after successful completion. Eligible reviewed metadata maps to the wrapper bytes it emits; synthetic wrapper bytes are intentionally unmapped. Writer errors and short writes return a nil map.
+
+#### `RenderHTMLWithSourceMap`
+
+```go
+func (d *Document) RenderHTMLWithSourceMap(writer io.Writer, options HTMLRenderOptions) ([]HTMLSourceMapEntry, error)
+```
+
+RenderHTMLWithSourceMap streams the same deterministic fragment bytes as RenderHTML and returns output-ordered source correlations only after successful completion. An outer mapping precedes a nested mapping that begins at the same output byte. Writer errors and short writes return a nil map.
 
 #### `ResolveFragment`
 
@@ -2433,6 +2473,34 @@ func (c HTMLComment) Range() Range
 
 Range returns the exact comment payload span replaced by PrepareReplaceHTMLComment.
 Comment delimiters and preserved inner horizontal padding are outside this range.
+
+### `HTMLSourceMapEntry` methods
+
+#### `OutputRange`
+
+```go
+func (m HTMLSourceMapEntry) OutputRange() HTMLOutputRange
+```
+
+OutputRange returns the half-open byte range in the exact rendered HTML output represented by this entry.
+
+#### `SourceRange`
+
+```go
+func (m HTMLSourceMapEntry) SourceRange() Range
+```
+
+SourceRange returns the half-open byte range in the immutable Markdown snapshot used for this render. The range is snapshot-local correlation metadata, not mutation authority or durable identity.
+
+### `HTMLOutputRange` methods
+
+#### `Valid`
+
+```go
+func (r HTMLOutputRange) Valid(total int) bool
+```
+
+Valid reports whether the output range is ordered and contained in an HTML result of total bytes.
 
 ### `Heading` methods
 

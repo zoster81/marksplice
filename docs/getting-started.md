@@ -205,7 +205,9 @@ The default policy preserves parser-proven raw HTML, enables the GFM tag filter,
 
 For a complete HTML document, use `RenderHTMLDocument` with `DefaultHTMLDocumentOptions`. The standalone zero value reuses the fragment safety defaults and maps only exact lower-case `title`, `description`, `author`, and `lang` fields when they are already unique top-level source-proven simple front-matter scalars. It does not parse arbitrary YAML/TOML; escape-dependent values are omitted rather than guessed, and `HTMLMetadataOmit` disables front-matter-derived metadata entirely.
 
-See [Render HTML](recipes/render-html.md) for fragment, standalone, metadata, and safety options.
+When a preview or editor needs to correlate Markdown with rendered HTML, use `HTMLWithSourceMap` or `HTMLDocumentWithSourceMap` (or their streaming `Render...WithSourceMap` forms). Each `HTMLSourceMapEntry` carries a snapshot-local Markdown byte `Range` and a byte range in that exact output. The result is semantic-event granular rather than complete coverage, so nested ranges may overlap and synthetic HTML may be unmapped.
+
+See [Render HTML](recipes/render-html.md) for fragment, standalone, metadata, safety, and source-map options. The tracked render example also supports `go run ./examples/render --map`.
 
 ## The five names you will see most often
 
@@ -222,7 +224,7 @@ See [Render HTML](recipes/render-html.md) for fragment, standalone, metadata, an
 ## Where to go next
 
 - [User Guide](guide.md): choose a task and find the right API family.
-- [Recipes](recipes/README.md): focused workflows for inspection, editing, creation, fragment/standalone HTML rendering, tables/lists/sections, filesystem workspaces, and extensions.
+- [Recipes](recipes/README.md): focused workflows for inspection, editing, creation, HTML rendering/source mapping, tables/lists/sections, filesystem workspaces, and extensions.
 - [Examples](../examples/README.md): all runnable file-based programs.
 - [API Reference](api-reference.md): exact signatures and exhaustive callable coverage.
 - [Capabilities](capabilities.md): what is supported today and where Marksplice intentionally stops.

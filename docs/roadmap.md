@@ -161,7 +161,7 @@ M119 changes no exported API. The exact documented-tree local freeze stack is gr
 
 ## M120 — HTML fragment renderer
 
-**Status: complete locally on 2026-08-29; unreleased pending milestone freeze commit, push, and exact remote CI closure.**
+**Status: complete on 2026-08-29; unreleased.**
 
 **Goal:** render a parsed Marksplice document as deterministic CommonMark/GFM-compatible HTML fragments through streaming output.
 
@@ -188,7 +188,7 @@ On the same Windows/amd64 Ryzen 9 5900X 256 KiB realistic harness used by the se
 
 ## M121 — Standalone HTML and metadata
 
-**Status: complete locally on 2026-08-29; unreleased pending milestone freeze commit, push, and exact remote CI closure.**
+**Status: complete on 2026-08-29; unreleased.**
 
 **Goal:** build complete standalone HTML documents on the same renderer without turning Marksplice into a site generator or template engine.
 
@@ -200,11 +200,15 @@ Focused 256 KiB measurement keeps streaming standalone output at about 41.72 MB/
 
 ## M122 — HTML source mapping
 
+**Status: complete locally on 2026-08-29; unreleased pending milestone freeze commit, push, and exact remote CI closure.**
+
 **Goal:** optionally map Markdown source ranges to emitted HTML output ranges for editor/IDE/tooling integration.
 
-The mapping must be optional so callers that only want HTML do not pay unnecessary retained-memory cost. It should support deterministic Markdown-to-output correlation without treating snapshot-local node IDs as durable cross-revision identities.
+M122 adds `HTMLOutputRange`, immutable `HTMLSourceMapEntry` values, and mapped fragment/standalone variants of the four M120–M121 rendering methods. Source and output coordinates are half-open byte ranges belonging only to the exact source snapshot and HTML result; no `NodeID` is embedded or treated as durable cross-revision identity. Mapping is semantic-event granular rather than total coverage, so nested entries may overlap and synthetic HTML can remain unmapped. Standalone reviewed metadata maps to the exact wrapper bytes it emits.
 
-After implementation, run a broad renderer refactor/profiling checkpoint covering streaming behavior, mapping overhead, large documents, deep nesting, tables, links, raw HTML, and pathological inline input.
+The mapping remains explicitly optional. Existing `RenderHTML`/`HTML`/`RenderHTMLDocument`/`HTMLDocument` use the mapping-off path and retain no result map. Deferred image/footnote output is translated only when bytes reach their final destination, and failed/short writes return no map.
+
+The broad renderer/source-map checkpoint covers large input, 128-level nesting, tables, links, raw HTML, deferred footnotes/images, metadata, Unicode byte offsets, and pathological inline input. Profiling rejected an early counting-writer implementation that lost `io.StringWriter` and an early duplicate-map/copy design. The accepted chunked collector reduces the same 256 KiB mapped fragment workload from roughly 50.53 MB/op / 319k allocations to about **44.52 MB/op / 261.8k allocations** for **37,725 mappings**, versus about **41.80 MB/op / 258.4k allocations** with mapping off. Standalone results are effectively identical at 37,729 mappings. Wall-clock values are host-load-sensitive and are not used as a public performance claim.
 
 ## M123 — Canonical Markdown renderer
 

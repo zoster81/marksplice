@@ -51,6 +51,8 @@ A parsed `Document` can be rendered explicitly without changing the source-prese
 | Buffered fragment output | `Document.HTML` | Returns caller-owned fragment bytes; convenient when whole-output buffering is acceptable |
 | Streaming standalone output | `Document.RenderHTMLDocument` | Writes deterministic doctype/html/head/charset/body around the same fragment renderer; no template or asset system |
 | Buffered standalone output | `Document.HTMLDocument` | Returns caller-owned complete-document bytes |
+| Fragment source mapping | `RenderHTMLWithSourceMap`, `HTMLWithSourceMap` | Optional snapshot-local Markdown byte ranges correlated with emitted fragment byte ranges; event-granular, overlapping where semantics nest, and not total byte coverage |
+| Standalone source mapping | `RenderHTMLDocumentWithSourceMap`, `HTMLDocumentWithSourceMap` | Same correlation with absolute complete-document output offsets; synthetic wrapper bytes remain unmapped while eligible reviewed metadata maps to emitted head/lang bytes |
 | Reviewed metadata mapping | `HTMLMetadataFrontMatter`, `HTMLMetadataOmit` | Exact lower-case `title`, `description`, `author`, `lang` only from unique top-level source-proven simple front-matter scalars; no general YAML/TOML interpretation |
 | Raw HTML | `HTMLRawPreserve`, `HTMLRawEscape` | Preserve is not sanitization; escape explicitly for an HTML trust boundary |
 | Dangerous URLs | `HTMLUnsafeURLSuppress`, `HTMLUnsafeURLAllow` | Default suppresses dangerous schemes by emitting an empty destination; no URL is fetched |
@@ -59,7 +61,7 @@ A parsed `Document` can be rendered explicitly without changing the source-prese
 | Footnotes, tasks, tables | Deterministic semantic HTML | Reuses the Native semantic walk; renderer does not reparse Markdown |
 | Mathematical forms | Deterministic opaque wrappers | No LaTeX/MathJax/KaTeX interpretation or execution |
 
-Front matter and reference-definition declarations are source/semantic metadata and are not emitted as visible fragment blocks. Rendering performs no filesystem discovery, asset fetch, network access, command execution, template execution, or embedded-language execution.
+Front matter and reference-definition declarations are source/semantic metadata and are not emitted as visible fragment blocks. Source maps describe only emitted semantic correlations; they do not fabricate ranges for declarations or synthetic markup that produces no corresponding semantic output. Rendering performs no filesystem discovery, asset fetch, network access, command execution, template execution, or embedded-language execution.
 
 ## Query and navigation
 
