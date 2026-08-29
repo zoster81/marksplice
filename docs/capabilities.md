@@ -41,6 +41,23 @@ A valid Markdown construct can be understood internally without receiving public
 | YAML/TOML front matter | Complete recognized envelope plus safe simple fields | Replace unique simple top-level scalar value | Conservative canonical string fields | No general YAML/TOML parser or serializer |
 | HTML comments/anchors | Conservative promoted forms | Replace comment payload or quoted anchor value | No dedicated builder | Other HTML remains opaque source |
 
+## HTML fragment rendering
+
+A parsed `Document` can be rendered explicitly without changing the source-preserving edit path.
+
+| Capability | API | Boundary |
+| --- | --- | --- |
+| Streaming fragment output | `Document.RenderHTML` | Writes to caller `io.Writer`; stops on writer error; no standalone document wrapper |
+| Buffered fragment output | `Document.HTML` | Returns caller-owned bytes; convenient when whole-output buffering is acceptable |
+| Raw HTML | `HTMLRawPreserve`, `HTMLRawEscape` | Preserve is not sanitization; escape explicitly for an HTML trust boundary |
+| Dangerous URLs | `HTMLUnsafeURLSuppress`, `HTMLUnsafeURLAllow` | Default suppresses dangerous schemes by emitting an empty destination; no URL is fetched |
+| GFM tag filter | `HTMLTagFilterEnabled`, `HTMLTagFilterDisabled` | Default applies the published GFM disallowed-tag filter to preserved raw HTML |
+| Code blocks | Deterministic `<pre><code>` fragments | Language metadata may become a class; no syntax-highlighting engine runs |
+| Footnotes, tasks, tables | Deterministic semantic HTML | Reuses the Native semantic walk; renderer does not reparse Markdown |
+| Mathematical forms | Deterministic opaque wrappers | No LaTeX/MathJax/KaTeX interpretation or execution |
+
+Front matter and reference-definition declarations are source/semantic metadata and are not emitted as visible fragment blocks. Rendering performs no filesystem discovery, asset fetch, network access, command execution, template execution, or embedded-language execution.
+
 ## Query and navigation
 
 | Capability | Available | Boundary |
@@ -103,12 +120,12 @@ New-document construction is intentionally different: `DocumentBuilder` emits ca
 
 Marksplice does not provide:
 
-- HTML or PDF rendering;
+- standalone HTML-document generation or PDF rendering;
 - Markdown-to-Markdown whole-document formatting/normalization as the ordinary edit path;
 - hidden/implicit filesystem crawling or file loading outside an explicitly supplied `workspacefs` `fs.FS`;
 - URL fetching or network resolution;
 - command execution or embedded-language execution;
-- syntax highlighting or diagram rendering;
+- syntax highlighting, diagram rendering, or asset fetching;
 - arbitrary YAML/TOML serialization;
 - LaTeX/MathJax/KaTeX rendering;
 - a collection of first-party dialect extensions.

@@ -155,10 +155,6 @@ func listInterruptsParagraph(source []byte, line physicalLine) bool {
 	return !marker.ordered || marker.startNumber == 1
 }
 
-func parseList(source []byte, lines []physicalLine, index int) (blockParseResult, int, bool) {
-	return parseListSemantic(source, lines, index, nil, -1)
-}
-
 func parseListSemantic(source []byte, lines []physicalLine, index int, capture *semanticBlockCapture, parent int) (blockParseResult, int, bool) {
 	if _, ok := parseThematicBreak(source, lines[index]); ok {
 		return blockParseResult{}, index, false
@@ -197,15 +193,17 @@ func parseCapturedList(source []byte, collected listSource, first listMarker, ca
 	for index, item := range collected.items {
 		itemRange := semanticListItemSourceRange(item)
 		itemIndex := capture.add(listIndex, parser.SemanticEvent{
-			Kind:         parser.SemanticListItem,
-			Range:        itemRange,
-			ContentRange: itemRange,
-			Ordered:      item.marker.ordered,
-			Marker:       item.marker.marker,
+			Kind:    parser.SemanticListItem,
+			Range:   itemRange,
+			Ordered: item.marker.ordered,
+			Marker:  item.marker.marker,
 		}, parser.Range{})
 		child := parseBlockLinesSemantic(source, item.lines, false, capture, itemIndex)
-		if len(child.roots) != 0 && child.roots[0].range_ != (parser.Range{}) {
-			contentRange := child.roots[0].range_
+		if len(child.roots) != 0 {
+			contentRange := itemRange
+			if child.roots[0].range_ != (parser.Range{}) {
+				contentRange = child.roots[0].range_
+			}
 			capture.update(itemIndex, func(event *parser.SemanticEvent) { event.ContentRange = contentRange })
 		}
 		parsed[index] = parsedListItem{source: item, child: child}

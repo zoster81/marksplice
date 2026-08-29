@@ -7,6 +7,7 @@ Recipes are short, goal-oriented paths through the public API. They assume you a
 | [Inspect a document](inspect-document.md) | you need headings, tasks, sections, fenced blocks, metadata, links, or other parsed facts | [`examples/inspect`](../../examples/inspect/) |
 | [Edit an existing document](edit-existing-document.md) | you need minimal source-preserving changes without reformatting unrelated source | [`examples/edit`](../../examples/edit/) |
 | [Create a document](create-document.md) | you are generating new Markdown from structured application data | [`examples/build`](../../examples/build/) |
+| [Render HTML fragments](render-html.md) | you need deterministic HTML output with explicit raw-HTML, URL, and tag-filter policy | — |
 | [Lists, sections, and tables](lists-sections-tables.md) | you need hierarchy-aware queries or structural mutation | [`examples/query`](../../examples/query/) |
 | [Links and workspaces](links-workspaces.md) | you need explicit `fs.FS` discovery/following, fragments, backlinks, reachability, validation, or cross-document relationships | [`examples/workspace`](../../examples/workspace/) |
 | [Read-only extensions](extensions.md) | your application wants to recognize its own syntax without changing Marksplice core | [`examples/extensions`](../../examples/extensions/) |

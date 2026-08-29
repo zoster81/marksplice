@@ -6,6 +6,10 @@ import (
 )
 
 // newParserBackend returns the Marksplice-native production parser backend.
+func newSemanticBackend() parser.SemanticBackend {
+	return native.New()
+}
+
 func newParserBackend() parser.Backend {
 	return native.New()
 }

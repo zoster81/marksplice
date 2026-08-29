@@ -193,7 +193,7 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 			Kind:         parser.SemanticCodeBlock,
 			Range:        node.Range,
 			ContentRange: content,
-			Value:        semanticRangesValue(source, detail.ContentRanges),
+			Value:        semanticFencedCodeValue(source, detail.ContentRanges),
 			Info:         detail.Info,
 			Language:     detail.Language,
 			Fenced:       true,
@@ -206,7 +206,7 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 	if opening, ok := htmlBlockStart(source, line); ok {
 		node, semantic, next := parseHTMLBlock(source, lines, index, opening)
 		result.nodes = append(result.nodes, node)
-		capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticHTMLBlock, Range: node.Range, ContentRange: node.Range, Value: semanticSourceValue(source, node.Range)}, parser.Range{})
+		capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticHTMLBlock, Range: node.Range, ContentRange: node.Range, Value: semanticLogicalLinesValue(source, lines[index:next])}, parser.Range{})
 		result.semantic = append(result.semantic, semantic...)
 		result.lastLeafParagraph = false
 		recordRoot(result, rootBlock{kind: rootBlockOther, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
@@ -289,8 +289,8 @@ func parseStructuralBlock(result *blockParseResult, source []byte, lines []physi
 	if node, ok := parseATXHeading(source, line); ok {
 		result.lastLeafParagraph = false
 		node.TopLevel = topLevel
+		capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticHeading, Range: node.Range, ContentRange: node.Range, Level: node.Level}, node.Range)
 		if node.Range.Start != node.Range.End {
-			capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticHeading, Range: node.Range, ContentRange: node.Range, Level: node.Level}, node.Range)
 			result.semantic = append(result.semantic, parser.Range{Start: node.Range.Start, End: line.end})
 			appendInlineRange(result, node.Range)
 			if topLevel {

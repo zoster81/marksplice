@@ -231,6 +231,9 @@ func mapTaskNodeSource(snapshot []byte, observation parser.Node, node *Node) err
 func mapListItemNodeSource(snapshot []byte, observation parser.Node, contentRange Range, node *Node) error {
 	mapping, err := source.MapSingleLineListItem(snapshot, contentRange, observation.Ordered, observation.Marker)
 	if err != nil {
+		if errors.Is(err, source.ErrUnsupportedListItemShape) {
+			return nil
+		}
 		return fmt.Errorf("map list item source: %w", err)
 	}
 	node.Range = mapping.Range

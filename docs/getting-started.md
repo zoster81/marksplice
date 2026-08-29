@@ -185,6 +185,26 @@ go run ./examples/build
 
 It creates front matter, typed inline content, tasks, a table, and fenced shell commands.
 
+## 10. Render HTML when you need an export
+
+Rendering is separate from editing and construction. Once you have a parsed `Document`, stream a deterministic HTML fragment to any `io.Writer`:
+
+```go
+if err := doc.RenderHTML(os.Stdout, marksplice.DefaultHTMLRenderOptions()); err != nil {
+    return err
+}
+```
+
+Or collect caller-owned bytes:
+
+```go
+fragment, err := doc.HTML(marksplice.DefaultHTMLRenderOptions())
+```
+
+The default policy preserves parser-proven raw HTML, enables the GFM tag filter, and suppresses dangerous URL schemes. Preserved raw HTML is not a sanitizer; use `HTMLRawEscape` or an application-appropriate downstream sanitizer when untrusted Markdown crosses an HTML security boundary. Rendering performs no URL or asset fetching, command execution, syntax highlighting, or math-engine execution.
+
+See [Render HTML fragments](recipes/render-html.md) for the policy options.
+
 ## The five names you will see most often
 
 | Name | Plain-language meaning |
@@ -200,7 +220,7 @@ It creates front matter, typed inline content, tasks, a table, and fenced shell 
 ## Where to go next
 
 - [User Guide](guide.md): choose a task and find the right API family.
-- [Recipes](recipes/README.md): focused workflows for inspection, editing, creation, tables/lists/sections, filesystem workspaces, and extensions.
+- [Recipes](recipes/README.md): focused workflows for inspection, editing, creation, HTML rendering, tables/lists/sections, filesystem workspaces, and extensions.
 - [Examples](../examples/README.md): all runnable file-based programs.
 - [API Reference](api-reference.md): exact signatures and exhaustive callable coverage.
 - [Capabilities](capabilities.md): what is supported today and where Marksplice intentionally stops.

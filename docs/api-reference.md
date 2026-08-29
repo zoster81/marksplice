@@ -42,7 +42,7 @@ Recipe: [Read-only extensions](recipes/extensions.md).
 
 ## Error model
 
-Public operations classify failure families with `errors.Is`. The root-package sentinels are `ErrNodeNotFound`, `ErrInvalidReplacement`, `ErrInvalidTargetKind`, `ErrSourceConflict`, `ErrInvalidConstruction`, `ErrInvalidQuery`, `ErrInvalidGraph`, `ErrInvalidWorkspace`, `ErrInvalidKnowledge`, and `ErrInvalidExtension`. The `workspacefs` package separately exports `ErrInvalidInput` and `ErrBudgetExceeded`. Diagnostic strings are not compatibility contracts.
+Public operations classify failure families with `errors.Is`. The root-package sentinels are `ErrNodeNotFound`, `ErrInvalidReplacement`, `ErrInvalidTargetKind`, `ErrSourceConflict`, `ErrInvalidConstruction`, `ErrInvalidQuery`, `ErrInvalidGraph`, `ErrInvalidWorkspace`, `ErrInvalidKnowledge`, `ErrInvalidExtension`, and `ErrInvalidRender`. The `workspacefs` package separately exports `ErrInvalidInput` and `ErrBudgetExceeded`. Diagnostic strings are not compatibility contracts.
 
 ## Type index (alphabetical)
 
@@ -83,6 +83,10 @@ Public operations classify failure families with `errors.Is`. The root-package s
 - `HTMLAnchor` — HTMLAnchor is immutable typed detail for one promoted simple quoted id/name attribute on an <a> tag.
 - `HTMLAnchorAttribute` — HTMLAnchorAttribute identifies the semantic anchor attribute targeted by an HTMLAnchor.
 - `HTMLComment` — HTMLComment is immutable typed detail for one promoted single-line HTML comment payload.
+- `HTMLRawPolicy` — HTMLRawPolicy controls preservation versus escaping of parser-proven raw HTML during fragment rendering.
+- `HTMLRenderOptions` — HTMLRenderOptions controls deterministic HTML-fragment rendering. Its zero value preserves raw HTML, enables the GFM tag filter, and suppresses dangerous URL schemes.
+- `HTMLTagFilterPolicy` — HTMLTagFilterPolicy controls the GFM disallowed-raw-HTML tag filter.
+- `HTMLUnsafeURLPolicy` — HTMLUnsafeURLPolicy controls suppression versus explicit allowance of dangerous URL schemes.
 - `Heading` — Heading is immutable typed detail for one promoted top-level heading.
 - `HeadingAnchor` — HeadingAnchor is an immutable GitHub-compatible anchor derived from one heading.
 - `HeadingStyle` — HeadingStyle identifies the source syntax of a promoted heading.
@@ -209,6 +213,14 @@ func CollapsedReferenceLinkInline(label ...Inline) Inline
 
 CollapsedReferenceLinkInline returns one `[label][]` construction value. The
 emitted label must resolve to exactly one available normalized definition.
+
+#### `DefaultHTMLRenderOptions`
+
+```go
+func DefaultHTMLRenderOptions() HTMLRenderOptions
+```
+
+DefaultHTMLRenderOptions returns the documented zero-value HTML-fragment policy: preserve parser-proven raw HTML, apply the published GFM tag filter, and suppress dangerous URL schemes.
 
 #### `EmphasisInline`
 
@@ -771,6 +783,14 @@ func (d *Document) HeadingAnchors() []HeadingAnchor
 HeadingAnchors derives all promoted heading anchors in source order.
 Duplicate disambiguation is recomputed from the immutable snapshot on each call.
 
+#### `HTML`
+
+```go
+func (d *Document) HTML(options HTMLRenderOptions) ([]byte, error)
+```
+
+HTML renders a deterministic HTML fragment into caller-owned bytes. It is the buffered convenience form of RenderHTML and returns `ErrInvalidRender` for an invalid receiver or options.
+
 #### `Image`
 
 ```go
@@ -1302,6 +1322,14 @@ func (d *Document) ReferenceDefinition(id NodeID) (ReferenceDefinition, bool)
 ```
 
 ReferenceDefinition returns typed detail for one promoted single-line reference definition.
+
+#### `RenderHTML`
+
+```go
+func (d *Document) RenderHTML(writer io.Writer, options HTMLRenderOptions) error
+```
+
+RenderHTML streams a deterministic HTML fragment from this immutable snapshot. It consumes the Native semantic walk on demand, performs no filesystem/network access, and stops immediately on writer error. Invalid receiver, writer, or options report `ErrInvalidRender`.
 
 #### `ResolveFragment`
 

@@ -427,13 +427,10 @@ func semanticIndentedCodeValue(source []byte, lines []physicalLine) string {
 	}
 	var result strings.Builder
 	for _, line := range lines[:lastContent] {
-		if blankLine(source, line) {
-			if line.next > line.end {
-				result.WriteByte('\n')
-			}
-			continue
-		}
 		stripped := stripIndentColumns(source, line, 4)
+		if stripped.virtualIndent > 0 {
+			result.WriteString(strings.Repeat(" ", stripped.virtualIndent))
+		}
 		if stripped.start < stripped.end {
 			result.Write(source[stripped.start:stripped.end])
 		}
@@ -488,6 +485,16 @@ func captureSemanticTableRow(capture *semanticBlockCapture, parent int, row []pa
 			Column:       cell.Column,
 			Alignment:    semanticTableAlignment(table.Alignments, cell.Column),
 		}, cell.Range)
+	}
+	for column := len(row); column < table.ColumnCount; column++ {
+		emptyRange := parser.Range{Start: range_.End, End: range_.End}
+		capture.add(rowIndex, parser.SemanticEvent{
+			Kind:      parser.SemanticTableCell,
+			Range:     emptyRange,
+			Header:    row[0].Header,
+			Column:    column,
+			Alignment: semanticTableAlignment(table.Alignments, column),
+		}, parser.Range{})
 	}
 }
 
@@ -615,6 +622,22 @@ func semanticRangesEnvelope(ranges []parser.Range) parser.Range {
 	return parser.Range{Start: ranges[0].Start, End: ranges[len(ranges)-1].End}
 }
 
+func semanticLogicalLinesValue(source []byte, lines []physicalLine) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	var result strings.Builder
+	for _, line := range lines {
+		if line.start < line.end {
+			result.Write(source[line.start:line.end])
+		}
+		if line.end < line.next {
+			result.Write(source[line.end:line.next])
+		}
+	}
+	return result.String()
+}
+
 func semanticRangesValue(source []byte, ranges []parser.Range) string {
 	if len(ranges) == 0 {
 		return ""
@@ -632,11 +655,23 @@ func semanticRangesValue(source []byte, ranges []parser.Range) string {
 	return result.String()
 }
 
+func semanticFencedCodeValue(source []byte, ranges []parser.Range) string {
+	value := semanticRangesValue(source, ranges)
+	if len(ranges) == 0 {
+		return value
+	}
+	last := ranges[len(ranges)-1]
+	if last.Valid(len(source)) && last.End < len(source) && (source[last.End] == '\r' || source[last.End] == '\n') {
+		value += "\n"
+	}
+	return value
+}
+
 func emitSemanticInlineProjected(source []byte, analysis inlineAnalysis, terminals []parser.SemanticEvent, visit parser.SemanticVisitor) error {
 	if len(analysis.block.segments) == 0 {
 		return nil
 	}
-	nodes := semanticConstructionSemantics(source, analysis.owners, analysis.delimiters)
+	nodes := semanticConstructionSemantics(source, analysis.block, analysis.owners, analysis.delimiters)
 	assignConstructionParents(nodes)
 	children := make([][]int, len(nodes)+1)
 	for index, node := range nodes {
@@ -726,9 +761,15 @@ func emitSemanticInlineNode(source []byte, block inlineBlock, nodes []constructi
 		return visit(parser.SemanticEvent{Phase: parser.SemanticExit, Kind: kind, Range: node.syntax})
 	case parser.SemanticCodeSpan, parser.SemanticRawHTML, parser.SemanticAutoLink:
 		value := semanticSourceValue(source, node.content)
+		if kind == parser.SemanticRawHTML && node.value != "" {
+			value = node.value
+		}
 		if kind == parser.SemanticCodeSpan {
 			if normalized, ok := semanticCodeSpanValue(source, node.syntax); ok {
 				value = normalized
+			}
+			if block.tableCell {
+				value = semanticTableEscapedPipeValue(value)
 			}
 		}
 		event := parser.SemanticEvent{
@@ -771,8 +812,60 @@ func semanticKindForParserKind(kind parser.Kind) parser.SemanticKind {
 	}
 }
 
-func semanticConstructionSemantics(source []byte, owners []inlineSpan, delimiters delimiterParseResult) []constructionSemantic {
-	result := collectConstructionSemantics(owners, delimiters)
+func semanticConstructionSemantics(source []byte, block inlineBlock, owners []inlineSpan, delimiters delimiterParseResult) []constructionSemantic {
+	withoutMatches := delimiters
+	withoutMatches.matches = nil
+	result := collectConstructionSemantics(owners, withoutMatches)
+	result = filterSemanticRawHTML(source, result)
+	result = appendSemanticMultilineRawHTML(source, block, owners, result)
+	result = appendSemanticDelimiterSemantics(delimiters, result)
+	result = appendSemanticCodeSpanOwners(source, owners, result)
+	sortSemanticConstructions(result)
+	return result
+}
+
+func filterSemanticRawHTML(source []byte, semantics []constructionSemantic) []constructionSemantic {
+	kept := semantics[:0]
+	for _, node := range semantics {
+		if node.kind == parser.KindRawHTML && !semanticRawHTMLProjectable(source, node.syntax) {
+			continue
+		}
+		kept = append(kept, node)
+	}
+	return kept
+}
+
+func appendSemanticMultilineRawHTML(source []byte, block inlineBlock, owners []inlineSpan, result []constructionSemantic) []constructionSemantic {
+	for _, owner := range owners {
+		if owner.kind != parser.KindUnknown || owner.endSegment <= owner.segment || owner.start < 0 || owner.start >= len(source) || source[owner.start] != '<' {
+			continue
+		}
+		value, ok := semanticInlineSpanValue(source, block, owner)
+		if !ok {
+			continue
+		}
+		syntax := parser.Range{Start: owner.start, End: owner.end}
+		result = append(result, constructionSemantic{kind: parser.KindRawHTML, syntax: syntax, content: syntax, value: value, parent: -1})
+	}
+	return result
+}
+
+func appendSemanticDelimiterSemantics(delimiters delimiterParseResult, result []constructionSemantic) []constructionSemantic {
+	for _, match := range delimiters.matches {
+		if semanticDelimiterCrossesCompositeLabel(match, delimiters.composites) {
+			continue
+		}
+		kind := constructionDelimiterKind(match)
+		syntax, content, ok := semanticDelimiterProjection(match)
+		if kind == parser.KindUnknown || !ok {
+			continue
+		}
+		result = append(result, constructionSemantic{kind: kind, syntax: syntax, content: content, parent: -1})
+	}
+	return result
+}
+
+func appendSemanticCodeSpanOwners(source []byte, owners []inlineSpan, result []constructionSemantic) []constructionSemantic {
 	for _, owner := range owners {
 		if owner.kind != parser.KindUnknown || owner.start < 0 || owner.start >= len(source) || source[owner.start] != '`' {
 			continue
@@ -783,15 +876,123 @@ func semanticConstructionSemantics(source []byte, owners []inlineSpan, delimiter
 		}
 		result = append(result, constructionSemantic{kind: parser.KindCodeSpan, syntax: syntax, parent: -1})
 	}
-	if len(result) > 1 {
-		slices.SortStableFunc(result, func(left, right constructionSemantic) int {
-			if order := cmp.Compare(left.syntax.Start, right.syntax.Start); order != 0 {
-				return order
-			}
-			return cmp.Compare(right.syntax.End, left.syntax.End)
-		})
-	}
 	return result
+}
+
+func sortSemanticConstructions(result []constructionSemantic) {
+	if len(result) <= 1 {
+		return
+	}
+	slices.SortStableFunc(result, func(left, right constructionSemantic) int {
+		if order := cmp.Compare(left.syntax.Start, right.syntax.Start); order != 0 {
+			return order
+		}
+		return cmp.Compare(right.syntax.End, left.syntax.End)
+	})
+}
+
+func semanticRawHTMLProjectable(source []byte, syntax parser.Range) bool {
+	if !syntax.Valid(len(source)) || syntax.Start >= syntax.End {
+		return false
+	}
+	value := source[syntax.Start:syntax.End]
+	if len(value) < 4 || value[0] != '<' || value[1] != '!' || value[2] != '-' || value[3] != '-' {
+		return true
+	}
+	if len(value) < 7 || value[len(value)-3] != '-' || value[len(value)-2] != '-' || value[len(value)-1] != '>' {
+		return false
+	}
+	return validHTMLCommentText(value[4 : len(value)-3])
+}
+
+func semanticInlineSpanValue(source []byte, block inlineBlock, owner inlineSpan) (string, bool) {
+	if owner.segment < 0 || owner.endSegment < owner.segment || owner.endSegment >= len(block.segments) {
+		return "", false
+	}
+	var result strings.Builder
+	for segmentIndex := owner.segment; segmentIndex <= owner.endSegment; segmentIndex++ {
+		segment := block.segments[segmentIndex]
+		start, end := segment.Start, segment.End
+		if segmentIndex == owner.segment {
+			start = owner.start
+		}
+		if segmentIndex == owner.endSegment {
+			end = owner.end
+		}
+		if start < segment.Start || end > segment.End || start > end {
+			return "", false
+		}
+		result.Write(source[start:end])
+		if segmentIndex < owner.endSegment {
+			result.WriteByte('\n')
+		}
+	}
+	return result.String(), true
+}
+
+func semanticDelimiterCrossesCompositeLabel(match delimiterMatch, composites []compositeInline) bool {
+	for _, composite := range composites {
+		if !composite.active {
+			continue
+		}
+		openingInside := semanticRangeInside(match.openingConsumed, composite.label)
+		closingInside := semanticRangeInside(match.closingConsumed, composite.label)
+		if openingInside != closingInside {
+			return true
+		}
+	}
+	return false
+}
+
+func semanticRangeInside(inner, outer parser.Range) bool {
+	return inner.Start >= outer.Start && inner.End <= outer.End && inner.Start < inner.End
+}
+
+func semanticDelimiterProjection(match delimiterMatch) (parser.Range, parser.Range, bool) {
+	if match.level <= 0 || match.openingConsumed.End-match.openingConsumed.Start != match.level ||
+		match.closingConsumed.End-match.closingConsumed.Start != match.level || match.closer > match.syntaxEnd {
+		return parser.Range{}, parser.Range{}, false
+	}
+	consumedBefore := match.syntaxEnd - match.closingConsumed.End
+	closingStart := match.closer + consumedBefore
+	closingEnd := closingStart + match.level
+	syntax := parser.Range{Start: match.openingConsumed.Start, End: closingEnd}
+	content := parser.Range{Start: match.openingConsumed.End, End: closingStart}
+	if syntax.Start < match.syntaxStart || syntax.End > match.syntaxEnd || content.Start > content.End ||
+		content.Start < syntax.Start || content.End > syntax.End {
+		return parser.Range{}, parser.Range{}, false
+	}
+	return syntax, content, true
+}
+
+func semanticTableEscapedPipeValue(value string) string {
+	var result []byte
+	backslashes := 0
+	for index := 0; index < len(value); index++ {
+		current := value[index]
+		if current == '\\' {
+			backslashes++
+			if result != nil {
+				result = append(result, current)
+			}
+			continue
+		}
+		if current == '|' && backslashes%2 != 0 {
+			if result == nil {
+				result = append(make([]byte, 0, len(value)-1), value[:index-1]...)
+			} else {
+				result = result[:len(result)-1]
+			}
+		}
+		if result != nil {
+			result = append(result, current)
+		}
+		backslashes = 0
+	}
+	if result == nil {
+		return value
+	}
+	return string(result)
 }
 
 func semanticCodeSpanValue(source []byte, syntax parser.Range) (string, bool) {
@@ -860,23 +1061,21 @@ func emitSemanticTextGapProjected(source []byte, block inlineBlock, gap parser.R
 		return nil
 	}
 	for index, segment := range block.segments {
-		if segment.End <= gap.Start || segment.Start >= gap.End {
+		if segment.End < gap.Start || segment.Start >= gap.End {
 			continue
 		}
-		start := max(gap.Start, segment.Start)
+		segmentStart := semanticInlineSegmentStart(source, segment, index > 0)
+		start := max(gap.Start, segmentStart)
 		end := min(gap.End, segment.End)
-		breakKind := parser.SemanticSoftBreak
-		textEnd := segment.End
-		if index+1 < len(block.segments) {
-			textEnd, breakKind = semanticLineEnd(source, segment)
-		}
+		hasNext := index+1 < len(block.segments)
+		textEnd, breakKind := semanticLineEnd(source, segment, hasNext)
 		if end > textEnd {
 			end = textEnd
 		}
 		if err := emitSemanticTextRangeExcluding(source, parser.Range{Start: start, End: end}, block.prefixExclusion, terminals, visit); err != nil {
 			return err
 		}
-		if index+1 >= len(block.segments) || gap.End < block.segments[index+1].Start || gap.Start > segment.End {
+		if !hasNext || gap.End < block.segments[index+1].Start || gap.Start > segment.End {
 			continue
 		}
 		breakRange := semanticBreakRange(source, segment, textEnd, breakKind)
@@ -940,17 +1139,31 @@ func emitSemanticTextRange(source []byte, range_ parser.Range, visit parser.Sema
 	})
 }
 
-func semanticLineEnd(source []byte, segment parser.Range) (int, parser.SemanticKind) {
+func semanticInlineSegmentStart(source []byte, segment parser.Range, continuation bool) int {
+	start := segment.Start
+	if !continuation {
+		return start
+	}
+	for start < segment.End && (source[start] == ' ' || source[start] == '\t') {
+		start++
+	}
+	return start
+}
+
+func semanticLineEnd(source []byte, segment parser.Range, hasNext bool) (int, parser.SemanticKind) {
 	end := segment.End
-	if end > segment.Start && source[end-1] == '\\' && !inlineByteEscaped(source, segment.Start, end-1) {
+	if hasNext && end > segment.Start && source[end-1] == '\\' && !inlineByteEscaped(source, segment.Start, end-1) {
 		return end - 1, parser.SemanticHardBreak
 	}
 	spaces := 0
 	for position := end; position > segment.Start && source[position-1] == ' '; position-- {
 		spaces++
 	}
-	if spaces >= 2 {
+	if hasNext && spaces >= 2 {
 		return end - spaces, parser.SemanticHardBreak
+	}
+	for end > segment.Start && (source[end-1] == ' ' || source[end-1] == '\t') {
+		end--
 	}
 	return end, parser.SemanticSoftBreak
 }

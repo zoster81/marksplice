@@ -1,7 +1,6 @@
 package native
 
 import (
-	"bytes"
 	"cmp"
 	"html"
 	"slices"
@@ -286,16 +285,60 @@ func appendDecodedHeadingText(result *strings.Builder, source []byte) {
 }
 
 func decodeHeadingEntity(source []byte, start int) (string, int, bool) {
-	limit := minHeadingPosition(len(source), start+64)
-	relative := bytes.IndexByte(source[start:limit], ';')
-	if relative < 0 {
+	end, ok := headingEntityEnd(source, start)
+	if !ok {
 		return "", start, false
 	}
-	end := start + relative + 1
 	raw := string(source[start:end])
 	decoded := html.UnescapeString(raw)
 	if decoded == raw {
 		return "", start, false
 	}
 	return decoded, end, true
+}
+
+func headingEntityEnd(source []byte, start int) (int, bool) {
+	if start < 0 || start+1 >= len(source) || source[start] != '&' {
+		return start, false
+	}
+	position := start + 1
+	if source[position] == '#' {
+		return headingNumericEntityEnd(source, start, position+1)
+	}
+	if !asciiLetter(source[position]) {
+		return start, false
+	}
+	position++
+	for position < len(source) && (asciiLetter(source[position]) || asciiDigit(source[position])) {
+		position++
+	}
+	if position >= len(source) || source[position] != ';' {
+		return start, false
+	}
+	return position + 1, true
+}
+
+func headingNumericEntityEnd(source []byte, start, position int) (int, bool) {
+	if position >= len(source) {
+		return start, false
+	}
+	maxDigits := 7
+	digit := asciiDigit
+	if source[position] == 'x' || source[position] == 'X' {
+		position++
+		maxDigits = 6
+		digit = headingHexDigit
+	}
+	digits := position
+	for position < len(source) && digit(source[position]) {
+		position++
+	}
+	if count := position - digits; count == 0 || count > maxDigits || position >= len(source) || source[position] != ';' {
+		return start, false
+	}
+	return position + 1, true
+}
+
+func headingHexDigit(value byte) bool {
+	return asciiDigit(value) || value >= 'a' && value <= 'f' || value >= 'A' && value <= 'F'
 }

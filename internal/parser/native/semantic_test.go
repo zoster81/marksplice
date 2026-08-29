@@ -146,6 +146,72 @@ func TestWalkSemanticFoundationBlockAndSupplementalFamilies(t *testing.T) {
 	}
 }
 
+func TestM120SemanticDelimiterConsumptionPreservesNestedAndResidualRuns(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source string
+		want   []semanticSnapshot
+	}{
+		{
+			name:   "nested strong inside emphasis",
+			source: "***foo** bar*\n",
+			want: []semanticSnapshot{
+				{phase: parser.SemanticEnter, kind: parser.SemanticDocument},
+				{phase: parser.SemanticEnter, kind: parser.SemanticParagraph},
+				{phase: parser.SemanticEnter, kind: parser.SemanticEmphasis},
+				{phase: parser.SemanticEnter, kind: parser.SemanticStrong},
+				{phase: parser.SemanticLeaf, kind: parser.SemanticText, value: "foo"},
+				{phase: parser.SemanticExit, kind: parser.SemanticStrong},
+				{phase: parser.SemanticLeaf, kind: parser.SemanticText, value: " bar"},
+				{phase: parser.SemanticExit, kind: parser.SemanticEmphasis},
+				{phase: parser.SemanticExit, kind: parser.SemanticParagraph},
+				{phase: parser.SemanticExit, kind: parser.SemanticDocument},
+			},
+		},
+		{
+			name:   "unconsumed opener byte remains text",
+			source: "**foo*\n",
+			want: []semanticSnapshot{
+				{phase: parser.SemanticEnter, kind: parser.SemanticDocument},
+				{phase: parser.SemanticEnter, kind: parser.SemanticParagraph},
+				{phase: parser.SemanticLeaf, kind: parser.SemanticText, value: "*"},
+				{phase: parser.SemanticEnter, kind: parser.SemanticEmphasis},
+				{phase: parser.SemanticLeaf, kind: parser.SemanticText, value: "foo"},
+				{phase: parser.SemanticExit, kind: parser.SemanticEmphasis},
+				{phase: parser.SemanticExit, kind: parser.SemanticParagraph},
+				{phase: parser.SemanticExit, kind: parser.SemanticDocument},
+			},
+		},
+		{
+			name:   "same-run strong nesting",
+			source: "****foo****\n",
+			want: []semanticSnapshot{
+				{phase: parser.SemanticEnter, kind: parser.SemanticDocument},
+				{phase: parser.SemanticEnter, kind: parser.SemanticParagraph},
+				{phase: parser.SemanticEnter, kind: parser.SemanticStrong},
+				{phase: parser.SemanticEnter, kind: parser.SemanticStrong},
+				{phase: parser.SemanticLeaf, kind: parser.SemanticText, value: "foo"},
+				{phase: parser.SemanticExit, kind: parser.SemanticStrong},
+				{phase: parser.SemanticExit, kind: parser.SemanticStrong},
+				{phase: parser.SemanticExit, kind: parser.SemanticParagraph},
+				{phase: parser.SemanticExit, kind: parser.SemanticDocument},
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := semanticSnapshots(collectSemanticEvents(t, []byte(test.source)))
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("semantic events changed\ngot:  %#v\nwant: %#v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestWalkSemanticStopsOnVisitorError(t *testing.T) {
 	t.Parallel()
 
@@ -575,6 +641,20 @@ func semanticEventIndex(events []parser.SemanticEvent, kind parser.SemanticKind,
 type semanticPhaseKind struct {
 	phase parser.SemanticPhase
 	kind  parser.SemanticKind
+}
+
+func semanticSnapshots(events []parser.SemanticEvent) []semanticSnapshot {
+	result := make([]semanticSnapshot, len(events))
+	for index, event := range events {
+		result[index] = semanticSnapshot{
+			phase:       event.Phase,
+			kind:        event.Kind,
+			value:       event.Value,
+			level:       event.Level,
+			destination: event.Destination,
+		}
+	}
+	return result
 }
 
 func semanticPhaseKinds(events []parser.SemanticEvent) []semanticPhaseKind {

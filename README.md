@@ -12,6 +12,7 @@ An ordinary AST parser tells you what Markdown means. Marksplice also proves **w
 - **Edit existing Markdown without a full rewrite.** Rename a heading, check a task, update a table cell, move a section, and keep unrelated bytes untouched.
 - **Work with structure instead of string searches.** Inspect headings, sections, lists, tasks, tables, fenced blocks, links, fragments, footnotes, front matter, and more.
 - **Create Markdown from structured Go values.** `DocumentBuilder` writes deterministic GFM for new documents.
+- **Render deterministic HTML fragments on demand.** Stream to an `io.Writer` with `RenderHTML`, or use `HTML` when caller-owned bytes are more convenient; rendering reuses Native semantics instead of reparsing Markdown.
 - **Understand documentation sets.** Use the read-only `workspacefs` adapter over your own `fs.FS`, or supply documents directly; then inspect backlinks, validate links/fragments, and plan conservative repairs.
 - **Give tools and AI agents a safer editing surface.** Use bounded structural queries, snapshot-local identities, exact source ranges, typed operations, and source-bound `ChangeSet`s instead of fragile whole-file text rewrites.
 
@@ -20,7 +21,7 @@ An ordinary AST parser tells you what Markdown means. Marksplice also proves **w
 | Property | Current Marksplice contract |
 | --- | --- |
 | Markdown engine | Marksplice-owned Native parser; CommonMark 0.31.2 base plus reviewed GFM behavior |
-| Conformance evidence | 652 CommonMark examples plus 676 parser-applicable published-GFM contracts |
+| Conformance evidence | 652 CommonMark + 676 parser-applicable GFM parser contracts; profile-aware HTML checked against all 652 CommonMark and 677 published-GFM examples |
 | Source safety | Exact byte ranges, immutable snapshots, stale-source detection, minimal operation-owned patches |
 | Real-world validation | Byte-certified corpus of 6,857 Markdown documents, 60.8 MB, from 195 open-source repositories |
 | Measured parse performance | v0.5 engineering freeze: 25.06 MB/s public `Parse`, 30.87 MB/s Native on the same preloaded 60.8 MB corpus |
@@ -41,7 +42,7 @@ bounded query -> exact target -> typed change -> optional atomic composition -> 
 
 An agent can ask for a limited set of sections or nodes, prepare a structural change, and apply it without regenerating the document. If another actor changed the bytes in the meantime, the prepared change fails with `ErrSourceConflict` instead of guessing. Graph, backlink, fragment, and workspace APIs provide the same explicit model across documentation sets. When filesystem discovery is useful, `workspacefs` requires an explicit caller-supplied `fs.FS` plus finite resource limits.
 
-The document core does not crawl files or fetch URLs. `workspacefs` performs only explicit read-only Markdown discovery/following inside the `fs.FS` authority supplied by the caller. Marksplice does not render HTML/PDF, execute commands, or silently normalize existing documents.
+The document core does not crawl files or fetch URLs. `workspacefs` performs only explicit read-only Markdown discovery/following inside the `fs.FS` authority supplied by the caller. HTML rendering is pure in-memory/output-writer work: it does not fetch linked assets, execute commands, run syntax highlighting or a math engine, or silently normalize existing documents. PDF remains outside the current capability set.
 
 ## Install
 
@@ -104,6 +105,7 @@ A prepared `ChangeSet` is bound to the parsed snapshot. Applying it to different
 | Query | bounded source-ordered node and section queries |
 | Edit | content replacements plus structural section/list/table operations and atomic change composition |
 | Create | headings, paragraphs, lists/tasks, tables, fenced code, front matter, blockquotes/alerts, typed inline content |
+| Render | deterministic HTML fragments with explicit raw-HTML, unsafe-URL, and GFM tag-filter policies |
 | Navigate | anchors, fragments, TOCs, link relationships |
 | Work across documents | explicit `fs.FS` scan/follow, document graphs, backlinks, reachability, workspace validation, knowledge metadata |
 | Extend read-only semantics | opt-in namespaced observations through `ParseWithOptions` |

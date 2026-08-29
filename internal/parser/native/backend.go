@@ -440,6 +440,7 @@ type constructionSemantic struct {
 	kind          parser.Kind
 	syntax        parser.Range
 	content       parser.Range
+	value         string
 	form          parser.LinkUsageForm
 	reference     string
 	destination   string

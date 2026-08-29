@@ -9,6 +9,7 @@ Use this page to choose the shortest path to the task you have. If this is your 
 | Load a Markdown file and inspect its structure | [Inspect a document](recipes/inspect-document.md) | `go run ./examples/inspect` |
 | Rename, replace, check, remove, insert, move, or combine edits | [Edit an existing document](recipes/edit-existing-document.md) | `go run ./examples/edit` |
 | Create Markdown from structured Go values | [Create a document](recipes/create-document.md) | `go run ./examples/build` |
+| Render deterministic HTML fragments | [Render HTML fragments](recipes/render-html.md) | — |
 | Work with list hierarchies, sections, or GFM tables | [Lists, sections, and tables](recipes/lists-sections-tables.md) | `go run ./examples/query` |
 | Discover/follow Markdown files, resolve fragments, build backlinks, or validate a document set | [Links and workspaces](recipes/links-workspaces.md) | `go run ./examples/workspace` |
 | Observe application-specific syntax without changing core GFM | [Read-only extensions](recipes/extensions.md) | `go run ./examples/extensions` |
@@ -77,6 +78,16 @@ Generated content is reparsed and checked against construction expectations befo
 
 See [Create a document](recipes/create-document.md).
 
+## Rendering HTML fragments
+
+HTML rendering is an explicit export path, not an implementation detail of editing. `Document.RenderHTML` streams a deterministic fragment to an `io.Writer`; `Document.HTML` returns caller-owned bytes when buffering the whole result is useful.
+
+The renderer consumes the same Native semantic walk used by M119 and does not parse Markdown syntax a second time. `HTMLRenderOptions` makes three policy boundaries explicit: raw HTML preservation versus escaping, dangerous-URL suppression versus allowance, and the published GFM tag filter. The zero value preserves parser-proven raw HTML, enables the GFM tag filter, and suppresses dangerous URL schemes.
+
+Preserved raw HTML is not a sanitizer. Use `HTMLRawEscape` or an application-appropriate downstream sanitization boundary for untrusted input. Rendering does not fetch URLs or images, run templates, highlight code, execute fenced content, or invoke a mathematical rendering engine.
+
+See [Render HTML fragments](recipes/render-html.md).
+
 ## Navigation and multi-document work
 
 Marksplice can understand document relationships without hidden filesystem or URL authority. Root graph APIs remain in-memory; `workspacefs` is a separate read-only adapter that operates only on a caller-supplied `fs.FS` under explicit finite limits.
@@ -125,6 +136,7 @@ Use `errors.Is` with public sentinel families rather than comparing messages:
 - `ErrInvalidWorkspace`
 - `ErrInvalidKnowledge`
 - `ErrInvalidExtension`
+- `ErrInvalidRender`
 
 The separate `workspacefs` package classifies malformed filesystem-workspace input with `workspacefs.ErrInvalidInput` and exhausted load/traversal limits with `workspacefs.ErrBudgetExceeded`.
 
@@ -140,6 +152,6 @@ Public variable-length results are caller-owned unless an API explicitly states 
 
 ## What Marksplice does not own
 
-The root document/graph APIs perform no implicit filesystem, network, or command I/O. `workspacefs` adds only explicit read-only filesystem access through the caller's `fs.FS`; it does not write files, fetch URLs, or execute commands. Marksplice does not render HTML/PDF, execute fenced languages, serialize arbitrary YAML/TOML, render LaTeX, or normalize an existing document as a side effect of a structural edit.
+The root document/graph APIs perform no implicit filesystem, network, or command I/O. `workspacefs` adds only explicit read-only filesystem access through the caller's `fs.FS`; it does not write files, fetch URLs, or execute commands. Marksplice renders HTML fragments only when explicitly requested; it does not render standalone HTML/PDF, execute fenced languages, serialize arbitrary YAML/TOML, run a LaTeX/math engine, fetch assets, or normalize an existing document as a side effect of a structural edit.
 
 Those boundaries are summarized in [Capabilities](capabilities.md). Architecture and conformance rationale live in the [advanced documentation](README.md#advanced-and-maintainer-documentation).

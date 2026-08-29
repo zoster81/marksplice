@@ -32,7 +32,7 @@ Conformance tests read externally provisioned snapshots of the official CommonMa
 
 `internal/testutil/commonmarkspec/corpus.go` owns the approved CommonMark 0.31.2 snapshot SHA-256 and extracts its 652 numbered examples. `internal/testutil/gfmspec/corpus.go` owns the approved published GFM snapshot SHA-256 and extension-section classification. Do not duplicate either hash in documentation or configuration. Both loaders fail closed on changed bytes.
 
-M115 retains parser-neutral expected observations in tracked Marksplice-owned fixtures under `internal/parser/native/testdata/`. These files do **not** contain the upstream specification corpus. Each entry binds an official example number to the SHA-256 of its externally loaded Markdown input plus the expected `parser.DocumentObservations`. The CommonMark fixture contains all **652** examples. The GFM fixture contains the **676 parser-applicable** examples from the 677-example published page; the single `tagfilter` example is rendering-specific and is excluded while Marksplice exposes no HTML renderer.
+M115 retains parser-neutral expected observations in tracked Marksplice-owned fixtures under `internal/parser/native/testdata/`. These files do **not** contain the upstream specification corpus. Each entry binds an official example number to the SHA-256 of its externally loaded Markdown input plus the expected `parser.DocumentObservations`. The CommonMark fixture contains all **652** examples. The GFM fixture contains the **676 parser-applicable** examples from the 677-example published page; the single `tagfilter` example remains rendering-specific and is correctly excluded from the parser-neutral fixture even though M120 now covers it in the separate renderer gate.
 
 The fixtures were frozen only after the M115 dual-proof transition gate demonstrated, in the same tree, that the Native observations matched the previously validated M114 parser-neutral contract while the pre-removal specification/reference gates were still green. This transition evidence prevents removal of the old implementation from silently weakening the accepted parser contract. It does not elevate the retired implementation above the specifications.
 
@@ -51,13 +51,19 @@ go test ./internal/parser/native -run '^TestM115NativeMatchesPublishedCommonMark
 go test ./internal/parser/native -run '^TestM115NativeMatchesPublishedGFM029Contract$' -count=1
 go test ./internal/parser/native -run '^TestM119PublishedCommonMarkSemanticContract$' -count=1
 go test ./internal/parser/native -run '^TestM119PublishedGFMSemanticContract$' -count=1
+go test ./internal/publictest -run '^TestM120PublishedCommonMarkHTMLFullProfileContract$' -count=1
+go test ./internal/publictest -run '^TestM120PublishedGFMHTMLFullProfileContract$' -count=1
 ```
 
 Use the anchored exact test names shown above. `go test -run` can exit successfully after selecting zero tests, so shortened or guessed filters are not acceptable conformance evidence.
 
-The CommonMark parser gate verifies the approved snapshot identity and all 652 parser-neutral contracts. The GFM parser gate verifies the approved snapshot identity, the published corpus shape, the example/extension identities, and all 676 parser-applicable parser-neutral contracts. M119 adds separate renderer-facing semantic-walk gates for manually reviewed selected examples from those same hash-pinned snapshots; those selected expectations verify semantic event facts and are not a replacement for the complete parser-neutral corpus. The explicit table, task-list, strikethrough, and extended-autolink examples are part of the GFM corpus and remain governed by their normative GFM sections. Inherited GFM core examples remain compatibility/regression evidence and cannot override a conflicting CommonMark 0.31.2 rule.
+The CommonMark parser gate verifies the approved snapshot identity and all 652 parser-neutral contracts. The GFM parser gate verifies the approved snapshot identity, the published corpus shape, the example/extension identities, and all 676 parser-applicable parser-neutral contracts. M119 adds separate semantic-walk gates for manually reviewed selected examples from those same hash-pinned snapshots. M120 adds independent full renderer gates using the published expected HTML as the oracle rather than current Native or semantic output.
 
-Marksplice does not expose HTML rendering. Therefore current parser conformance intentionally does not claim GFM rendering conformance and does not cover rendering-only `tagfilter` behavior. The M114/M115 transition records preserve the historical reference-renderer evidence that was used before the parser dependency was removed; it is not an active runtime or test dependency.
+The M120 CommonMark renderer gate accounts for all 652 examples with the GFM tag filter disabled. Six examples are explicit Marksplice-profile divergences: one leading empty-YAML-front-matter precedence case, three always-enabled reviewed extended-autolink cases, and two cases where Marksplice deliberately applies the reviewed newer GFM HTML-comment grammar. Every other CommonMark example must render byte-identically to the approved expected HTML.
+
+The M120 GFM renderer gate accounts for all 677 published examples and enables the tag filter for the rendering-only `tagfilter` extension example. Four inherited core examples are explicit Marksplice-profile divergences: one leading empty-YAML-front-matter case and three always-enabled reviewed extended-autolink cases. Every other published-GFM example, including tables, tasks, strikethrough, autolinks, and `tagfilter`, must render byte-identically to the approved expected HTML. These profile exceptions are named in the permanent test and are not a wildcard mismatch allowance.
+
+Parser and renderer conformance remain separate responsibilities. `tagfilter` is not parser syntax and therefore still does not enter the 676-case M115 parser-neutral fixture; its renderer behavior is nevertheless mandatory and covered by M120.
 
 ## Updating normative snapshots or observation fixtures
 
@@ -94,9 +100,11 @@ Historical M111–M114 records document the staged parser-substitution work and 
 
 ## Rendering boundary
 
-Semantic Markdown parsing and HTML rendering are separate responsibilities. Marksplice does not yet expose HTML rendering in the current shipped capability set, so the active parser-conformance gate remains independent of renderer code.
+Semantic Markdown parsing and HTML rendering are separate responsibilities. M118–M119 provide the internal on-demand semantic walk; M120 exposes deterministic HTML-fragment rendering through `Document.RenderHTML` and `Document.HTML` without adding a second Markdown parser or retained renderer AST.
 
-M118–M119 provide the internal on-demand semantic walk and its specification-backed semantic completeness gate; no public renderer exists yet. The approved post-M115 roadmap adds the HTML renderer next. Renderer conformance must use the specification's expected HTML as normative evidence where applicable rather than treating Native or semantic-walk output as its own oracle. GFM `tagfilter` behavior and every other rendering-specific requirement become mandatory acceptance criteria before Marksplice can claim GFM HTML-rendering conformance. Parser conformance remains a separate gate even after rendering exists.
+Renderer conformance uses the specification's expected HTML as normative evidence where applicable rather than treating Native or semantic-walk output as its own oracle. The permanent full-profile gates above account for every official CommonMark 0.31.2 and published-GFM example and encode the small deliberate Marksplice-profile divergence sets explicitly. GFM `tagfilter` is mandatory renderer evidence even though it remains outside parser-neutral conformance.
+
+Rendering policy is also a product boundary: raw HTML preservation/escaping, dangerous-URL suppression/allowance, and GFM tag filtering are explicit public options. Raw-HTML preservation is not a sanitizer. Rendering performs no URL fetching, asset loading, command execution, syntax highlighting, template execution, or mathematical-engine execution.
 
 ## Compatibility monitoring
 

@@ -223,6 +223,7 @@ func TestFollowResolvesNormalizedURIPathsQueriesAndFragments(t *testing.T) {
 	}
 	if queryEdge == nil {
 		t.Fatal("query-bearing relationship was not resolved")
+		return
 	}
 	if got := queryEdge.TargetDocument(); got != "docs/query.md" {
 		t.Fatalf("query target = %q, want docs/query.md", got)

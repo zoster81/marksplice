@@ -461,35 +461,10 @@ func collectInlineSpans(source []byte, block inlineBlock) []inlineSpan {
 			continue
 		}
 		if source[position] == '<' && !inlineByteEscaped(source, segment.Start, position) {
-			if node, end, ok := scanAngleAutolink(source, position, segment.End); ok {
-				spans = append(spans, observedInlineSpan(segmentIndex, position, end, node))
-				position = end
-				continue
-			}
-			if end, ok := scanInlineHTML(source, position, segment.End); ok {
-				spans = append(spans, inlineSpan{
-					segment: segmentIndex, start: position, endSegment: segmentIndex, end: end,
-					kind: parser.KindRawHTML, content: parser.Range{Start: position, End: end},
-				})
-				position = end
-				continue
-			}
-			if endSegment, end, ok := scanMultilineHTMLProcessingInstruction(source, block, segmentIndex, position); ok {
-				spans = append(spans, inlineSpan{segment: segmentIndex, start: position, endSegment: endSegment, end: end})
-				segmentIndex = endSegment
-				position = end
-				continue
-			}
-			if endSegment, end, ok := scanMultilineHTMLDeclaration(source, block, segmentIndex, position); ok {
-				spans = append(spans, inlineSpan{segment: segmentIndex, start: position, endSegment: endSegment, end: end})
-				segmentIndex = endSegment
-				position = end
-				continue
-			}
-			if endSegment, end, ok := scanMultilineHTMLTag(source, block, segmentIndex, position); ok {
-				spans = append(spans, inlineSpan{segment: segmentIndex, start: position, endSegment: endSegment, end: end})
-				segmentIndex = endSegment
-				position = end
+			if span, nextSegment, nextPosition, ok := scanAngleInlineSpan(source, block, segmentIndex, position); ok {
+				spans = append(spans, span)
+				segmentIndex = nextSegment
+				position = nextPosition
 				continue
 			}
 		}
@@ -503,6 +478,31 @@ func collectInlineSpans(source []byte, block inlineBlock) []inlineSpan {
 		position++
 	}
 	return spans
+}
+
+func scanAngleInlineSpan(source []byte, block inlineBlock, segmentIndex, position int) (inlineSpan, int, int, bool) {
+	segment := block.segments[segmentIndex]
+	if node, end, ok := scanAngleAutolink(source, position, segment.End); ok {
+		return observedInlineSpan(segmentIndex, position, end, node), segmentIndex, end, true
+	}
+	if end, ok := scanInlineHTML(source, position, segment.End); ok {
+		return inlineSpan{
+			segment: segmentIndex, start: position, endSegment: segmentIndex, end: end,
+			kind: parser.KindRawHTML, content: parser.Range{Start: position, End: end},
+		}, segmentIndex, end, true
+	}
+	scanners := []func([]byte, inlineBlock, int, int) (int, int, bool){
+		scanMultilineHTMLComment,
+		scanMultilineHTMLProcessingInstruction,
+		scanMultilineHTMLDeclaration,
+		scanMultilineHTMLTag,
+	}
+	for _, scan := range scanners {
+		if endSegment, end, ok := scan(source, block, segmentIndex, position); ok {
+			return inlineSpan{segment: segmentIndex, start: position, endSegment: endSegment, end: end}, endSegment, end, true
+		}
+	}
+	return inlineSpan{}, segmentIndex, position, false
 }
 
 func observedInlineSpan(segment, start, end int, node parser.Node) inlineSpan {
@@ -926,6 +926,69 @@ type inlineHTMLCursor struct {
 	position int
 }
 
+type htmlCommentScanState struct {
+	bodyLength     int
+	first          byte
+	second         byte
+	pendingHyphens int
+}
+
+func (state *htmlCommentScanState) commit(value byte) {
+	switch state.bodyLength {
+	case 0:
+		state.first = value
+	case 1:
+		state.second = value
+	}
+	state.bodyLength++
+}
+
+func (state *htmlCommentScanState) process(value byte) (close, valid bool) {
+	if value == '-' {
+		state.pendingHyphens++
+		return false, true
+	}
+	if value == '>' && state.pendingHyphens >= 2 {
+		valid = state.pendingHyphens == 2 && state.first != '>' && (state.first != '-' || state.second != '>')
+		return true, valid
+	}
+	if state.pendingHyphens >= 2 {
+		return false, false
+	}
+	for state.pendingHyphens > 0 {
+		state.commit('-')
+		state.pendingHyphens--
+	}
+	state.commit(value)
+	return false, true
+}
+
+func scanMultilineHTMLComment(source []byte, block inlineBlock, startSegment, start int) (int, int, bool) {
+	if startSegment < 0 || startSegment >= len(block.segments) {
+		return startSegment, start, false
+	}
+	segment := block.segments[startSegment]
+	if start+4 > segment.End || !bytes.Equal(source[start:start+4], []byte("<!--")) {
+		return startSegment, start, false
+	}
+	cursor := inlineHTMLCursor{block: block, segment: startSegment, position: start + 4}
+	var state htmlCommentScanState
+	for {
+		value, ok := cursor.peek(source)
+		if !ok {
+			return startSegment, start, false
+		}
+		close, valid := state.process(value)
+		if !valid {
+			return startSegment, start, false
+		}
+		cursor.advance()
+		if close {
+			return multilineHTMLEnd(cursor, startSegment, start)
+		}
+	}
+}
+
 func scanMultilineHTMLProcessingInstruction(source []byte, block inlineBlock, startSegment, start int) (int, int, bool) {
 	if startSegment < 0 || startSegment >= len(block.segments) {
 		return startSegment, start, false
@@ -1172,6 +1235,16 @@ func scanInlineHTMLComment(source []byte, start, limit int) (int, bool) {
 		return start, false
 	}
 	return bodyStart + relative + len("-->"), true
+}
+
+func validHTMLCommentText(text []byte) bool {
+	if len(text) == 0 {
+		return true
+	}
+	if text[0] == '>' || len(text) >= 2 && text[0] == '-' && text[1] == '>' || text[len(text)-1] == '-' {
+		return false
+	}
+	return !bytes.Contains(text, []byte("--"))
 }
 
 func scanInlineHTMLUntil(source []byte, searchStart, limit int, closing []byte) (int, bool) {

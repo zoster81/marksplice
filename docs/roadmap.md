@@ -161,6 +161,8 @@ M119 changes no exported API. The exact documented-tree local freeze stack is gr
 
 ## M120 — HTML fragment renderer
 
+**Status: complete locally on 2026-08-29; unreleased pending milestone freeze commit, push, and exact remote CI closure.**
+
 **Goal:** render a parsed Marksplice document as deterministic CommonMark/GFM-compatible HTML fragments through streaming output.
 
 The preferred public shape is writer-oriented (`io.Writer`) with a convenience byte/string-returning helper only where useful.
@@ -177,6 +179,12 @@ The renderer must define explicit policies for:
 - images/links as emitted references only, with no fetching.
 
 CommonMark/GFM expected HTML becomes the primary rendering-conformance oracle. The currently rendering-only GFM `tagfilter` example becomes mandatory before Marksplice may claim GFM HTML-rendering conformance.
+
+The implemented public surface is `Document.RenderHTML(io.Writer, HTMLRenderOptions)` plus the caller-owned byte helper `Document.HTML`. `HTMLRenderOptions` makes raw-HTML preservation/escaping, dangerous-URL suppression/allowance, and GFM tag filtering explicit; the zero value preserves parser-proven raw HTML, enables tag filtering, and suppresses dangerous URL schemes. Rendering reuses `WalkSemantic`, retains no renderer AST/index in `Document`, performs no filesystem/network/command/asset access, and treats mathematical payload as opaque data rather than invoking a math engine.
+
+The permanent profile-aware renderer gates compare every applicable official example byte-for-byte against the approved expected HTML: all 652 CommonMark examples and all 677 published-GFM examples are accounted for. Six CommonMark and four inherited-GFM core examples are explicitly recorded as deliberate Marksplice-profile divergences caused by reviewed front-matter precedence, always-enabled extended-autolink behavior, or the newer reviewed GFM HTML-comment grammar; every non-divergent example passes. The rendering-only GFM `tagfilter` example is included in the renderer gate while remaining outside parser-neutral M115 conformance.
+
+On the same Windows/amd64 Ryzen 9 5900X 256 KiB realistic harness used by the semantic milestones, five-run medians are approximately 45.3 ms for public `Parse`, 40.6 ms for `WalkSemantic`, 52.9 ms for streaming `RenderHTML(io.Discard)`, and 54.3 ms for the buffered `HTML` helper. Streaming rendering allocates about 41.7 MB/op versus about 40.8 MB/op for the semantic walk; the convenience bytes helper reaches about 43.8 MB/op because it also accumulates complete output. This confirms that output buffering is optional and the writer path does not add a whole-document HTML result buffer.
 
 ## M121 — Standalone HTML and metadata
 

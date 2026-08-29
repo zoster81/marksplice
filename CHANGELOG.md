@@ -9,6 +9,8 @@ The project uses Semantic Versioning-compatible Go module tags. Until v1, the pu
 - Add the read-only `workspacefs` package for caller-authorized Markdown workspaces over `fs.FS`, with deterministic `.md`/`.markdown` scanning, cycle-safe relationship following, slash-relative document keys, finite document/byte/depth/relationship budgets, and direct reuse of the existing document graph/workspace validator.
 - Harden `workspacefs` relationship resolution around explicit URI-path semantics: normalize relative `.`/`..` only inside the supplied `fs.FS` namespace, percent-decode path components exactly once, separate query text from file lookup, preserve fragments for existing fragment resolution, and keep absolute/scheme/protocol-relative/backslash/encoded-traversal-or-separator/directory/extensionless targets outside filesystem authority.
 - Refactor `workspacefs.Follow` to one cached target-availability map plus index-based breadth-first traversal; measured 4x-document scan/follow workloads remain near-linear while reducing follow allocation bytes/counts without adding persistent caches or changing the public API.
+- Add deterministic HTML-fragment rendering through streaming `Document.RenderHTML` and buffered `Document.HTML`, with explicit raw-HTML, dangerous-URL, and GFM tag-filter policies, no hidden I/O or asset fetching, and no second Markdown parser/retained renderer AST.
+- Add permanent profile-aware HTML conformance against all 652 CommonMark 0.31.2 and all 677 published-GFM examples, including rendering-only `tagfilter`; deliberate Marksplice-profile divergences are explicitly named rather than accepted as generic mismatches.
 
 ## v0.5.0-beta.1 — 2026-08-28
 
