@@ -41,14 +41,17 @@ A valid Markdown construct can be understood internally without receiving public
 | YAML/TOML front matter | Complete recognized envelope plus safe simple fields | Replace unique simple top-level scalar value | Conservative canonical string fields | No general YAML/TOML parser or serializer |
 | HTML comments/anchors | Conservative promoted forms | Replace comment payload or quoted anchor value | No dedicated builder | Other HTML remains opaque source |
 
-## HTML fragment rendering
+## HTML rendering
 
 A parsed `Document` can be rendered explicitly without changing the source-preserving edit path.
 
 | Capability | API | Boundary |
 | --- | --- | --- |
-| Streaming fragment output | `Document.RenderHTML` | Writes to caller `io.Writer`; stops on writer error; no standalone document wrapper |
-| Buffered fragment output | `Document.HTML` | Returns caller-owned bytes; convenient when whole-output buffering is acceptable |
+| Streaming fragment output | `Document.RenderHTML` | Writes body fragments to caller `io.Writer`; stops on writer error |
+| Buffered fragment output | `Document.HTML` | Returns caller-owned fragment bytes; convenient when whole-output buffering is acceptable |
+| Streaming standalone output | `Document.RenderHTMLDocument` | Writes deterministic doctype/html/head/charset/body around the same fragment renderer; no template or asset system |
+| Buffered standalone output | `Document.HTMLDocument` | Returns caller-owned complete-document bytes |
+| Reviewed metadata mapping | `HTMLMetadataFrontMatter`, `HTMLMetadataOmit` | Exact lower-case `title`, `description`, `author`, `lang` only from unique top-level source-proven simple front-matter scalars; no general YAML/TOML interpretation |
 | Raw HTML | `HTMLRawPreserve`, `HTMLRawEscape` | Preserve is not sanitization; escape explicitly for an HTML trust boundary |
 | Dangerous URLs | `HTMLUnsafeURLSuppress`, `HTMLUnsafeURLAllow` | Default suppresses dangerous schemes by emitting an empty destination; no URL is fetched |
 | GFM tag filter | `HTMLTagFilterEnabled`, `HTMLTagFilterDisabled` | Default applies the published GFM disallowed-tag filter to preserved raw HTML |
@@ -120,7 +123,7 @@ New-document construction is intentionally different: `DocumentBuilder` emits ca
 
 Marksplice does not provide:
 
-- standalone HTML-document generation or PDF rendering;
+- PDF rendering;
 - Markdown-to-Markdown whole-document formatting/normalization as the ordinary edit path;
 - hidden/implicit filesystem crawling or file loading outside an explicitly supplied `workspacefs` `fs.FS`;
 - URL fetching or network resolution;

@@ -83,6 +83,8 @@ Public operations classify failure families with `errors.Is`. The root-package s
 - `HTMLAnchor` — HTMLAnchor is immutable typed detail for one promoted simple quoted id/name attribute on an <a> tag.
 - `HTMLAnchorAttribute` — HTMLAnchorAttribute identifies the semantic anchor attribute targeted by an HTMLAnchor.
 - `HTMLComment` — HTMLComment is immutable typed detail for one promoted single-line HTML comment payload.
+- `HTMLDocumentOptions` — HTMLDocumentOptions controls deterministic standalone HTML rendering; its zero value reuses fragment defaults and reviewed front-matter metadata mapping.
+- `HTMLMetadataPolicy` — HTMLMetadataPolicy controls reviewed front-matter metadata mapping versus explicit omission.
 - `HTMLRawPolicy` — HTMLRawPolicy controls preservation versus escaping of parser-proven raw HTML during fragment rendering.
 - `HTMLRenderOptions` — HTMLRenderOptions controls deterministic HTML-fragment rendering. Its zero value preserves raw HTML, enables the GFM tag filter, and suppresses dangerous URL schemes.
 - `HTMLTagFilterPolicy` — HTMLTagFilterPolicy controls the GFM disallowed-raw-HTML tag filter.
@@ -213,6 +215,14 @@ func CollapsedReferenceLinkInline(label ...Inline) Inline
 
 CollapsedReferenceLinkInline returns one `[label][]` construction value. The
 emitted label must resolve to exactly one available normalized definition.
+
+#### `DefaultHTMLDocumentOptions`
+
+```go
+func DefaultHTMLDocumentOptions() HTMLDocumentOptions
+```
+
+DefaultHTMLDocumentOptions returns the zero-value standalone policy: use the ordinary fragment-rendering defaults and map the reviewed front-matter metadata set when safely available.
 
 #### `DefaultHTMLRenderOptions`
 
@@ -791,6 +801,14 @@ func (d *Document) HTML(options HTMLRenderOptions) ([]byte, error)
 
 HTML renders a deterministic HTML fragment into caller-owned bytes. It is the buffered convenience form of RenderHTML and returns `ErrInvalidRender` for an invalid receiver or options.
 
+#### `HTMLDocument`
+
+```go
+func (d *Document) HTMLDocument(options HTMLDocumentOptions) ([]byte, error)
+```
+
+HTMLDocument renders a deterministic standalone HTML document into caller-owned bytes. It wraps the exact fragment renderer with doctype/html/head/charset/body markup and the selected reviewed metadata policy.
+
 #### `Image`
 
 ```go
@@ -1330,6 +1348,14 @@ func (d *Document) RenderHTML(writer io.Writer, options HTMLRenderOptions) error
 ```
 
 RenderHTML streams a deterministic HTML fragment from this immutable snapshot. It consumes the Native semantic walk on demand, performs no filesystem/network access, and stops immediately on writer error. Invalid receiver, writer, or options report `ErrInvalidRender`.
+
+#### `RenderHTMLDocument`
+
+```go
+func (d *Document) RenderHTMLDocument(writer io.Writer, options HTMLDocumentOptions) error
+```
+
+RenderHTMLDocument streams a deterministic standalone HTML document around the exact RenderHTML body. The zero metadata policy maps only exact lower-case `title`, `description`, `author`, and safe `lang` values from unique top-level source-proven simple front-matter scalars. `HTMLMetadataOmit` disables that mapping. The method performs no template, asset, filesystem, network, or command access and stops on writer error.
 
 #### `ResolveFragment`
 

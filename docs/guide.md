@@ -9,7 +9,7 @@ Use this page to choose the shortest path to the task you have. If this is your 
 | Load a Markdown file and inspect its structure | [Inspect a document](recipes/inspect-document.md) | `go run ./examples/inspect` |
 | Rename, replace, check, remove, insert, move, or combine edits | [Edit an existing document](recipes/edit-existing-document.md) | `go run ./examples/edit` |
 | Create Markdown from structured Go values | [Create a document](recipes/create-document.md) | `go run ./examples/build` |
-| Render deterministic HTML fragments | [Render HTML fragments](recipes/render-html.md) | — |
+| Render deterministic HTML fragments or standalone documents | [Render HTML](recipes/render-html.md) | `go run ./examples/render` |
 | Work with list hierarchies, sections, or GFM tables | [Lists, sections, and tables](recipes/lists-sections-tables.md) | `go run ./examples/query` |
 | Discover/follow Markdown files, resolve fragments, build backlinks, or validate a document set | [Links and workspaces](recipes/links-workspaces.md) | `go run ./examples/workspace` |
 | Observe application-specific syntax without changing core GFM | [Read-only extensions](recipes/extensions.md) | `go run ./examples/extensions` |
@@ -78,7 +78,7 @@ Generated content is reparsed and checked against construction expectations befo
 
 See [Create a document](recipes/create-document.md).
 
-## Rendering HTML fragments
+## Rendering HTML
 
 HTML rendering is an explicit export path, not an implementation detail of editing. `Document.RenderHTML` streams a deterministic fragment to an `io.Writer`; `Document.HTML` returns caller-owned bytes when buffering the whole result is useful.
 
@@ -86,7 +86,9 @@ The renderer consumes the same Native semantic walk used by M119 and does not pa
 
 Preserved raw HTML is not a sanitizer. Use `HTMLRawEscape` or an application-appropriate downstream sanitization boundary for untrusted input. Rendering does not fetch URLs or images, run templates, highlight code, execute fenced content, or invoke a mathematical rendering engine.
 
-See [Render HTML fragments](recipes/render-html.md).
+Standalone `RenderHTMLDocument`/`HTMLDocument` wrap the same body renderer in deterministic doctype/html/head/charset/body markup. `HTMLDocumentOptions` reuses `HTMLRenderOptions` for the body and maps only exact lower-case `title`, `description`, `author`, and safe `lang` values from already source-proven simple top-level front matter. Complex, duplicate, nested, invalid-UTF-8, or escape-dependent values are omitted rather than interpreted by a YAML/TOML parser. `HTMLMetadataOmit` disables that mapping.
+
+See [Render HTML](recipes/render-html.md) and run `go run ./examples/render`.
 
 ## Navigation and multi-document work
 
@@ -152,6 +154,6 @@ Public variable-length results are caller-owned unless an API explicitly states 
 
 ## What Marksplice does not own
 
-The root document/graph APIs perform no implicit filesystem, network, or command I/O. `workspacefs` adds only explicit read-only filesystem access through the caller's `fs.FS`; it does not write files, fetch URLs, or execute commands. Marksplice renders HTML fragments only when explicitly requested; it does not render standalone HTML/PDF, execute fenced languages, serialize arbitrary YAML/TOML, run a LaTeX/math engine, fetch assets, or normalize an existing document as a side effect of a structural edit.
+The root document/graph APIs perform no implicit filesystem, network, or command I/O. `workspacefs` adds only explicit read-only filesystem access through the caller's `fs.FS`; it does not write files, fetch URLs, or execute commands. Marksplice renders HTML fragments or deterministic standalone documents only when explicitly requested; it does not render PDF, execute fenced languages, serialize arbitrary YAML/TOML, run templates, run a LaTeX/math engine, fetch assets, or normalize an existing document as a side effect of a structural edit.
 
 Those boundaries are summarized in [Capabilities](capabilities.md). Architecture and conformance rationale live in the [advanced documentation](README.md#advanced-and-maintainer-documentation).

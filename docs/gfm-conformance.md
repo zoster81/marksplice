@@ -100,7 +100,7 @@ Historical M111–M114 records document the staged parser-substitution work and 
 
 ## Rendering boundary
 
-Semantic Markdown parsing and HTML rendering are separate responsibilities. M118–M119 provide the internal on-demand semantic walk; M120 exposes deterministic HTML-fragment rendering through `Document.RenderHTML` and `Document.HTML` without adding a second Markdown parser or retained renderer AST.
+Semantic Markdown parsing and HTML rendering are separate responsibilities. M118–M119 provide the internal on-demand semantic walk; M120 exposes deterministic HTML-fragment rendering through `Document.RenderHTML` and `Document.HTML` without adding a second Markdown parser or retained renderer AST. M121 wraps that exact body renderer in deterministic standalone document markup; it does not alter Markdown parsing or the expected-HTML conformance oracle.
 
 Renderer conformance uses the specification's expected HTML as normative evidence where applicable rather than treating Native or semantic-walk output as its own oracle. The permanent full-profile gates above account for every official CommonMark 0.31.2 and published-GFM example and encode the small deliberate Marksplice-profile divergence sets explicitly. GFM `tagfilter` is mandatory renderer evidence even though it remains outside parser-neutral conformance.
 

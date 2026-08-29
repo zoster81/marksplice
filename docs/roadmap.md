@@ -188,11 +188,15 @@ On the same Windows/amd64 Ryzen 9 5900X 256 KiB realistic harness used by the se
 
 ## M121 — Standalone HTML and metadata
 
+**Status: complete locally on 2026-08-29; unreleased pending milestone freeze commit, push, and exact remote CI closure.**
+
 **Goal:** build complete standalone HTML documents on the same renderer without turning Marksplice into a site generator or template engine.
 
-Add a small deterministic document wrapper (`doctype`, `html`, `head`, charset, body) and a deliberately narrow metadata policy. Front matter remains an opaque/conservative Marksplice envelope: known metadata may be mapped only through an explicit reviewed contract, while arbitrary YAML/TOML interpretation is not introduced.
+M121 adds streaming `Document.RenderHTMLDocument` and buffered `Document.HTMLDocument`. The wrapper is deterministic and deliberately small: `<!doctype html>`, `<html>`, `<head>`, UTF-8 charset metadata, optional reviewed metadata, and `<body>`. `HTMLDocumentOptions.Body` reuses the complete M120 fragment policy; the standalone path invokes the same semantic renderer instead of introducing another Markdown-to-HTML implementation.
 
-No implicit stylesheet download, asset fetch, template execution, or network behavior is allowed.
+The zero-value metadata policy maps only exact lower-case `title`, `description`, `author`, and `lang` fields that the existing front-matter model already proves as unique top-level simple scalars. Complex/duplicate/nested metadata, invalid UTF-8/control values, escape-dependent quoted values, and unsafe language tokens are omitted rather than guessed. `HTMLMetadataOmit` disables front-matter-derived metadata. No YAML/TOML parser, arbitrary metadata map, title inference, template system, stylesheet injection, asset manager, filesystem/network access, or command execution is introduced.
+
+Focused 256 KiB measurement keeps streaming standalone output at about 41.72 MB/op and 258.4k allocations, effectively the M120 streaming allocation profile plus constant wrapper/metadata work; the buffered helper is about 43.82 MB/op because it accumulates the complete result.
 
 ## M122 — HTML source mapping
 

@@ -1,10 +1,10 @@
-# Render HTML Fragments
+# Render HTML
 
 Use this workflow when you already have Markdown bytes and want deterministic HTML output. Rendering is separate from source-preserving editing: it does not mutate the parsed `Document` or replace your Markdown source.
 
-## Stream HTML to a writer
+## Stream an HTML fragment
 
-`RenderHTML` is the primary API. It writes incrementally to the `io.Writer` you supply and stops on the first writer error.
+`RenderHTML` is the primary fragment API. It writes incrementally to the `io.Writer` you supply and stops on the first writer error.
 
 ```go
 source, err := os.ReadFile("README.md")
@@ -22,67 +22,92 @@ if err := doc.RenderHTML(os.Stdout, marksplice.DefaultHTMLRenderOptions()); err 
 }
 ```
 
-The renderer performs no filesystem discovery, URL fetching, command execution, syntax highlighting, template execution, or math-engine execution. Link and image destinations are emitted as references only.
-
-## Get caller-owned bytes
-
 Use `HTML` when collecting the complete fragment in memory is more convenient:
 
 ```go
-htmlFragment, err := doc.HTML(marksplice.DefaultHTMLRenderOptions())
-if err != nil {
+fragment, err := doc.HTML(marksplice.DefaultHTMLRenderOptions())
+```
+
+For large output or an HTTP/file pipeline, prefer the writer form.
+
+## Render a standalone HTML document
+
+`RenderHTMLDocument` writes a deterministic wrapper around the exact same fragment renderer:
+
+```go
+options := marksplice.DefaultHTMLDocumentOptions()
+if err := doc.RenderHTMLDocument(os.Stdout, options); err != nil {
     return err
 }
 ```
 
-For large output or an HTTP/file pipeline, prefer `RenderHTML` so the HTML result itself does not need to be accumulated by Marksplice.
+The generated shape is deliberately small: `<!doctype html>`, `<html>`, `<head>`, UTF-8 charset metadata, optional reviewed metadata, and `<body>`. There is no template engine, stylesheet injection, asset manager, base URL, script injection, or network behavior.
 
-## Understand the default safety policy
-
-The zero value of `HTMLRenderOptions` is the documented default:
+Use `HTMLDocument` when caller-owned complete bytes are more convenient:
 
 ```go
-options := marksplice.HTMLRenderOptions{}
+page, err := doc.HTMLDocument(marksplice.DefaultHTMLDocumentOptions())
 ```
 
-It:
+Run the file-based example from the repository root:
+
+```sh
+go run ./examples/render
+```
+
+It reads `examples/render/page.md` and streams a complete HTML document without modifying the fixture.
+
+## Front-matter metadata mapping
+
+The standalone zero value uses `HTMLMetadataFrontMatter`. Mapping is intentionally narrow and case-sensitive. Only these exact lower-case keys are recognized:
+
+| Front-matter key | HTML output |
+| --- | --- |
+| `title` | `<title>...</title>` |
+| `description` | `<meta name="description" content="...">` |
+| `author` | `<meta name="author" content="...">` |
+| `lang` | `lang="..."` on `<html>` when the value is a conservative ASCII language token |
+
+A field is eligible only when the existing Marksplice front-matter model already proves it as one unique top-level simple scalar. Duplicate keys, complex YAML, TOML values after table scope, invalid UTF-8, control bytes, and quoted values that require YAML/TOML escape interpretation are omitted rather than guessed. Marksplice does not add a YAML/TOML parser for HTML export.
+
+The scalar bytes are treated as text and HTML-escaped. They are not inserted as raw markup.
+
+Disable all front-matter-derived metadata explicitly:
+
+```go
+options := marksplice.HTMLDocumentOptions{
+    Metadata: marksplice.HTMLMetadataOmit,
+}
+```
+
+No heading or filename is fabricated as a fallback `<title>`.
+
+## Body safety policy
+
+The zero value of `HTMLRenderOptions`:
 
 - preserves parser-proven raw HTML;
 - applies the published GFM disallowed-tag filter;
 - suppresses dangerous URL schemes by emitting an empty destination.
 
-Preserving raw HTML is **not** an HTML sanitization boundary. If Markdown is untrusted and the output will cross an HTML security boundary, choose the explicit escape policy or use an application-appropriate sanitizer after rendering.
+Standalone rendering reuses those exact policies through `HTMLDocumentOptions.Body`:
 
 ```go
-options := marksplice.HTMLRenderOptions{
-    RawHTML: marksplice.HTMLRawEscape,
+options := marksplice.HTMLDocumentOptions{
+    Body: marksplice.HTMLRenderOptions{
+        RawHTML: marksplice.HTMLRawEscape,
+    },
 }
 ```
 
-## Change policies explicitly
+Preserving raw HTML is **not** an HTML sanitization boundary. If Markdown is untrusted and the output crosses an HTML security boundary, choose `HTMLRawEscape` or use an application-appropriate sanitizer after rendering.
 
-To preserve raw HTML without the GFM tag filter:
+`HTMLUnsafeURLAllow` remains an explicit trust decision. Marksplice emits references only; it never fetches URLs or images.
 
-```go
-options := marksplice.HTMLRenderOptions{
-    TagFilter: marksplice.HTMLTagFilterDisabled,
-}
-```
+## Output and authority boundaries
 
-To allow destinations that the default policy suppresses:
+Fragments contain only rendered Markdown body output. Standalone documents add only the deterministic wrapper and reviewed metadata described above. Front-matter declarations and reference-definition declarations are not emitted as visible body blocks.
 
-```go
-options := marksplice.HTMLRenderOptions{
-    UnsafeURLs: marksplice.HTMLUnsafeURLAllow,
-}
-```
-
-`HTMLUnsafeURLAllow` is an explicit trust decision. Marksplice does not fetch the URL, but emitting a dangerous scheme can matter when another system later consumes the HTML.
-
-## Output scope
-
-M120 produces an **HTML fragment**, not a complete standalone document. There is no generated `<!doctype html>`, `<html>`, `<head>`, stylesheet, or template wrapper. Front matter and reference-definition declarations are semantic source metadata and are not emitted as visible HTML blocks.
-
-Mathematical payload remains opaque data. Marksplice emits deterministic wrappers for the reviewed math forms but does not interpret or execute LaTeX, MathJax, KaTeX, or another math engine.
+Mathematical payload remains opaque data. Marksplice does not interpret or execute LaTeX, MathJax, KaTeX, fenced code, templates, or embedded languages. Rendering performs no filesystem discovery, asset fetching, network access, command execution, or syntax highlighting.
 
 For exact option and method signatures, see the [API Reference](../api-reference.md). For the current renderer boundary, see [Capabilities](../capabilities.md).

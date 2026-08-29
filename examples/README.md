@@ -8,6 +8,7 @@ These programs use tracked Markdown files instead of embedding toy documents in 
 | `edit` | Prepare four independent source-preserving edits, compose them atomically, and leave the fixture untouched | `go run ./examples/edit` |
 | `build` | Create a release brief from structured builder input | `go run ./examples/build` |
 | `query` | Find unfinished tasks inside one section with a bounded structural query | `go run ./examples/query` |
+| `render` | Render a tracked Markdown file as a complete HTML document with reviewed front-matter metadata | `go run ./examples/render` |
 | `workspace` | Scan a caller-supplied `fs.FS`, build the existing graph, inspect backlinks/reachability, and report an orphan document | `go run ./examples/workspace` |
 | `extensions` | Add a small read-only `[[wikilink]]` observation without changing the core Markdown grammar | `go run ./examples/extensions` |
 
