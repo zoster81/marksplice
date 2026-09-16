@@ -22,6 +22,12 @@ Use [`NewDocumentBuilder`](#newdocumentbuilder), [`DocumentBuilder` methods](#do
 
 Recipe: [Create a document](recipes/create-document.md).
 
+### Render canonical Markdown
+
+Use `Document.RenderCanonicalMarkdown` to stream one deterministic normalized Markdown representation or `Document.CanonicalMarkdown` to collect caller-owned bytes. This is an explicit export path: it does not mutate the parsed snapshot and must not replace ordinary source-preserving edits.
+
+Recipe: [Render canonical Markdown](recipes/render-canonical-markdown.md).
+
 ### Render HTML and source maps
 
 Use `Document.RenderHTML` / `Document.HTML` for deterministic fragments and `Document.RenderHTMLDocument` / `Document.HTMLDocument` for standalone output. When preview/editor tooling needs snapshot-local Markdown-byte to output-byte correlation, use the corresponding `...WithSourceMap` variants and inspect `HTMLSourceMapEntry` / `HTMLOutputRange`.
@@ -626,6 +632,14 @@ BlockquoteContentRanges returns caller-owned inner source segments for every
 physical line owned by one promoted top-level blockquote, in source order.
 Marker-only lines are represented by valid empty ranges. Lazy continuation
 lines have no synthetic marker removal: their complete physical content is returned.
+
+#### `CanonicalMarkdown`
+
+```go
+func (d *Document) CanonicalMarkdown() ([]byte, error)
+```
+
+CanonicalMarkdown returns caller-owned bytes containing the deterministic canonical Markdown representation of this immutable snapshot. It is the buffered convenience form of RenderCanonicalMarkdown and returns `ErrInvalidRender` for an invalid receiver. The export is semantic-round-trip preserving and byte-idempotent under the reviewed Marksplice profile; it does not mutate the source snapshot or grant whole-document edit authority.
 
 #### `CodeSpan`
 
@@ -1364,6 +1378,14 @@ func (d *Document) ReferenceDefinition(id NodeID) (ReferenceDefinition, bool)
 ```
 
 ReferenceDefinition returns typed detail for one promoted single-line reference definition.
+
+#### `RenderCanonicalMarkdown`
+
+```go
+func (d *Document) RenderCanonicalMarkdown(writer io.Writer) error
+```
+
+RenderCanonicalMarkdown streams one deterministic canonical Markdown representation from this immutable snapshot. It consumes the Native semantic walk without a second Markdown parser or retained renderer AST, stops on writer errors, and reports `ErrInvalidRender` for an invalid receiver or nil writer. Canonical rendering intentionally normalizes only the exported result; ordinary existing-document edits remain source-preserving and do not use this whole-document writer.
 
 #### `RenderHTML`
 

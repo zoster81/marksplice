@@ -19,7 +19,7 @@ func nativeFootnoteObservations(source []byte, blocks blockParseResult) ([]parse
 	if !bytes.Contains(source, []byte("[^")) {
 		return []parser.FootnoteDefinitionObservation{}, []parser.FootnoteReferenceObservation{}, []parser.LinkUsage{}
 	}
-	parsed := scanNativeFootnoteDefinitions(source)
+	parsed := filterNativeFootnoteDefinitionsOutsideFences(scanNativeFootnoteDefinitions(source), blocks.fencedCodeDetails)
 	if len(parsed) == 0 {
 		return []parser.FootnoteDefinitionObservation{}, []parser.FootnoteReferenceObservation{}, []parser.LinkUsage{}
 	}
@@ -31,6 +31,31 @@ func nativeFootnoteObservations(source []byte, blocks blockParseResult) ([]parse
 	references := scanNativeFootnoteReferences(source, blocks.inlines, parsed, ordinaryDefinitions)
 	bodyUsages := nativeFootnoteBodyLinkUsages(source, parsed, ordinaryDefinitions)
 	return definitions, references, bodyUsages
+}
+
+func filterNativeFootnoteDefinitionsOutsideFences(definitions []nativeFootnoteDefinition, details []parser.FencedCodeDetail) []nativeFootnoteDefinition {
+	if len(definitions) == 0 || len(details) == 0 {
+		return definitions
+	}
+	kept := definitions[:0]
+	for _, definition := range definitions {
+		if nativeFootnoteAnchorInsideFencedCode(definition.observation.Anchor, details) {
+			continue
+		}
+		kept = append(kept, definition)
+	}
+	return kept
+}
+
+func nativeFootnoteAnchorInsideFencedCode(anchor int, details []parser.FencedCodeDetail) bool {
+	for _, detail := range details {
+		for _, range_ := range detail.ContentRanges {
+			if anchor >= range_.Start && anchor < range_.End {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func scanNativeFootnoteDefinitions(source []byte) []nativeFootnoteDefinition {

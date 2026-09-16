@@ -9,6 +9,7 @@ Use this page to choose the shortest path to the task you have. If this is your 
 | Load a Markdown file and inspect its structure | [Inspect a document](recipes/inspect-document.md) | `go run ./examples/inspect` |
 | Rename, replace, check, remove, insert, move, or combine edits | [Edit an existing document](recipes/edit-existing-document.md) | `go run ./examples/edit` |
 | Create Markdown from structured Go values | [Create a document](recipes/create-document.md) | `go run ./examples/build` |
+| Export one deterministic normalized Markdown representation | [Render canonical Markdown](recipes/render-canonical-markdown.md) | `go run ./examples/render --markdown` |
 | Render deterministic HTML or correlate Markdown ranges with emitted HTML | [Render HTML](recipes/render-html.md) | `go run ./examples/render` / `go run ./examples/render --map` |
 | Work with list hierarchies, sections, or GFM tables | [Lists, sections, and tables](recipes/lists-sections-tables.md) | `go run ./examples/query` |
 | Discover/follow Markdown files, resolve fragments, build backlinks, or validate a document set | [Links and workspaces](recipes/links-workspaces.md) | `go run ./examples/workspace` |
@@ -77,6 +78,16 @@ See [Edit an existing document](recipes/edit-existing-document.md).
 Generated content is reparsed and checked against construction expectations before `Markdown()` returns it.
 
 See [Create a document](recipes/create-document.md).
+
+## Rendering canonical Markdown
+
+Canonical Markdown is an explicit export path, not an implementation detail of source-preserving editing. `Document.RenderCanonicalMarkdown` streams one deterministic Markdown representation to an `io.Writer`; `Document.CanonicalMarkdown` returns caller-owned bytes when buffering the complete result is useful.
+
+The writer consumes the same Native semantic walk used by the HTML renderer and does not parse Markdown syntax a second time or retain a rendering AST in `Document`. It intentionally exposes no style configuration: formatting normalization is the purpose of this export, and one stable Marksplice profile keeps semantic round-trip and byte-idempotence testable.
+
+The parsed source snapshot remains untouched. Use ordinary `Prepare...` operations and `ChangeSet.Apply` when the goal is a narrow edit that preserves unrelated author bytes. Use canonical rendering only when the caller explicitly wants normalized Markdown output.
+
+See [Render canonical Markdown](recipes/render-canonical-markdown.md) or run `go run ./examples/render --markdown`.
 
 ## Rendering HTML
 
@@ -156,6 +167,6 @@ Public variable-length results are caller-owned unless an API explicitly states 
 
 ## What Marksplice does not own
 
-The root document/graph APIs perform no implicit filesystem, network, or command I/O. `workspacefs` adds only explicit read-only filesystem access through the caller's `fs.FS`; it does not write files, fetch URLs, or execute commands. Marksplice renders HTML fragments or deterministic standalone documents only when explicitly requested; it does not render PDF, execute fenced languages, serialize arbitrary YAML/TOML, run templates, run a LaTeX/math engine, fetch assets, or normalize an existing document as a side effect of a structural edit.
+The root document/graph APIs perform no implicit filesystem, network, or command I/O. `workspacefs` adds only explicit read-only filesystem access through the caller's `fs.FS`; it does not write files, fetch URLs, or execute commands. Marksplice emits canonical Markdown or HTML only when explicitly requested; it does not render PDF, execute fenced languages, serialize arbitrary YAML/TOML, run templates, run a LaTeX/math engine, fetch assets, or normalize an existing document as a side effect of a structural edit.
 
 Those boundaries are summarized in [Capabilities](capabilities.md). Architecture and conformance rationale live in the [advanced documentation](README.md#advanced-and-maintainer-documentation).

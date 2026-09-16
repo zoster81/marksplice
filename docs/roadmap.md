@@ -200,7 +200,7 @@ Focused 256 KiB measurement keeps streaming standalone output at about 41.72 MB/
 
 ## M122 — HTML source mapping
 
-**Status: complete locally on 2026-08-29; unreleased pending milestone freeze commit, push, and exact remote CI closure.**
+**Status: complete on 2026-08-29; unreleased.**
 
 **Goal:** optionally map Markdown source ranges to emitted HTML output ranges for editor/IDE/tooling integration.
 
@@ -211,6 +211,8 @@ The mapping remains explicitly optional. Existing `RenderHTML`/`HTML`/`RenderHTM
 The broad renderer/source-map checkpoint covers large input, 128-level nesting, tables, links, raw HTML, deferred footnotes/images, metadata, Unicode byte offsets, and pathological inline input. Profiling rejected an early counting-writer implementation that lost `io.StringWriter` and an early duplicate-map/copy design. The accepted chunked collector reduces the same 256 KiB mapped fragment workload from roughly 50.53 MB/op / 319k allocations to about **44.52 MB/op / 261.8k allocations** for **37,725 mappings**, versus about **41.80 MB/op / 258.4k allocations** with mapping off. Standalone results are effectively identical at 37,729 mappings. Wall-clock values are host-load-sensitive and are not used as a public performance claim.
 
 ## M123 — Canonical Markdown renderer
+
+**Status: complete locally on 2026-09-15; unreleased pending milestone freeze commit, push, and exact remote CI closure.**
 
 **Goal:** add an explicit Markdown-to-Markdown canonical rendering path, separate from ordinary source-preserving editing.
 
@@ -232,6 +234,12 @@ canonical(parse(canonical(x))) == canonical(x)
 ```
 
 Canonical choices for headings, list markers, fences, tables, references, blank lines, line endings, front matter, and opaque/raw content must be documented and tested. Avoid turning this feature into a general-purpose style formatter.
+
+The implemented public surface is streaming `Document.RenderCanonicalMarkdown(io.Writer)` plus buffered `Document.CanonicalMarkdown()`. Both reuse the Native semantic walk through the parser-independent semantic contract; `internal/rendermarkdown` owns no second Markdown parser or AST and exposes no formatting-option surface. The parsed source snapshot is never mutated.
+
+Acceptance now covers semantic round-trip and byte idempotence across all 652 approved CommonMark 0.31.2 examples, all 677 published-GFM examples, and the retained 6,857-document real-world corpus. Focused regressions cover references, footnotes, linked images, autolinks, code/fence boundaries, nested lists, raw HTML, tables, front matter, writer errors, and ambiguous source shapes without example allowlists.
+
+Profiling rejected two writer-owned superlinear algorithms and one equivalent Native semantic-ownership scan. The accepted writer appends top-level blocks, sorts once, normalizes overlay ownership once, and filters in source order; Native performs ordered ownership lookup. Representative final 64/256/1024 KiB canonical streaming measurements are approximately 11/48/217 ms on the recorded host, close to the underlying semantic walk at approximately 10–11/41–45/191 ms. The complete retained 60.8 MB corpus renders at roughly 19.8–20.2 MB/s in the recorded checkpoint. Production complexity is back within the repository-wide `gocyclo <= 15` gate.
 
 ## M124 — v1.0 stabilization, refactor, profiling, and release gate
 

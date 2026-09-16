@@ -20,6 +20,7 @@ type semanticBlockCapture struct {
 	paragraphs           []int
 	paragraphSearchLimit int
 	extraInlines         []inlineBlock
+	ownedTopLevelRanges  []parser.Range
 }
 
 func newSemanticBlockCapture(lineCount int) semanticBlockCapture {
@@ -117,7 +118,7 @@ func (*Backend) WalkSemantic(source []byte, visit parser.SemanticVisitor) error 
 	if hasFrontMatter {
 		minimumOverlayStart = frontMatter.Range.End
 	}
-	footnotes := semanticFootnoteDefinitions(source, minimumOverlayStart)
+	footnotes := semanticFootnoteDefinitions(source, minimumOverlayStart, blocks.fencedCodeDetails)
 	promoteSemanticFootnoteDefinitions(source, footnotes, &capture)
 	inlineBlocks := blocks.inlines
 	if len(capture.extraInlines) != 0 {
@@ -191,8 +192,8 @@ func (index semanticProjectionIndex) analysis(range_ parser.Range) (inlineAnalys
 	return index.analyses[analysisIndex], true
 }
 
-func semanticFootnoteDefinitions(source []byte, minimumStart int) []nativeFootnoteDefinition {
-	definitions := scanNativeFootnoteDefinitions(source)
+func semanticFootnoteDefinitions(source []byte, minimumStart int, fencedCode []parser.FencedCodeDetail) []nativeFootnoteDefinition {
+	definitions := filterNativeFootnoteDefinitionsOutsideFences(scanNativeFootnoteDefinitions(source), fencedCode)
 	if minimumStart <= 0 || len(definitions) == 0 {
 		return definitions
 	}
@@ -219,6 +220,7 @@ func promoteSemanticFootnoteDefinitions(source []byte, definitions []nativeFootn
 			ContentRange: semanticRangesEnvelope(observation.BodyRanges),
 			Label:        observation.Label,
 		}
+		capture.ownedTopLevelRanges = append(capture.ownedTopLevelRanges, event.Range)
 		if index < 0 {
 			index = capture.add(-1, event, parser.Range{})
 		} else {
@@ -500,12 +502,55 @@ func captureSemanticTableRow(capture *semanticBlockCapture, parent int, row []pa
 
 func emitSemanticCapturedBlocks(source []byte, capture semanticBlockCapture, projection semanticProjectionIndex, visit parser.SemanticVisitor) error {
 	firstChild, nextSibling := semanticCapturedChildIndex(capture.blocks)
+	ownedTopLevelRanges := normalizeSemanticOwnedTopLevelRanges(capture.ownedTopLevelRanges)
 	for childRef := firstChild[0]; childRef != 0; childRef = nextSibling[childRef-1] {
+		block := capture.blocks[childRef-1]
+		if semanticTopLevelBlockOwned(block.event, ownedTopLevelRanges) {
+			continue
+		}
 		if err := emitSemanticCapturedBlock(source, capture.blocks, firstChild, nextSibling, projection, childRef-1, visit); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func normalizeSemanticOwnedTopLevelRanges(ranges []parser.Range) []parser.Range {
+	if len(ranges) < 2 {
+		return ranges
+	}
+	slices.SortFunc(ranges, func(left, right parser.Range) int {
+		return cmp.Compare(left.Start, right.Start)
+	})
+	result := ranges[:1]
+	for _, current := range ranges[1:] {
+		last := &result[len(result)-1]
+		if current.Start <= last.End {
+			if current.End > last.End {
+				last.End = current.End
+			}
+			continue
+		}
+		result = append(result, current)
+	}
+	return result
+}
+
+func semanticTopLevelBlockOwned(event parser.SemanticEvent, owned []parser.Range) bool {
+	if event.Kind == parser.SemanticFootnoteDefinition || len(owned) == 0 {
+		return false
+	}
+	start := event.Range.Start
+	index, found := slices.BinarySearchFunc(owned, start, func(range_ parser.Range, target int) int {
+		return cmp.Compare(range_.Start, target)
+	})
+	if found {
+		return start < owned[index].End
+	}
+	if index == 0 {
+		return false
+	}
+	return start < owned[index-1].End
 }
 
 func semanticCapturedChildIndex(blocks []semanticCapturedBlock) ([]int, []int) {

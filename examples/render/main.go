@@ -21,11 +21,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("parse %s: %v", fixture, err)
 	}
-	if len(os.Args) > 2 || len(os.Args) == 2 && os.Args[1] != "--map" {
-		log.Fatalf("usage: go run ./examples/render [--map]")
+	if len(os.Args) > 2 {
+		log.Fatalf("usage: go run ./examples/render [--map|--markdown]")
 	}
 	if len(os.Args) == 2 {
-		renderSourceMap(document, source)
+		switch os.Args[1] {
+		case "--map":
+			renderSourceMap(document, source)
+		case "--markdown":
+			if err := document.RenderCanonicalMarkdown(os.Stdout); err != nil {
+				log.Fatalf("render canonical Markdown %s: %v", fixture, err)
+			}
+		default:
+			log.Fatalf("usage: go run ./examples/render [--map|--markdown]")
+		}
 		return
 	}
 	if err := document.RenderHTMLDocument(os.Stdout, marksplice.DefaultHTMLDocumentOptions()); err != nil {
