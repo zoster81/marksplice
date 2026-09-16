@@ -37,9 +37,10 @@ func filterNativeFootnoteDefinitionsOutsideFences(definitions []nativeFootnoteDe
 	if len(definitions) == 0 || len(details) == 0 {
 		return definitions
 	}
+	fencedContent := nativeFencedContentRanges(details)
 	kept := definitions[:0]
 	for _, definition := range definitions {
-		if nativeFootnoteAnchorInsideFencedCode(definition.observation.Anchor, details) {
+		if nativeOffsetInsideAny(definition.observation.Anchor, fencedContent) {
 			continue
 		}
 		kept = append(kept, definition)
@@ -47,15 +48,19 @@ func filterNativeFootnoteDefinitionsOutsideFences(definitions []nativeFootnoteDe
 	return kept
 }
 
-func nativeFootnoteAnchorInsideFencedCode(anchor int, details []parser.FencedCodeDetail) bool {
+func nativeFencedContentRanges(details []parser.FencedCodeDetail) []parser.Range {
+	count := 0
 	for _, detail := range details {
-		for _, range_ := range detail.ContentRanges {
-			if anchor >= range_.Start && anchor < range_.End {
-				return true
-			}
-		}
+		count += len(detail.ContentRanges)
 	}
-	return false
+	if count == 0 {
+		return nil
+	}
+	ranges := make([]parser.Range, 0, count)
+	for _, detail := range details {
+		ranges = append(ranges, detail.ContentRanges...)
+	}
+	return normalizeNativeFootnoteClaims(ranges)
 }
 
 func scanNativeFootnoteDefinitions(source []byte) []nativeFootnoteDefinition {

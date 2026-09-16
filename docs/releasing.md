@@ -10,7 +10,7 @@ Marksplice is a Go module at:
 github.com/zoster81/marksplice
 ```
 
-The project follows Go module semantic-version conventions. During public API development, releases remain in the `v0` series and may use explicit alpha/beta/RC pre-release identifiers. A v0 or pre-release version carries no compatibility or stability guarantee.
+The project follows Go module semantic-version conventions. During public API development, releases remain in the `v0` series and may use explicit alpha/beta/RC pre-release identifiers. A v0 or pre-release version carries no compatibility or stability guarantee. Starting with v1, backward compatibility follows Semantic Versioning: compatible additions and fixes stay within v1, while an intentionally breaking public API change requires a new major version and the corresponding Go module-path decision.
 
 The first public beta version is:
 
@@ -20,7 +20,7 @@ v0.1.0-beta.1
 
 The module path intentionally has no `/vN` suffix while the major version is v0 or v1. A future v2+ release would require the corresponding major-version module-path suffix and a separate architecture/release decision.
 
-The minimum supported Go version is owned by the `go` directive in `go.mod`. The first beta targets Go 1.26 as the compatibility floor. Public CI also exercises Go 1.27.
+The minimum supported Go version is owned by the `go` directive in `go.mod`. Go 1.26 is the current compatibility floor for the v1 line. Public CI resolves the latest available patch in both the `1.26.x` compatibility line and the `1.27.x` primary line (`actions/setup-go` with `check-latest: true`). Maintainer release gates should likewise use the latest stable patch in both supported lines and record the exact compiler versions in milestone/release evidence rather than raising the public floor merely to use the newest release compiler.
 
 Published tags are immutable. Never move, delete-and-recreate, or otherwise rewrite a version that has been made available to Go tooling. Publish a new version instead.
 
@@ -47,9 +47,9 @@ Before every public release, verify that the repository contains and accurately 
 - `go.mod` and `go.sum` with the canonical module path;
 - package documentation in `doc.go`;
 - compiled package examples suitable for pkg.go.dev;
-- `README.md` installation, beta-status, and minimum-Go-version guidance;
+- `README.md` installation, current release status, and minimum-Go-version guidance;
 - Apache-2.0 `LICENSE` plus project `NOTICE`;
-- `CHANGELOG.md` with the planned beta release notes;
+- `CHANGELOG.md` with the planned release notes;
 - `SECURITY.md` with non-public vulnerability reporting guidance;
 - contributor guidance and the GFM conformance policy;
 - a public GitHub Actions workflow covering supported Go versions and major operating systems;
@@ -88,64 +88,67 @@ Before publication, test the module from a separate temporary consumer module. F
 
 The public GitHub repository and `origin` remote already exist. Ordinary development/finalization work must not create or replace remotes, push commits, create tags, or publish releases unless that action is explicitly authorized. Release preparation therefore starts from an already-configured public repository and an exact reviewed local commit.
 
-## Publishing a new beta module version
+## Publishing a module version
 
-The first public beta, `v0.1.0-beta.1`, is already published. For each later beta, after the release commit exists on the public `main` branch, wait for every GitHub Actions run associated with that exact commit to complete successfully. Do not create the release tag while any run is queued/in progress or if any run concludes unsuccessfully. This commit-level workflow gate is mandatory even when the same tree already passed the stricter local maintainer gate.
+After the exact release commit exists on the public `main` branch, wait for every GitHub Actions run associated with that exact commit to complete successfully. Do not create a release tag while any run is queued/in progress or if any run concludes unsuccessfully. This commit-level workflow gate is mandatory even when the same tree already passed the stricter local maintainer gate.
 
-Only after all workflows for the exact release commit are green, create and push an annotated immutable tag. The examples below use `v0.1.0-beta.3`; replace it with the actual new version being released:
+Only after all workflows for the exact release commit are green, create and push an annotated immutable tag. Use the actual reviewed version; the stable v1 form is:
 
 ```text
-git tag -a v0.1.0-beta.3 -m "Marksplice v0.1.0-beta.3"
-git push origin v0.1.0-beta.3
+git tag -a v1.0.0 -m "Marksplice v1.0.0"
+git push origin v1.0.0
 ```
 
-Because the public CI also runs on tag pushes, wait for every GitHub Actions run associated with the tag's target commit/ref to complete successfully before creating the GitHub pre-release or advertising the module as published. A GitHub pre-release may then be created from that exact tag using the matching `CHANGELOG.md` notes.
+For a prerelease, use its exact semantic version instead, for example `v1.0.0-rc.1`. Tagging and pushing remain separately authorized actions; release preparation alone does not authorize either operation.
+
+Because public CI also runs on tag pushes, wait for every GitHub Actions run associated with the tag's target commit/ref to complete successfully before creating a GitHub release or advertising the module as published. Mark alpha/beta/RC tags as GitHub pre-releases; publish a stable version such as `v1.0.0` as a normal release. In both cases, use the matching `CHANGELOG.md` notes.
 
 Prompt the public Go proxy to discover the version and verify that the exact tag resolves:
 
 ```text
-GOPROXY=https://proxy.golang.org go list -m github.com/zoster81/marksplice@v0.1.0-beta.3
+GOPROXY=https://proxy.golang.org go list -m github.com/zoster81/marksplice@v1.0.0
 ```
 
 On PowerShell:
 
 ```powershell
 $env:GOPROXY = 'https://proxy.golang.org'
-go list -m github.com/zoster81/marksplice@v0.1.0-beta.3
+go list -m github.com/zoster81/marksplice@v1.0.0
 ```
 
-After proxy resolution succeeds, verify the package documentation at:
+After proxy resolution succeeds, verify the matching package documentation, for example:
 
 ```text
-https://pkg.go.dev/github.com/zoster81/marksplice@v0.1.0-beta.3
+https://pkg.go.dev/github.com/zoster81/marksplice@v1.0.0
 ```
 
-Consumers can then install the beta explicitly:
+Then compile and test a clean external consumer against the published version without a `replace` directive. Consumers can select the exact version explicitly:
 
 ```text
-go get github.com/zoster81/marksplice@v0.1.0-beta.3
+go get github.com/zoster81/marksplice@v1.0.0
 ```
 
 or depend on it directly in `go.mod`:
 
 ```text
-require github.com/zoster81/marksplice v0.1.0-beta.3
+require github.com/zoster81/marksplice v1.0.0
 ```
 
-Because pre-release versions are not preferred over normal releases by default, callers should specify the beta version explicitly.
+Pre-release versions are not preferred over stable releases by default, so callers testing an alpha/beta/RC should specify that version explicitly.
 
-## Subsequent beta releases
+## Subsequent releases
 
-Use a new immutable semantic version for every published change. While the API remains under active v0 development, breaking API changes are permitted but must be called out in `CHANGELOG.md` and release notes.
+Use a new immutable semantic version for every published change. While the API remains under active v0 development, breaking API changes are permitted but must be called out in `CHANGELOG.md` and release notes. Starting with v1, compatible fixes and additions follow normal Semantic Versioning within the v1 line; an intentionally breaking public API change requires the next major version and the Go major-version module-path policy described above.
 
 Typical progression examples are:
 
 ```text
-v0.1.0-beta.1
-v0.1.0-beta.2
-v0.1.0-rc.1
-v0.1.0
-v0.2.0-beta.1
+v0.5.0-beta.1
+v1.0.0-rc.1
+v1.0.0
+v1.0.1
+v1.1.0
+v2.0.0
 ```
 
 Do not publish v1 before the M124 stability gate has deliberately reviewed the public API, compatibility policy, source-preservation guarantees, supported Go-version policy, rendering/workspace resource boundaries, and complete release-readiness evidence.

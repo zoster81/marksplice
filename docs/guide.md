@@ -93,7 +93,7 @@ See [Render canonical Markdown](recipes/render-canonical-markdown.md) or run `go
 
 HTML rendering is an explicit export path, not an implementation detail of editing. `Document.RenderHTML` streams a deterministic fragment to an `io.Writer`; `Document.HTML` returns caller-owned bytes when buffering the whole result is useful.
 
-The renderer consumes the same Native semantic walk used by M119 and does not parse Markdown syntax a second time. `HTMLRenderOptions` makes three policy boundaries explicit: raw HTML preservation versus escaping, dangerous-URL suppression versus allowance, and the published GFM tag filter. The zero value preserves parser-proven raw HTML, enables the GFM tag filter, and suppresses dangerous URL schemes.
+The renderer consumes the same Native semantic walk used by the other rendering paths and does not parse Markdown syntax a second time. `HTMLRenderOptions` makes three policy boundaries explicit: raw HTML preservation versus escaping, dangerous-URL suppression versus allowance, and the published GFM tag filter. The zero value preserves parser-proven raw HTML, enables the GFM tag filter, and suppresses dangerous URL schemes.
 
 Preserved raw HTML is not a sanitizer. Use `HTMLRawEscape` or an application-appropriate downstream sanitization boundary for untrusted input. Rendering does not fetch URLs or images, run templates, highlight code, execute fenced content, or invoke a mathematical rendering engine.
 

@@ -25,7 +25,7 @@ func main() {
 	}
 
 	headingID := findHeading(doc, "Release Plan")
-	paragraphID := findParagraph(doc, "The next beta focuses on documentation clarity.")
+	paragraphID := findParagraph(doc, "The next release focuses on documentation clarity.")
 	taskID := findUncheckedTask(doc)
 	cellID := findCell(doc, "Draft")
 
@@ -33,7 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("prepare heading rename: %v", err)
 	}
-	replaceParagraph, err := doc.PrepareReplaceParagraph(paragraphID, []byte("The next beta focuses on documentation UX and runnable examples."))
+	replaceParagraph, err := doc.PrepareReplaceParagraph(paragraphID, []byte("The next release focuses on documentation UX and runnable examples."))
 	if err != nil {
 		log.Fatalf("prepare paragraph replacement: %v", err)
 	}

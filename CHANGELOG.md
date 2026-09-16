@@ -4,8 +4,10 @@ All notable public changes to Marksplice will be documented in this file.
 
 The project uses Semantic Versioning-compatible Go module tags. Until v1, the public API is intentionally unstable and may change between beta releases.
 
-## Unreleased
+## v1.0.0 — Unreleased
 
+- Freeze the first stable Marksplice API contract without M124 public-surface reshaping, recertifying parser/source preservation, workspace bounds, semantic/HTML/source-map/canonical rendering, pathological scaling, fuzz/race behavior, dependencies, documentation, and release policy before the stable tag is cut.
+- Refresh the sole direct production dependency to `golang.org/x/text v0.42.0` while retaining the Go 1.26 compatibility floor; recertify the v1 candidate with the latest stable Go patches in the 1.26 and 1.27 lines and configure public CI to resolve the latest patch in each supported line.
 - Add the read-only `workspacefs` package for caller-authorized Markdown workspaces over `fs.FS`, with deterministic `.md`/`.markdown` scanning, cycle-safe relationship following, slash-relative document keys, finite document/byte/depth/relationship budgets, and direct reuse of the existing document graph/workspace validator.
 - Harden `workspacefs` relationship resolution around explicit URI-path semantics: normalize relative `.`/`..` only inside the supplied `fs.FS` namespace, percent-decode path components exactly once, separate query text from file lookup, preserve fragments for existing fragment resolution, and keep absolute/scheme/protocol-relative/backslash/encoded-traversal-or-separator/directory/extensionless targets outside filesystem authority.
 - Refactor `workspacefs.Follow` to one cached target-availability map plus index-based breadth-first traversal; measured 4x-document scan/follow workloads remain near-linear while reducing follow allocation bytes/counts without adding persistent caches or changing the public API.

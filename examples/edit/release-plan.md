@@ -1,6 +1,6 @@
 # Release Plan
 
-The next beta focuses on documentation clarity.
+The next release focuses on documentation clarity.
 
 ## Checklist
 

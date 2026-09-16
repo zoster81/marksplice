@@ -15,8 +15,8 @@ import (
 var referenceCaseFolder = cases.Fold()
 
 // compositeInline records syntax that owns inline children but must not hide its
-// label from later delimiter parsing. M113 initially uses it to distinguish a
-// genuinely plain emphasis child from one containing a link/image owner.
+// label from later delimiter parsing. It distinguishes a genuinely plain
+// emphasis child from one containing a link/image owner.
 type compositeInline struct {
 	kind            parser.Kind
 	segment         int
@@ -332,8 +332,8 @@ func basicReferenceDefinitions(definitions []referenceDefinitionParse) reference
 	return result
 }
 
-// ReferenceLabelKey returns the M113-native GFM normalization key for one
-// reference label: full Unicode case folding plus whitespace normalization.
+// ReferenceLabelKey returns the GFM normalization key for one reference label:
+// full Unicode case folding plus whitespace normalization.
 func ReferenceLabelKey(label string) string {
 	folded := referenceCaseFolder.String(label)
 	var normalized strings.Builder

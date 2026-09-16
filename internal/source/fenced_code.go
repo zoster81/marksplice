@@ -22,8 +22,8 @@ type FencedBlockMapping struct {
 }
 
 // FencedCodeMapping binds one supported contiguous fenced-code payload to its
-// exact source fences and content. Range retains the historical M5/M52 meaning:
-// it excludes the closing fence line terminator when a closing fence exists.
+// exact source fences and content. Range preserves the legacy contiguous-edit
+// contract by excluding the closing fence line terminator when one exists.
 type FencedCodeMapping struct {
 	Range              Range
 	ContentRange       Range
@@ -120,9 +120,9 @@ func ownedPhysicalLineEnd(input []byte, lineEnd int) int {
 }
 
 // MapFencedCode maps one supported non-empty semantic fenced-code body to the
-// historical contiguous replacement contract. Multiline bodies remain editable
-// only for an unindented opening fence. M103 also permits an unclosed block when
-// the complete semantic body is still one exact contiguous source span.
+// contiguous replacement contract. Multiline bodies remain editable only for an
+// unindented opening fence. An unclosed block is permitted when the complete
+// semantic body is still one exact contiguous source span.
 func MapFencedCode(input []byte, content Range) (FencedCodeMapping, error) {
 	if !content.Valid(len(input)) || content.Start == content.End {
 		return FencedCodeMapping{}, fmt.Errorf("%w: invalid or empty content range", ErrUnsupportedFencedCodeShape)

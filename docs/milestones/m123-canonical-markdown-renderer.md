@@ -1,6 +1,6 @@
 # M123 — Canonical Markdown Renderer
 
-Status: **complete locally on 2026-09-15; unreleased pending milestone freeze commit, push, and exact remote CI closure.**
+Status: **complete locally on 2026-09-15 and remotely closed on 2026-09-16 at `9c144656cbe68726494531eb5d0782846000906c`; unreleased as part of the v1.0 line.**
 
 ## Goal
 

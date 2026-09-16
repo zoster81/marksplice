@@ -212,7 +212,7 @@ The broad renderer/source-map checkpoint covers large input, 128-level nesting, 
 
 ## M123 — Canonical Markdown renderer
 
-**Status: complete locally on 2026-09-15; unreleased pending milestone freeze commit, push, and exact remote CI closure.**
+**Status: complete locally on 2026-09-15 and remotely closed on 2026-09-16 at `9c144656cbe68726494531eb5d0782846000906c`; unreleased as part of the v1.0 line.**
 
 **Goal:** add an explicit Markdown-to-Markdown canonical rendering path, separate from ordinary source-preserving editing.
 
@@ -242,6 +242,8 @@ Acceptance now covers semantic round-trip and byte idempotence across all 652 ap
 Profiling rejected two writer-owned superlinear algorithms and one equivalent Native semantic-ownership scan. The accepted writer appends top-level blocks, sorts once, normalizes overlay ownership once, and filters in source order; Native performs ordered ownership lookup. Representative final 64/256/1024 KiB canonical streaming measurements are approximately 11/48/217 ms on the recorded host, close to the underlying semantic walk at approximately 10–11/41–45/191 ms. The complete retained 60.8 MB corpus renders at roughly 19.8–20.2 MB/s in the recorded checkpoint. Production complexity is back within the repository-wide `gocyclo <= 15` gate.
 
 ## M124 — v1.0 stabilization, refactor, profiling, and release gate
+
+**Status: in progress since 2026-09-16.**
 
 **Goal:** freeze the first stable Marksplice contract after workspace discovery, semantic rendering, HTML, source mapping, and canonical Markdown are complete.
 

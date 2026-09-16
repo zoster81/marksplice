@@ -9,8 +9,7 @@ import (
 	"github.com/zoster81/marksplice/internal/parser"
 )
 
-// Backend implements Marksplice's frozen parser.Backend contract with the native parser.
-// Production selection remains outside this package until the M115 cutover.
+// Backend implements Marksplice's production parser.Backend contract with the native parser.
 type Backend struct{}
 
 // New returns a stateless native parser backend.

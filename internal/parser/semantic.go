@@ -14,9 +14,8 @@ const (
 	SemanticExit
 )
 
-// SemanticKind identifies renderer-oriented semantics without exposing a
-// parser AST. M118 establishes the event vocabulary; completeness is proven by
-// the following semantic-conformance milestone.
+// SemanticKind identifies the complete reviewed renderer-oriented semantic
+// vocabulary without exposing a parser AST.
 type SemanticKind uint8
 
 const (

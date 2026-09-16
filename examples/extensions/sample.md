@@ -1,3 +1,3 @@
 # Release Notes
 
-Review [[configuration]] before publishing the next beta.
+Review [[configuration]] before publishing the next release.
