@@ -2,9 +2,9 @@
 
 All notable public changes to Marksplice will be documented in this file.
 
-The project uses Semantic Versioning-compatible Go module tags. Until v1, the public API is intentionally unstable and may change between beta releases.
+The project uses Semantic Versioning-compatible Go module tags. `v1.0.0` establishes the first stable public API contract; compatible fixes and additions remain within the v1 line, while intentionally breaking public API changes require a new major version.
 
-## v1.0.0 — Unreleased
+## v1.0.0 — 2026-09-16
 
 - Freeze the first stable Marksplice API contract without M124 public-surface reshaping, recertifying parser/source preservation, workspace bounds, semantic/HTML/source-map/canonical rendering, pathological scaling, fuzz/race behavior, dependencies, documentation, and release policy before the stable tag is cut.
 - Refresh the sole direct production dependency to `golang.org/x/text v0.42.0` while retaining the Go 1.26 compatibility floor; recertify the v1 candidate with the latest stable Go patches in the 1.26 and 1.27 lines and configure public CI to resolve the latest patch in each supported line.

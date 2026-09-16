@@ -29,10 +29,10 @@ Published tags are immutable. Never move, delete-and-recreate, or otherwise rewr
 The approved post-M115 roadmap targets:
 
 - `v0.5.0-beta.1` as the pre-M116 performance beta after the dedicated parser/document-model optimization campaign meets its measured throughput/allocation gates and full correctness/conformance verification;
-- `v1.0.0` after M124 completes the full API-stability, refactor, profiling, conformance, documentation, and release-readiness gate;
+- `v1.0.0` as the first stable release after M124 completed the full API-stability, refactor, profiling, conformance, documentation, and release-readiness gate;
 - `v1.5.0` after the deferred M125–M126 PDF backend/adapter line completes its own release gate.
 
-The v0.5 line is intentionally optimization-first. `v0.5.0-beta.1` is the completed pre-M116 performance beta; any later `v0.5.0-beta.N` tag must represent a separately justified optimization/correctness iteration. M125–M126 must not delay v1.0. Reaching a milestone implementation boundary does not by itself publish a release: tags/releases are created only from the exact reviewed commit after the required local and GitHub Actions gates are green.
+The v0.5 line was intentionally optimization-first. `v0.5.0-beta.1` is the completed pre-M116 performance beta. M124 closes the first stable v1.0 line; M125–M126 remain deferred v1.5 work and must not be folded into the v1.0 release. Reaching a milestone implementation boundary does not by itself publish a release: tags/releases are created only from the exact reviewed commit after the required local and GitHub Actions gates are green.
 
 Official Go module references:
 
@@ -151,4 +151,4 @@ v1.1.0
 v2.0.0
 ```
 
-Do not publish v1 before the M124 stability gate has deliberately reviewed the public API, compatibility policy, source-preservation guarantees, supported Go-version policy, rendering/workspace resource boundaries, and complete release-readiness evidence.
+The `v1.0.0` publication boundary requires the completed M124 stability review of the public API, compatibility policy, source-preservation guarantees, supported Go-version policy, rendering/workspace resource boundaries, and complete release-readiness evidence, followed by green public CI on both the M124 freeze and the exact release-state commit.

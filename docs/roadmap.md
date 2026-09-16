@@ -9,7 +9,7 @@ This document records the planned product and engineering sequence after the Nat
 The roadmap has three explicit release horizons:
 
 - **Pre-M116 performance campaign -> `v0.5.0-beta.1`**. This beta is dedicated to parser/document-model throughput, allocation, and memory improvements before new product surface is added. Additional `v0.5.0-beta.N` iterations are allowed only when further measured optimization or correctness work justifies them.
-- **M116–M124 -> `v1.0.0`**. M124 is the v1.0 stabilization, performance, API-review, and release-readiness gate.
+- **M116–M124 -> `v1.0.0`**. Completed and released on 2026-09-16 after the M124 stabilization, performance, API-review, and release-readiness gate.
 - **M125–M126 -> `v1.5.0`**. PDF work is intentionally queued after v1.0 and must not delay the first stable release.
 
 A milestone number is an engineering boundary, not a public API version. A release is published only from an exact reviewed commit that passes the applicable local and public CI gates.
@@ -72,7 +72,7 @@ M116 is the first engineering boundary after the `v0.5.0-beta.1` performance rel
 
 ## M116 — Filesystem workspace foundation
 
-**Status: complete on 2026-08-28; unreleased.**
+**Status: complete on 2026-08-28; released in `v1.0.0` on 2026-09-16.**
 
 **Goal:** make the existing explicit multi-document graph practical for documentation already stored in a caller-authorized filesystem, without moving filesystem authority into Marksplice core.
 
@@ -94,7 +94,7 @@ The implemented `workspacefs` package provides `Scan`, `Follow`, finite `Limits`
 
 ## M117 — Filesystem resolution hardening
 
-**Status: complete on 2026-08-28; unreleased.**
+**Status: complete on 2026-08-28; released in `v1.0.0` on 2026-09-16.**
 
 **Goal:** close path and traversal ambiguity before building more features on top of filesystem discovery.
 
@@ -113,7 +113,7 @@ M117 changes no exported API and no Markdown parser semantics.
 
 ## M118 — Native semantic walk foundation
 
-**Status: complete on 2026-08-28; unreleased.**
+**Status: complete on 2026-08-28; released in `v1.0.0` on 2026-09-16.**
 
 **Goal:** add an on-demand semantic rendering projection without adding a second public AST or increasing the normal retained `Document` model merely for future rendering.
 
@@ -134,7 +134,7 @@ Profiling rejected the first broader implementation because repeated analysis/de
 
 ## M119 — Semantic completeness and conformance harness
 
-**Status: complete on 2026-08-28; unreleased.**
+**Status: complete on 2026-08-28; released in `v1.0.0` on 2026-09-16.**
 
 **Goal:** prove that the semantic walk is complete enough to support deterministic rendering before shipping a renderer API.
 
@@ -161,7 +161,7 @@ M119 changes no exported API. The exact documented-tree local freeze stack is gr
 
 ## M120 — HTML fragment renderer
 
-**Status: complete on 2026-08-29; unreleased.**
+**Status: complete on 2026-08-29; released in `v1.0.0` on 2026-09-16.**
 
 **Goal:** render a parsed Marksplice document as deterministic CommonMark/GFM-compatible HTML fragments through streaming output.
 
@@ -188,7 +188,7 @@ On the same Windows/amd64 Ryzen 9 5900X 256 KiB realistic harness used by the se
 
 ## M121 — Standalone HTML and metadata
 
-**Status: complete on 2026-08-29; unreleased.**
+**Status: complete on 2026-08-29; released in `v1.0.0` on 2026-09-16.**
 
 **Goal:** build complete standalone HTML documents on the same renderer without turning Marksplice into a site generator or template engine.
 
@@ -200,7 +200,7 @@ Focused 256 KiB measurement keeps streaming standalone output at about 41.72 MB/
 
 ## M122 — HTML source mapping
 
-**Status: complete on 2026-08-29; unreleased.**
+**Status: complete on 2026-08-29; released in `v1.0.0` on 2026-09-16.**
 
 **Goal:** optionally map Markdown source ranges to emitted HTML output ranges for editor/IDE/tooling integration.
 
@@ -212,7 +212,7 @@ The broad renderer/source-map checkpoint covers large input, 128-level nesting, 
 
 ## M123 — Canonical Markdown renderer
 
-**Status: complete locally on 2026-09-15 and remotely closed on 2026-09-16 at `9c144656cbe68726494531eb5d0782846000906c`; unreleased as part of the v1.0 line.**
+**Status: complete locally on 2026-09-15 and remotely closed on 2026-09-16 at `9c144656cbe68726494531eb5d0782846000906c`; released in `v1.0.0` on 2026-09-16.**
 
 **Goal:** add an explicit Markdown-to-Markdown canonical rendering path, separate from ordinary source-preserving editing.
 
@@ -243,7 +243,7 @@ Profiling rejected two writer-owned superlinear algorithms and one equivalent Na
 
 ## M124 — v1.0 stabilization, refactor, profiling, and release gate
 
-**Status: in progress since 2026-09-16.**
+**Status: complete and remotely closed on 2026-09-16; freeze commit `dad38c7ee6a793abce31c4f0ea7c4efe011943c7` passed the exact 7-job public CI matrix.**
 
 **Goal:** freeze the first stable Marksplice contract after workspace discovery, semantic rendering, HTML, source mapping, and canonical Markdown are complete.
 
@@ -264,7 +264,7 @@ Required work includes:
 - complete documentation UX/API-reference/example audit;
 - release notes and release-readiness verification.
 
-The v1.0 release must be cut only from the exact reviewed M124 freeze commit after its required public CI is green.
+The v1.0 release may be cut only after the exact reviewed M124 freeze commit passes public CI and the release-state commit itself passes the same public gate. Both conditions are part of the `v1.0.0` publication sequence.
 
 ## M125 — PDF backend contract (`v1.5.0` queue)
 

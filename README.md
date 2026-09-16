@@ -47,10 +47,10 @@ The document core does not crawl files or fetch URLs. `workspacefs` performs onl
 
 ## Install
 
-Marksplice requires Go 1.26 or newer. The current published beta is `v0.5.0-beta.1`:
+Marksplice requires Go 1.26 or newer. The first stable release is `v1.0.0`:
 
 ```sh
-go get github.com/zoster81/marksplice@v0.5.0-beta.1
+go get github.com/zoster81/marksplice@v1.0.0
 ```
 
 ## Try a real file
@@ -123,7 +123,7 @@ See the concise [capability matrix](docs/capabilities.md) for current boundaries
 
 ## Status
 
-Marksplice is beta software under active development. Until v1, public APIs may change between releases. The current published beta remains `v0.5.0-beta.1`; newer APIs documented on `main`, including the filesystem workspace foundation, HTML/source-mapping path, and canonical Markdown export, are unreleased until a later tag is cut. The production parser is Marksplice's native CommonMark/GFM implementation; ordinary users do not need parser internals to use the public API.
+Marksplice `v1.0.0` is the first stable release. Public API compatibility follows Semantic Versioning: compatible fixes and additions stay within the v1 line, while an intentionally breaking public API requires a new major version and the corresponding Go module-path decision. The production parser is Marksplice's native CommonMark/GFM implementation; ordinary users do not need parser internals to use the public API.
 
 ## License
 
