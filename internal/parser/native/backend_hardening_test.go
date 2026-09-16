@@ -417,6 +417,9 @@ func TestM114M104FootnoteDefinitionsRemainTopLevel(t *testing.T) {
 		{name: "bullet list", source: []byte("- [^a]: note\n")},
 		{name: "ordered list", source: []byte("1. [^a]: note\n")},
 		{name: "nested containers", source: []byte("- > [^a]: note\n")},
+		{name: "closed fenced code", source: []byte("```\n[^a]: note\n```\n")},
+		{name: "unclosed fenced code", source: []byte("```\n[^a]: note\n")},
+		{name: "fenced lookalike plus real definition", source: []byte("```\n[^fake]: code\n```\n\n[^real]: note\n"), want: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

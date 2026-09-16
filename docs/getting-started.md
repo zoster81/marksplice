@@ -185,9 +185,25 @@ go run ./examples/build
 
 It creates front matter, typed inline content, tasks, a table, and fenced shell commands.
 
-## 10. Render HTML when you need an export
+## 10. Render an explicit export when you need one
 
-Rendering is separate from editing and construction. Once you have a parsed `Document`, stream a deterministic HTML fragment to any `io.Writer`:
+Rendering is separate from source-preserving editing and new-document construction. If you explicitly want one deterministic normalized Markdown representation, stream canonical Markdown to any `io.Writer`:
+
+```go
+if err := doc.RenderCanonicalMarkdown(os.Stdout); err != nil {
+    return err
+}
+```
+
+Or collect caller-owned bytes:
+
+```go
+canonical, err := doc.CanonicalMarkdown()
+```
+
+Canonical rendering intentionally normalizes formatting only in the returned export. It leaves the immutable source snapshot untouched, preserves Native semantic meaning after reparsing, and is byte-idempotent when rendered again. Use `Prepare...` plus `ChangeSet.Apply` instead when the goal is a small edit that preserves unrelated author formatting. See [Render canonical Markdown](recipes/render-canonical-markdown.md), or run `go run ./examples/render --markdown`.
+
+For HTML output, stream a deterministic fragment to any `io.Writer`:
 
 ```go
 if err := doc.RenderHTML(os.Stdout, marksplice.DefaultHTMLRenderOptions()); err != nil {
@@ -207,7 +223,7 @@ For a complete HTML document, use `RenderHTMLDocument` with `DefaultHTMLDocument
 
 When a preview or editor needs to correlate Markdown with rendered HTML, use `HTMLWithSourceMap` or `HTMLDocumentWithSourceMap` (or their streaming `Render...WithSourceMap` forms). Each `HTMLSourceMapEntry` carries a snapshot-local Markdown byte `Range` and a byte range in that exact output. The result is semantic-event granular rather than complete coverage, so nested ranges may overlap and synthetic HTML may be unmapped.
 
-See [Render HTML](recipes/render-html.md) for fragment, standalone, metadata, safety, and source-map options. The tracked render example also supports `go run ./examples/render --map`.
+See [Render HTML](recipes/render-html.md) for fragment, standalone, metadata, safety, and source-map options. The same tracked render example uses `go run ./examples/render` for standalone HTML and `go run ./examples/render --map` for source/output correlations.
 
 ## The five names you will see most often
 
@@ -224,7 +240,7 @@ See [Render HTML](recipes/render-html.md) for fragment, standalone, metadata, sa
 ## Where to go next
 
 - [User Guide](guide.md): choose a task and find the right API family.
-- [Recipes](recipes/README.md): focused workflows for inspection, editing, creation, HTML rendering/source mapping, tables/lists/sections, filesystem workspaces, and extensions.
+- [Recipes](recipes/README.md): focused workflows for inspection, editing, creation, canonical Markdown/HTML rendering, source mapping, tables/lists/sections, filesystem workspaces, and extensions.
 - [Examples](../examples/README.md): all runnable file-based programs.
 - [API Reference](api-reference.md): exact signatures and exhaustive callable coverage.
 - [Capabilities](capabilities.md): what is supported today and where Marksplice intentionally stops.

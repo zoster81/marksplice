@@ -41,6 +41,21 @@ A valid Markdown construct can be understood internally without receiving public
 | YAML/TOML front matter | Complete recognized envelope plus safe simple fields | Replace unique simple top-level scalar value | Conservative canonical string fields | No general YAML/TOML parser or serializer |
 | HTML comments/anchors | Conservative promoted forms | Replace comment payload or quoted anchor value | No dedicated builder | Other HTML remains opaque source |
 
+## Canonical Markdown rendering
+
+A parsed `Document` can be exported as deterministic canonical Markdown without changing the source-preserving edit path or mutating its immutable source snapshot.
+
+| Capability | API | Boundary |
+| --- | --- | --- |
+| Streaming canonical output | `Document.RenderCanonicalMarkdown` | Writes one deterministic Marksplice-profile Markdown representation to caller `io.Writer`; stops on writer error |
+| Buffered canonical output | `Document.CanonicalMarkdown` | Returns caller-owned complete canonical bytes; convenient when whole-output buffering is acceptable |
+| Semantic round-trip | Both APIs | Reparsing the canonical result must reproduce the Native semantic facts used by the writer; the renderer does not introduce a second Markdown parser or AST |
+| Byte idempotence | Both APIs | Rendering an already canonical result produces the same bytes |
+| Formatting policy | One built-in profile | LF output and deterministic block/list/table/fence/reference choices; no general style/pretty-printer knobs |
+| Existing-source authority | None | Canonical output is a separate export; ordinary `Prepare...`/`ChangeSet` editing continues to preserve unrelated source bytes |
+
+Opaque code/raw payload stays data under its semantic owner. Canonical rendering performs no filesystem discovery, URL fetching, network access, command execution, templates, syntax highlighting, or mathematical-engine execution.
+
 ## HTML rendering
 
 A parsed `Document` can be rendered explicitly without changing the source-preserving edit path.
@@ -119,14 +134,14 @@ For ordinary existing-document edits:
 - candidate reparsing/proof rejects edits that would create unsupported surrounding structural changes;
 - `ComposeChanges` combines only independently compatible changes from the same snapshot.
 
-New-document construction is intentionally different: `DocumentBuilder` emits canonical LF GFM because there is no existing author formatting to preserve.
+New-document construction is intentionally different: `DocumentBuilder` emits canonical LF GFM because there is no existing author formatting to preserve. Canonical Markdown rendering is also intentionally separate: it normalizes only an explicitly requested export and never becomes the implementation path for a source-preserving edit.
 
 ## What Marksplice deliberately does not do
 
 Marksplice does not provide:
 
 - PDF rendering;
-- Markdown-to-Markdown whole-document formatting/normalization as the ordinary edit path;
+- implicit Markdown-to-Markdown whole-document formatting/normalization as the ordinary edit path; explicit canonical Markdown export is available only through `RenderCanonicalMarkdown` / `CanonicalMarkdown`;
 - hidden/implicit filesystem crawling or file loading outside an explicitly supplied `workspacefs` `fs.FS`;
 - URL fetching or network resolution;
 - command execution or embedded-language execution;

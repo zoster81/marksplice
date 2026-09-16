@@ -7,6 +7,7 @@ Recipes are short, goal-oriented paths through the public API. They assume you a
 | [Inspect a document](inspect-document.md) | you need headings, tasks, sections, fenced blocks, metadata, links, or other parsed facts | [`examples/inspect`](../../examples/inspect/) |
 | [Edit an existing document](edit-existing-document.md) | you need minimal source-preserving changes without reformatting unrelated source | [`examples/edit`](../../examples/edit/) |
 | [Create a document](create-document.md) | you are generating new Markdown from structured application data | [`examples/build`](../../examples/build/) |
+| [Render canonical Markdown](render-canonical-markdown.md) | you explicitly want one deterministic normalized Markdown representation without mutating the source snapshot | [`examples/render`](../../examples/render/) with `--markdown` |
 | [Render HTML](render-html.md) | you need deterministic fragments/standalone HTML or optional Markdown-to-output byte mapping with explicit body and metadata policy | [`examples/render`](../../examples/render/) |
 | [Lists, sections, and tables](lists-sections-tables.md) | you need hierarchy-aware queries or structural mutation | [`examples/query`](../../examples/query/) |
 | [Links and workspaces](links-workspaces.md) | you need explicit `fs.FS` discovery/following, fragments, backlinks, reachability, validation, or cross-document relationships | [`examples/workspace`](../../examples/workspace/) |

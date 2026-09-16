@@ -504,6 +504,51 @@ func TestM119UnknownAlertMarkerRemainsBlockquote(t *testing.T) {
 	}
 }
 
+func TestM123SemanticFootnoteOverlayOwnsResidualTopLevelBlocks(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("use[^2]\n\n  [^2]:\n    first paragraph\n\n    second paragraph\n")
+	events := collectSemanticEvents(t, source)
+	if hasSemanticEvent(events, parser.SemanticCodeBlock, nil) {
+		t.Fatalf("footnote-owned indented body leaked as top-level code block: %#v", events)
+	}
+	paragraphs := 0
+	inside := false
+	for _, event := range events {
+		if event.Kind == parser.SemanticFootnoteDefinition && event.Phase == parser.SemanticEnter && event.Label == "2" {
+			inside = true
+			continue
+		}
+		if event.Kind == parser.SemanticFootnoteDefinition && event.Phase == parser.SemanticExit && inside {
+			inside = false
+			continue
+		}
+		if inside && event.Kind == parser.SemanticParagraph && event.Phase == parser.SemanticEnter {
+			paragraphs++
+		}
+	}
+	if paragraphs != 2 {
+		t.Fatalf("footnote paragraphs = %d, want 2: %#v", paragraphs, events)
+	}
+}
+
+func TestM123SemanticFootnoteSyntaxInsideFencedCodeRemainsOpaque(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("```\n[^fake]: See [^fake]\n```\n\nreal[^real]\n\n[^real]: body\n")
+	events := collectSemanticEvents(t, source)
+	if hasSemanticEvent(events, parser.SemanticFootnoteDefinition, func(event parser.SemanticEvent) bool { return event.Label == "fake" }) {
+		t.Fatalf("fenced footnote-like definition leaked into semantics: %#v", events)
+	}
+	if hasSemanticEvent(events, parser.SemanticFootnoteReference, func(event parser.SemanticEvent) bool { return event.Label == "fake" }) {
+		t.Fatalf("fenced footnote-like reference leaked into semantics: %#v", events)
+	}
+	if !hasSemanticEvent(events, parser.SemanticFootnoteDefinition, func(event parser.SemanticEvent) bool { return event.Label == "real" }) ||
+		!hasSemanticEvent(events, parser.SemanticFootnoteReference, func(event parser.SemanticEvent) bool { return event.Label == "real" }) {
+		t.Fatalf("real footnote outside fence was lost: %#v", events)
+	}
+}
+
 func TestM119SemanticFootnoteDefinitionAndReferenceInPlace(t *testing.T) {
 	t.Parallel()
 

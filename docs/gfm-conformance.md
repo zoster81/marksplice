@@ -53,6 +53,8 @@ go test ./internal/parser/native -run '^TestM119PublishedCommonMarkSemanticContr
 go test ./internal/parser/native -run '^TestM119PublishedGFMSemanticContract$' -count=1
 go test ./internal/publictest -run '^TestM120PublishedCommonMarkHTMLFullProfileContract$' -count=1
 go test ./internal/publictest -run '^TestM120PublishedGFMHTMLFullProfileContract$' -count=1
+go test ./internal/rendermarkdown -run '^TestM123PublishedCommonMarkCanonicalSemanticRoundTrip$' -count=1
+go test ./internal/rendermarkdown -run '^TestM123PublishedGFMCanonicalSemanticRoundTrip$' -count=1
 ```
 
 Use the anchored exact test names shown above. `go test -run` can exit successfully after selecting zero tests, so shortened or guessed filters are not acceptable conformance evidence.
@@ -63,7 +65,9 @@ The M120 CommonMark renderer gate accounts for all 652 examples with the GFM tag
 
 The M120 GFM renderer gate accounts for all 677 published examples and enables the tag filter for the rendering-only `tagfilter` extension example. Four inherited core examples are explicit Marksplice-profile divergences: one leading empty-YAML-front-matter case and three always-enabled reviewed extended-autolink cases. Every other published-GFM example, including tables, tasks, strikethrough, autolinks, and `tagfilter`, must render byte-identically to the approved expected HTML. These profile exceptions are named in the permanent test and are not a wildcard mismatch allowance.
 
-Parser and renderer conformance remain separate responsibilities. `tagfilter` is not parser syntax and therefore still does not enter the 676-case M115 parser-neutral fixture; its renderer behavior is nevertheless mandatory and covered by M120.
+Parser and renderer conformance remain separate responsibilities. `tagfilter` is not parser syntax and therefore still does not enter the 676-case M115 parser-neutral fixture; its HTML behavior is nevertheless mandatory and covered by M120.
+
+M123 adds a separate canonical-Markdown contract over the same approved external snapshots. Every one of the 652 CommonMark examples and 677 published-GFM examples is rendered canonically, reparsed through Native, compared for reviewed semantic facts, rendered a second time, and required to be byte-identical to the first canonical result. This is a semantic/idempotence oracle rather than byte equality with the specification's original Markdown spelling: normalization is the purpose of the M123 export. The gate uses no per-example mismatch allowlist.
 
 ## Updating normative snapshots or observation fixtures
 
@@ -100,7 +104,9 @@ Historical M111–M114 records document the staged parser-substitution work and 
 
 ## Rendering boundary
 
-Semantic Markdown parsing and HTML rendering are separate responsibilities. M118–M119 provide the internal on-demand semantic walk; M120 exposes deterministic HTML-fragment rendering through `Document.RenderHTML` and `Document.HTML` without adding a second Markdown parser or retained renderer AST. M121 wraps that exact body renderer in deterministic standalone document markup; it does not alter Markdown parsing or the expected-HTML conformance oracle. M122 adds optional source-to-output correlation around those same renderer paths. Under identical rendering options, mapped fragment output must be byte-identical to ordinary M120 fragment output and mapped standalone output must be byte-identical to ordinary M121 standalone output. Source-map ranges are correlation metadata, not a new HTML oracle, grammar, or conformance mode.
+Semantic Markdown parsing and rendering are separate responsibilities. M118–M119 provide the internal on-demand semantic walk; M120 exposes deterministic HTML-fragment rendering through `Document.RenderHTML` and `Document.HTML` without adding a second Markdown parser or retained renderer AST. M121 wraps that exact body renderer in deterministic standalone document markup; it does not alter Markdown parsing or the expected-HTML conformance oracle. M122 adds optional source-to-output correlation around those same HTML renderer paths. Under identical rendering options, mapped fragment output must be byte-identical to ordinary M120 fragment output and mapped standalone output must be byte-identical to ordinary M121 standalone output. Source-map ranges are correlation metadata, not a new HTML oracle, grammar, or conformance mode.
+
+M123 exposes deterministic canonical Markdown through `Document.RenderCanonicalMarkdown` and `Document.CanonicalMarkdown`. `internal/rendermarkdown` consumes semantic events and owns no independent syntax parser. Canonical output is accepted by semantic reparse equivalence and byte idempotence, not by matching the source spelling or by mechanically snapshotting current renderer output. Ordinary source-preserving edits remain outside this whole-document export path.
 
 Renderer conformance uses the specification's expected HTML as normative evidence where applicable rather than treating Native, semantic-walk, or source-map output as its own oracle. The permanent full-profile gates above account for every official CommonMark 0.31.2 and published-GFM example and encode the small deliberate Marksplice-profile divergence sets explicitly. GFM `tagfilter` is mandatory renderer evidence even though it remains outside parser-neutral conformance.
 
