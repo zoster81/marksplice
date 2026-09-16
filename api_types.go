@@ -72,6 +72,7 @@ type Heading struct {
 	sourceRange Range
 	level       int
 	style       HeadingStyle
+	text        string
 }
 
 // ID returns the heading's snapshot-scoped node identity.
@@ -93,6 +94,12 @@ func (h Heading) Level() int {
 // Style returns whether the heading uses ATX or Setext source syntax.
 func (h Heading) Style() HeadingStyle {
 	return h.style
+}
+
+// Text returns the parser-derived semantic heading text.
+// Inline Markdown syntax is interpreted rather than returned as authored source.
+func (h Heading) Text() string {
+	return h.text
 }
 
 // ListItem is immutable typed detail for one promoted single-line list item.

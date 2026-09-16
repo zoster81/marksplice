@@ -50,6 +50,112 @@ func testPublicYAMLFrontMatterFieldPreservesSource(t *testing.T) {
 	assertReplacementPreservesOutsideRange(t, source, got, want, detail.Range(), []byte("new title"))
 }
 
+func TestPublicFrontMatterVariableLengthReplacementPreservesSource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		source      []byte
+		replacement []byte
+		want        []byte
+		format      marksplice.FrontMatterFormat
+	}{
+		{
+			name:        "YAML shorter LF",
+			source:      []byte("---\ntitle: 'old title'  # keep\ncount: 2\n---\n\nbody\n"),
+			replacement: []byte("short"),
+			want:        []byte("---\ntitle: 'short'  # keep\ncount: 2\n---\n\nbody\n"),
+			format:      marksplice.FrontMatterFormatYAML,
+		},
+		{
+			name:        "YAML longer CRLF",
+			source:      []byte("---\r\ntitle: 'old'  # keep\r\ncount: 2\r\n---\r\n\r\nbody\r\n"),
+			replacement: []byte("a much longer title"),
+			want:        []byte("---\r\ntitle: 'a much longer title'  # keep\r\ncount: 2\r\n---\r\n\r\nbody\r\n"),
+			format:      marksplice.FrontMatterFormatYAML,
+		},
+		{
+			name:        "TOML shorter CRLF",
+			source:      []byte("+++\r\ntitle = \"old title\"   # keep\r\nenabled = true\r\n+++\r\n\r\nbody\r\n"),
+			replacement: []byte("short"),
+			want:        []byte("+++\r\ntitle = \"short\"   # keep\r\nenabled = true\r\n+++\r\n\r\nbody\r\n"),
+			format:      marksplice.FrontMatterFormatTOML,
+		},
+		{
+			name:        "TOML Unicode positive byte delta LF",
+			source:      []byte("+++\ntitle = \"old\" # keep\nenabled = true\n+++\n\nbody\n"),
+			replacement: []byte("東京"),
+			want:        []byte("+++\ntitle = \"東京\" # keep\nenabled = true\n+++\n\nbody\n"),
+			format:      marksplice.FrontMatterFormatTOML,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			doc, err := marksplice.Parse(test.source)
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			var node marksplice.Node
+			var detail marksplice.FrontMatterField
+			for _, candidate := range doc.Nodes() {
+				if candidate.Kind() != marksplice.KindFrontMatterField {
+					continue
+				}
+				field, ok := doc.FrontMatterField(candidate.ID())
+				if ok && field.Key() == "title" {
+					node = candidate
+					detail = field
+					break
+				}
+			}
+			if node.ID().String() == "" {
+				t.Fatal("title front-matter field not found")
+			}
+			if detail.Format() != test.format {
+				t.Fatalf("FrontMatterField.Format() = %v, want %v", detail.Format(), test.format)
+			}
+
+			change, err := doc.PrepareReplaceFrontMatterValue(node.ID(), test.replacement)
+			if err != nil {
+				t.Fatalf("PrepareReplaceFrontMatterValue() error = %v", err)
+			}
+			got, err := change.Apply(test.source)
+			if err != nil {
+				t.Fatalf("Apply() error = %v", err)
+			}
+			assertReplacementPreservesOutsideRange(t, test.source, got, test.want, detail.Range(), test.replacement)
+
+			reparsed, err := marksplice.Parse(got)
+			if err != nil {
+				t.Fatalf("Parse(applied) error = %v", err)
+			}
+			frontMatter, ok := reparsed.FrontMatter()
+			if !ok || frontMatter.Format() != test.format {
+				t.Fatalf("FrontMatter(applied) = %+v/%v, want format %v", frontMatter, ok, test.format)
+			}
+		})
+	}
+
+	source := []byte("---\ntitle: old title\n---\n\nbody\n")
+	doc, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatalf("Parse(stale source fixture) error = %v", err)
+	}
+	field := findNodeOfKind(t, doc, marksplice.KindFrontMatterField)
+	change, err := doc.PrepareReplaceFrontMatterValue(field.ID(), []byte("short"))
+	if err != nil {
+		t.Fatalf("PrepareReplaceFrontMatterValue(stale source fixture) error = %v", err)
+	}
+	stale := append([]byte(nil), source...)
+	stale[len(stale)-2] = 'X'
+	if _, err := change.Apply(stale); !errors.Is(err, marksplice.ErrSourceConflict) {
+		t.Fatalf("Apply(stale source) error = %v, want ErrSourceConflict", err)
+	}
+}
+
 func testPublicTOMLFrontMatterFieldPreservesSource(t *testing.T) {
 	t.Parallel()
 

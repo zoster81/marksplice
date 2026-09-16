@@ -1141,6 +1141,14 @@ func (d *Document) PrepareRenameHeading(id NodeID, replacement []byte) (ChangeSe
 
 PrepareRenameHeading prepares a source-preserving rename of promoted heading content.
 
+#### `PrepareReplaceAlertBody`
+
+```go
+func (d *Document) PrepareReplaceAlertBody(id NodeID, replacement []byte) (ChangeSet, error)
+```
+
+PrepareReplaceAlertBody replaces all body lines after the alert marker when those lines share one source-proven blockquote marker prefix and EOL style.
+
 #### `PrepareReplaceAutoLink`
 
 ```go
@@ -1148,6 +1156,14 @@ func (d *Document) PrepareReplaceAutoLink(id NodeID, replacement []byte) (Change
 ```
 
 PrepareReplaceAutoLink prepares a source-preserving replacement of a promoted GFM autolink token.
+
+#### `PrepareReplaceBlockquoteContent`
+
+```go
+func (d *Document) PrepareReplaceBlockquoteContent(id NodeID, replacement []byte) (ChangeSet, error)
+```
+
+PrepareReplaceBlockquoteContent replaces the complete inner content of one promoted non-alert blockquote when its physical lines share one source-proven marker prefix and line-ending style.
 
 #### `PrepareReplaceCodeSpan`
 
@@ -1171,7 +1187,7 @@ PrepareReplaceEmphasis prepares a source-preserving replacement of promoted emph
 func (d *Document) PrepareReplaceFencedCode(id NodeID, replacement []byte) (ChangeSet, error)
 ```
 
-PrepareReplaceFencedCode prepares a source-preserving replacement of promoted fenced-code content.
+PrepareReplaceFencedCode prepares a source-preserving replacement of promoted fenced-code content. It can also populate a source-proven empty closed fenced block while preserving its fence trivia.
 
 #### `PrepareReplaceFootnoteDefinitionBody`
 
@@ -1206,6 +1222,14 @@ func (d *Document) PrepareReplaceHTMLComment(id NodeID, replacement []byte) (Cha
 
 PrepareReplaceHTMLComment prepares a source-preserving replacement of a promoted HTML comment payload.
 
+#### `PrepareReplaceImageAlt`
+
+```go
+func (d *Document) PrepareReplaceImageAlt(id NodeID, replacement []byte) (ChangeSet, error)
+```
+
+PrepareReplaceImageAlt prepares a source-preserving replacement of a promoted simple inline-image alt payload.
+
 #### `PrepareReplaceImageDestination`
 
 ```go
@@ -1214,6 +1238,14 @@ func (d *Document) PrepareReplaceImageDestination(id NodeID, replacement []byte)
 
 PrepareReplaceImageDestination prepares a source-preserving replacement of a promoted image destination.
 
+#### `PrepareReplaceImageTitle`
+
+```go
+func (d *Document) PrepareReplaceImageTitle(id NodeID, replacement []byte) (ChangeSet, error)
+```
+
+PrepareReplaceImageTitle prepares a source-preserving replacement of an existing promoted simple inline-image title payload.
+
 #### `PrepareReplaceInlineLinkDestination`
 
 ```go
@@ -1221,6 +1253,22 @@ func (d *Document) PrepareReplaceInlineLinkDestination(id NodeID, replacement []
 ```
 
 PrepareReplaceInlineLinkDestination prepares a source-preserving replacement of a promoted inline-link destination.
+
+#### `PrepareReplaceInlineLinkLabel`
+
+```go
+func (d *Document) PrepareReplaceInlineLinkLabel(id NodeID, replacement []byte) (ChangeSet, error)
+```
+
+PrepareReplaceInlineLinkLabel prepares a source-preserving replacement of a promoted simple inline-link label payload.
+
+#### `PrepareReplaceInlineLinkTitle`
+
+```go
+func (d *Document) PrepareReplaceInlineLinkTitle(id NodeID, replacement []byte) (ChangeSet, error)
+```
+
+PrepareReplaceInlineLinkTitle prepares a source-preserving replacement of an existing promoted simple inline-link title payload.
 
 #### `PrepareReplaceListItem`
 
@@ -1318,6 +1366,22 @@ func (d *Document) PrepareReplaceTableRow(id NodeID, replacement []byte) (Change
 ```
 
 PrepareReplaceTableRow prepares source-preserving replacement of one complete promoted GFM table body row.
+
+#### `PrepareSetAlertKind`
+
+```go
+func (d *Document) PrepareSetAlertKind(id NodeID, kind AlertKind) (ChangeSet, error)
+```
+
+PrepareSetAlertKind changes the reviewed GitHub alert kind while preserving the blockquote marker prefix, body source, spacing, and line endings.
+
+#### `PrepareSetFencedBlockInfo`
+
+```go
+func (d *Document) PrepareSetFencedBlockInfo(id NodeID, info []byte) (ChangeSet, error)
+```
+
+PrepareSetFencedBlockInfo prepares a source-preserving set, replacement, or clear of the parser-proven info string on one source-proven top-level fenced block.
 
 #### `PrepareSetTableAlignments`
 
@@ -2558,6 +2622,14 @@ func (h Heading) Style() HeadingStyle
 ```
 
 Style returns whether the heading uses ATX or Setext source syntax.
+
+#### `Text`
+
+```go
+func (h Heading) Text() string
+```
+
+Text returns the parser-derived semantic heading text. Inline Markdown syntax is interpreted rather than returned as authored source.
 
 ### `HeadingAnchor` methods
 

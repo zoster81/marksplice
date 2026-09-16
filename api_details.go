@@ -28,6 +28,7 @@ func (d *Document) Heading(id NodeID) (Heading, bool) {
 		sourceRange: Range{Start: node.ContentRange.Start, End: node.ContentRange.End},
 		level:       node.Level,
 		style:       style,
+		text:        node.HeadingText,
 	}, true
 }
 

@@ -47,11 +47,7 @@ func main() {
 		if !ok {
 			continue
 		}
-		text, ok := doc.SourceRange(heading.Range())
-		if !ok {
-			log.Fatalf("read heading %s", heading.ID())
-		}
-		fmt.Printf("heading level=%d text=%s\n", section.Level(), text)
+		fmt.Printf("heading level=%d text=%s\n", section.Level(), heading.Text())
 	}
 
 	for _, block := range doc.FencedBlocks() {

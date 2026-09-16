@@ -35,8 +35,7 @@ for _, node := range doc.Nodes() {
     switch node.Kind() {
     case marksplice.KindHeading:
         heading, _ := doc.Heading(node.ID())
-        text, _ := doc.SourceRange(heading.Range())
-        fmt.Printf("h%d %s\n", heading.Level(), text)
+        fmt.Printf("h%d %s\n", heading.Level(), heading.Text())
     case marksplice.KindTask:
         task, _ := doc.Task(node.ID())
         fmt.Printf("checked=%t\n", task.Checked())
@@ -44,7 +43,7 @@ for _, node := range doc.Nodes() {
 }
 ```
 
-The typed accessor is important: a generic `Node` is intentionally small, while `Heading`, `Task`, `TableCell`, and other typed values expose the facts that are valid for that family.
+The typed accessor is important: a generic `Node` is intentionally small, while `Heading`, `Task`, `TableCell`, and other typed values expose the facts that are valid for that family. `Heading.Text()` is parser-derived semantic text; use `Heading.Range()` plus `SourceRange` only when you need the exact authored heading-content bytes.
 
 ## Use higher-level views when the question is higher-level
 
@@ -68,7 +67,7 @@ Useful higher-level APIs include:
 - `HeadingAnchors()` and `ResolveFragment()` for navigation;
 - `LinkRelationships()` for semantic outgoing relationships.
 
-Broader read access does not automatically mean broader edit access. For example, `FencedBlock` can describe empty or non-contiguous bodies that the narrower `FencedCode` replacement contract does not authorize for generic payload editing.
+Broader read access does not automatically mean broader edit access. For example, `FencedBlock` can describe non-contiguous payloads that remain read-only. Source-proven top-level fenced blocks do support info-string mutation, and an empty closed block can be populated only through the explicitly validated `PrepareReplaceFencedCode` path.
 
 ## Read source through ranges
 

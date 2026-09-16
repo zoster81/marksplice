@@ -38,7 +38,7 @@ Do not use the builder to round-trip an existing document when your goal is a sm
 The public API exposes several levels of detail:
 
 - `Nodes()` gives source-ordered promoted structural summaries.
-- Typed accessors such as `Heading`, `Task`, `TableCell`, `FencedCode`, `InlineLink`, and `ReferenceDefinition` expose operation-specific detail.
+- Typed accessors such as `Heading`, `Task`, `TableCell`, `FencedCode`, `InlineLink`, and `ReferenceDefinition` expose operation-specific detail; `Heading.Text()` provides parser-derived semantic heading text while `Heading.Range()` retains exact authored source ownership.
 - Higher-level views such as `Sections`, `FencedBlocks`, `Alerts`, `MathExpressions`, `FootnoteDefinitions`, and `FrontMatter` expose reviewed semantics that do not always imply mutation authority.
 - `QueryNodes` and `QuerySections` provide bounded structural selection.
 - `HeadingAnchors`, `ResolveFragment`, and `LinkRelationships` provide navigation and relationship intelligence.
@@ -49,7 +49,8 @@ A public `Range` always means exactly what the accessor documents. Marksplice in
 
 Most mutation APIs are named `Prepare...`. Typical families include:
 
-- paragraph, heading, task, fenced-code, inline, link/image/autolink, reference-definition, front-matter, HTML, footnote, math, and table-cell replacements;
+- paragraph, heading, task, fenced-code/info, inline, direct-link/image/autolink, reference-definition, front-matter, HTML, footnote, math, and table-cell replacements;
+- source-proven blockquote content replacement and GitHub alert kind/body mutation for uniform marker/EOL forms;
 - section replacement/removal/insertion/movement/child append;
 - list-item content/subtree replacement, removal, sibling insertion/movement, and child append;
 - table row, alignment, and complete-column operations;

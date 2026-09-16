@@ -100,7 +100,7 @@ func validateFrontMatterReplacement(candidate []byte, target Node, original fron
 		return ErrInvalidReplacement
 	}
 	delta := replacementLength - (target.ContentRange.End - target.ContentRange.Start)
-	if mapping.ClosingRange != shiftedEnd(original.ClosingRange, delta) {
+	if mapping.ClosingRange != shiftedRange(original.ClosingRange, delta) {
 		return ErrInvalidReplacement
 	}
 	for _, field := range mapping.Fields {

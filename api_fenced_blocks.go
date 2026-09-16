@@ -149,6 +149,23 @@ func (d *Document) FencedBlockContentRanges(id NodeID) ([]Range, bool) {
 	return publicRanges(mapping.ContentRanges), true
 }
 
+func (d *Document) sourceProvenFencedBlock(id NodeID) error {
+	if d == nil || d.document == nil {
+		return ErrNodeNotFound
+	}
+	node, ok := d.internalNode(id)
+	if !ok {
+		return ErrNodeNotFound
+	}
+	if node.Kind != splice.KindFencedCode || !node.TopLevel {
+		return ErrInvalidTargetKind
+	}
+	if _, ok := publicFencedBlock(d.document, node); !ok {
+		return ErrInvalidTargetKind
+	}
+	return nil
+}
+
 func publicFencedBlock(document *splice.Document, node splice.Node) (FencedBlock, bool) {
 	if document == nil || node.Kind != splice.KindFencedCode || !node.TopLevel {
 		return FencedBlock{}, false

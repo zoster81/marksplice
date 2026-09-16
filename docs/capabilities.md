@@ -19,23 +19,23 @@ A valid Markdown construct can be understood internally without receiving public
 | Family | Read | Edit existing source | Create new source | Important boundary |
 | --- | --- | --- | --- | --- |
 | Paragraphs | Yes | Replace promoted top-level content | Yes | Container paragraphs are not automatically promoted |
-| ATX headings | Yes | Rename content, preserving source style | Yes | Builder uses canonical ATX headings |
-| Setext headings | Yes | Rename content, preserving underline/style | No dedicated Setext builder | Existing Setext source remains preserved |
+| ATX headings | Yes, including parser-derived semantic text via `Heading.Text()` | Rename content, preserving source style | Yes | Builder uses canonical ATX headings; level mutation is not yet public |
+| Setext headings | Yes, including parser-derived semantic text via `Heading.Text()` | Rename content, preserving underline/style | No dedicated Setext builder | Existing Setext source remains preserved; level mutation is not yet public |
 | Sections | Yes, derived from headings | Body/subtree replace, remove, sibling insert/move, direct-child append | Via headings/blocks | Section identity is the governing heading ID |
 | Ordered/unordered lists | Yes for reviewed items/hierarchy | Content/subtree replace, remove, sibling insert/move, child append | Flat and reviewed homogeneous nesting | Structural edits require complete supported subtree ownership |
 | Task lists | Yes | Toggle state plus list structural operations | Flat/nested ordered and unordered | State edit owns only the task marker byte |
-| Fenced blocks | Complete top-level read view | Payload replacement only through narrower editable `FencedCode` shapes | Yes, including empty payload | Embedded language is opaque data; no execution/rendering |
+| Fenced blocks | Complete top-level read view | Payload replacement, safe population of source-proven empty closed blocks, and info-string set/replace/clear | Yes, including empty payload | Fence character/length, indentation, closing style, and unrelated source are preserved; embedded language remains opaque data |
 | GFM tables | Table/row/cell/alignments | Cell, row, alignment, and complete-column operations | Yes, including zero body rows | Column edits require complete table mapping |
 | Code spans | Reviewed simple spans | Replace payload | Typed/raw construction | Ambiguous shapes fail closed |
 | Emphasis / strong / strikethrough | Reviewed simple spans | Replace promoted payload | Typed/raw reviewed nesting | Existing-source compound shapes remain conservative |
-| Direct links | Reviewed simple edit view plus broader semantic relationships | Replace promoted destination | Typed direct links with optional title | Relationship visibility can be broader than editability |
-| Images | Reviewed simple edit view plus broader semantic relationships | Replace promoted destination | Typed direct images with optional title | Same relationship/edit split as links |
+| Direct links | Reviewed simple edit view plus broader semantic relationships | Replace promoted destination, label payload, and existing title payload | Typed direct links with optional title | Adding/removing title presence is not yet an existing-source operation |
+| Images | Reviewed simple edit view plus broader semantic relationships | Replace promoted destination, alt payload, and existing title payload | Typed direct images with optional title | Adding/removing title presence is not yet an existing-source operation |
 | Reference definitions | Reviewed promoted definitions | Replace destination/title; conservative complete-line removal | Immediate/deferred definitions | Valid unpromoted definitions can still resolve relationships |
 | Reference links/images | Semantic relationship read | No generic existing-source reference-link/image edit | Full prior/forward and normalized collapsed/shortcut construction | Existing-source relationship read does not imply mutation authority |
 | Autolinks | Yes | Replace supported token | Angle and parser-proven bare/extended construction | Exact token must remain a proven autolink |
 | Thematic breaks | Promoted top-level line | Remove complete owned line | Yes | Removal validates surviving Markdown |
-| Blockquotes | Complete promoted top-level containers plus per-line content ranges | Remove complete promoted container | Single/multi-block reviewed forms, bounded nesting | Nested internal blockquotes do not receive separate top-level identities |
-| GitHub alerts | Semantic overlay on promoted blockquotes | No alert-specific rewrite API | `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION` | Reuses blockquote identity/ownership |
+| Blockquotes | Complete promoted top-level containers plus per-line content ranges | Remove complete promoted container; replace complete content for uniform source-proven marker/EOL forms | Single/multi-block reviewed forms, bounded nesting | Lazy or mixed-prefix content replacement fails closed; alert-shaped blockquotes use alert-specific mutation |
+| GitHub alerts | Semantic overlay on promoted blockquotes | Change alert kind and replace body for source-proven supported forms | `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION` | Reuses blockquote identity/ownership; mixed/lazy body prefixes fail closed |
 | Footnotes | Definitions, body ranges, references | Simple body replace; coordinated definition/reference rename | Immediate/deferred definitions and typed references | Exact case-sensitive contract; multiline bodies are broader read-only data |
 | Mathematical expressions | Reviewed inline/block/fenced forms | Replace proven payload | Reviewed typed/block forms; fenced `math` via fenced code | Payload is opaque; no LaTeX/Math renderer |
 | YAML/TOML front matter | Complete recognized envelope plus safe simple fields | Replace unique simple top-level scalar value | Conservative canonical string fields | No general YAML/TOML parser or serializer |
@@ -84,6 +84,7 @@ Front matter and reference-definition declarations are source/semantic metadata 
 | --- | --- | --- |
 | Bounded node queries | `QueryNodes` | Positive result limit required; source ordered; no persistent query index |
 | Bounded section queries | `QuerySections` | Positive limit; optional level/range filters |
+| Heading semantic text | `Heading.Text` | Parser-derived human text without exposing parser-internal AST types |
 | Heading anchors | `HeadingAnchors`, `HeadingAnchor` | GitHub-compatible derivation with duplicate handling |
 | Fragment resolution | `ResolveFragment`, `ValidateFragment` | Heading-derived and supported explicit HTML anchors |
 | TOC generation | `GenerateTOC` | Deterministic from current section hierarchy |

@@ -43,9 +43,11 @@ Common scalar/content edits include:
 - `PrepareRenameHeading`
 - `PrepareReplaceParagraph`
 - `PrepareSetTaskChecked`
-- `PrepareReplaceFencedCode`
+- `PrepareReplaceFencedCode`, `PrepareSetFencedBlockInfo`
+- `PrepareReplaceBlockquoteContent`, `PrepareSetAlertKind`, `PrepareReplaceAlertBody`
 - `PrepareReplaceCodeSpan`, `PrepareReplaceEmphasis`, `PrepareReplaceStrong`, `PrepareReplaceStrikethrough`
-- `PrepareReplaceInlineLinkDestination`, `PrepareReplaceImageDestination`, `PrepareReplaceAutoLink`
+- `PrepareReplaceInlineLinkDestination`, `PrepareReplaceInlineLinkLabel`, `PrepareReplaceInlineLinkTitle`
+- `PrepareReplaceImageDestination`, `PrepareReplaceImageAlt`, `PrepareReplaceImageTitle`, `PrepareReplaceAutoLink`
 - `PrepareReplaceReferenceDefinitionDestination`, `PrepareReplaceReferenceDefinitionTitle`
 - `PrepareReplaceFrontMatterValue`
 - `PrepareReplaceHTMLComment`, `PrepareReplaceHTMLAnchor`
@@ -53,7 +55,7 @@ Common scalar/content edits include:
 - `PrepareReplaceMathExpression`
 - `PrepareReplaceTableCell`
 
-Marksplice keeps syntax outside the operation-owned range untouched. A heading rename, for example, does not replace the whole heading line just to change its text.
+Marksplice keeps syntax outside the operation-owned range untouched. A heading rename, for example, does not replace the whole heading line just to change its text. Direct-link/image title replacement currently targets only an existing title payload; adding or removing title presence remains outside that operation family. Blockquote/alert content replacement is available only when the existing physical lines prove one uniform marker-prefix and line-ending profile; lazy or mixed-prefix forms fail closed.
 
 ## Combine independent edits
 

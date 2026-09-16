@@ -82,9 +82,12 @@ func (d *Document) PrepareReplaceTableCell(id NodeID, replacement []byte) (Chang
 
 // PrepareReplaceFencedCode prepares a source-preserving replacement of one supported fenced code block's content.
 func (d *Document) PrepareReplaceFencedCode(id NodeID, replacement []byte) (ChangeSet, error) {
-	target, err := d.editableTargetNode(id, KindFencedCode, "fenced code")
+	target, err := d.targetNode(id, KindFencedCode)
 	if err != nil {
 		return ChangeSet{}, err
+	}
+	if !target.Editable {
+		return d.preparePopulateEmptyFencedBlock(target, replacement)
 	}
 	if change, ok := d.unchangedRangeChange(target.ContentRange, replacement); ok {
 		return change, nil

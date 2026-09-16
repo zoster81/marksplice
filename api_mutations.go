@@ -48,6 +48,44 @@ func (d *Document) PrepareRemoveBlockquote(id NodeID) (ChangeSet, error) {
 	return publicChangeSet(d.document.PrepareRemoveBlockquote(internalNodeID(id)))
 }
 
+// PrepareReplaceBlockquoteContent replaces the complete inner content of one
+// promoted non-alert blockquote when its physical lines share one source-proven
+// marker prefix and line-ending style.
+func (d *Document) PrepareReplaceBlockquoteContent(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindBlockquote, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceBlockquoteContent(internalNodeID(id), replacement))
+}
+
+// PrepareSetAlertKind changes the reviewed GitHub alert kind while preserving
+// the blockquote marker prefix, body source, spacing, and line endings.
+func (d *Document) PrepareSetAlertKind(id NodeID, kind AlertKind) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindBlockquote, true); err != nil {
+		return ChangeSet{}, err
+	}
+	if _, ok := d.Alert(id); !ok {
+		return ChangeSet{}, ErrInvalidTargetKind
+	}
+	marker, ok := alertMarker(kind)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return publicChangeSet(d.document.PrepareSetAlertMarker(internalNodeID(id), []byte(marker)))
+}
+
+// PrepareReplaceAlertBody replaces all body lines after the alert marker when
+// those lines share one source-proven blockquote marker prefix and EOL style.
+func (d *Document) PrepareReplaceAlertBody(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindBlockquote, true); err != nil {
+		return ChangeSet{}, err
+	}
+	if _, ok := d.Alert(id); !ok {
+		return ChangeSet{}, ErrInvalidTargetKind
+	}
+	return publicChangeSet(d.document.PrepareReplaceAlertBody(internalNodeID(id), replacement))
+}
+
 // PrepareRemoveSection prepares source-preserving removal of one complete promoted section subtree.
 func (d *Document) PrepareRemoveSection(headingID NodeID) (ChangeSet, error) {
 	if _, err := d.promotedNode(headingID, splice.KindHeading, true); err != nil {
@@ -323,11 +361,21 @@ func (d *Document) PrepareReplaceTableCell(id NodeID, replacement []byte) (Chang
 }
 
 // PrepareReplaceFencedCode prepares a source-preserving replacement of promoted fenced-code content.
+// It also populates a source-proven empty closed fenced block while preserving its fence trivia.
 func (d *Document) PrepareReplaceFencedCode(id NodeID, replacement []byte) (ChangeSet, error) {
-	if _, err := d.promotedNode(id, splice.KindFencedCode, false); err != nil {
+	if err := d.sourceProvenFencedBlock(id); err != nil {
 		return ChangeSet{}, err
 	}
 	return publicChangeSet(d.document.PrepareReplaceFencedCode(internalNodeID(id), replacement))
+}
+
+// PrepareSetFencedBlockInfo prepares a source-preserving set, replacement, or clear
+// of the parser-proven info string on one source-proven top-level fenced block.
+func (d *Document) PrepareSetFencedBlockInfo(id NodeID, info []byte) (ChangeSet, error) {
+	if err := d.sourceProvenFencedBlock(id); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareSetFencedBlockInfo(internalNodeID(id), info))
 }
 
 // PrepareReplaceStrikethrough prepares a source-preserving replacement of promoted strikethrough content.
@@ -370,12 +418,44 @@ func (d *Document) PrepareReplaceInlineLinkDestination(id NodeID, replacement []
 	return publicChangeSet(d.document.PrepareReplaceInlineLinkDestination(internalNodeID(id), replacement))
 }
 
+// PrepareReplaceInlineLinkLabel prepares a source-preserving replacement of a promoted simple inline-link label payload.
+func (d *Document) PrepareReplaceInlineLinkLabel(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindInlineLink, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceInlineLinkLabel(internalNodeID(id), replacement))
+}
+
+// PrepareReplaceInlineLinkTitle prepares a source-preserving replacement of an existing promoted simple inline-link title payload.
+func (d *Document) PrepareReplaceInlineLinkTitle(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindInlineLink, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceInlineLinkTitle(internalNodeID(id), replacement))
+}
+
 // PrepareReplaceImageDestination prepares a source-preserving replacement of a promoted image destination.
 func (d *Document) PrepareReplaceImageDestination(id NodeID, replacement []byte) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindImage, false); err != nil {
 		return ChangeSet{}, err
 	}
 	return publicChangeSet(d.document.PrepareReplaceImageDestination(internalNodeID(id), replacement))
+}
+
+// PrepareReplaceImageAlt prepares a source-preserving replacement of a promoted simple inline-image alt payload.
+func (d *Document) PrepareReplaceImageAlt(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindImage, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceImageAlt(internalNodeID(id), replacement))
+}
+
+// PrepareReplaceImageTitle prepares a source-preserving replacement of an existing promoted simple inline-image title payload.
+func (d *Document) PrepareReplaceImageTitle(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindImage, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceImageTitle(internalNodeID(id), replacement))
 }
 
 // PrepareReplaceFootnoteDefinitionBody prepares a source-preserving replacement
