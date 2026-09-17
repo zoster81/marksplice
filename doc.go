@@ -1,8 +1,8 @@
 // Package marksplice provides structured GitHub Flavored Markdown creation and source-preserving manipulation.
 //
-// Marksplice is currently pre-v1 beta software under active development. Public
-// APIs may change incompatibly between v0 releases until a stable v1 contract is
-// explicitly published.
+// Marksplice has a stable v1 public API contract. Compatible fixes and additions
+// remain within the v1 line; intentionally breaking public API changes require a
+// new major version.
 //
 // Marksplice exposes reviewed new-document construction, snapshot-scoped structural
 // views, copied bounded source reads, and named source-preserving mutations while

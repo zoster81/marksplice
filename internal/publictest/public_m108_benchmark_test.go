@@ -150,6 +150,74 @@ func BenchmarkM108MutationPlanning(b *testing.B) {
 	}
 }
 
+func BenchmarkR30StructuralMutationPlanning(b *testing.B) {
+	b.Run("ReferenceRename", func(b *testing.B) {
+		source := []byte("[visible][old]\n\n[old]: <https://example.com> \"title\"\n")
+		document, err := marksplice.Parse(source)
+		if err != nil {
+			b.Fatal(err)
+		}
+		matches, err := document.QueryNodes(marksplice.NodeQuery{Kinds: []marksplice.Kind{marksplice.KindReferenceDefinition}, Limit: 1})
+		if err != nil || len(matches) != 1 {
+			b.Fatalf("reference definition query = %d, %v", len(matches), err)
+		}
+		id := matches[0].Node().ID()
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			change, err := document.PrepareRenameReferenceDefinition(id, []byte("new"))
+			if err != nil {
+				b.Fatal(err)
+			}
+			m108ChangeSink = change
+		}
+	})
+
+	b.Run("FootnoteMultiline", func(b *testing.B) {
+		source := []byte("See[^n]\r\n\r\n[^n]: first\r\n\r\n    second\r\n")
+		document, err := marksplice.Parse(source)
+		if err != nil {
+			b.Fatal(err)
+		}
+		definitions := document.FootnoteDefinitions()
+		if len(definitions) != 1 {
+			b.Fatalf("footnote definitions = %d, want 1", len(definitions))
+		}
+		id := definitions[0].ID()
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			change, err := document.PrepareReplaceFootnoteDefinitionBodyMultiline(id, []byte("alpha\n\nbeta"))
+			if err != nil {
+				b.Fatal(err)
+			}
+			m108ChangeSink = change
+		}
+	})
+
+	b.Run("FrontMatterRename", func(b *testing.B) {
+		source := []byte("---\ntitle: \"old\"\n---\n\nBody.\n")
+		document, err := marksplice.Parse(source)
+		if err != nil {
+			b.Fatal(err)
+		}
+		matches, err := document.QueryNodes(marksplice.NodeQuery{Kinds: []marksplice.Kind{marksplice.KindFrontMatterField}, Limit: 1})
+		if err != nil || len(matches) != 1 {
+			b.Fatalf("front-matter field query = %d, %v", len(matches), err)
+		}
+		id := matches[0].Node().ID()
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			change, err := document.PrepareRenameFrontMatterField(id, []byte("name"))
+			if err != nil {
+				b.Fatal(err)
+			}
+			m108ChangeSink = change
+		}
+	})
+}
+
 func BenchmarkM108ChangeCompositionScaling(b *testing.B) {
 	source := m108RealisticSource(256 << 10)
 	document, err := marksplice.Parse(source)

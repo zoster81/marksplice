@@ -107,10 +107,105 @@ func MapSimpleImage(input []byte, anchor int, alt Range) (ImageMapping, error) {
 type ReferenceDefinitionMapping struct {
 	Range            Range
 	LineRange        Range
+	LabelRange       Range
 	DestinationRange Range
 	TitleRange       Range
 	AngleDestination bool
 	HasTitle         bool
+}
+
+// ReferenceOccurrenceForm identifies one source-proven GFM reference occurrence form.
+type ReferenceOccurrenceForm uint8
+
+const (
+	ReferenceOccurrenceUnknown ReferenceOccurrenceForm = iota
+	ReferenceOccurrenceFull
+	ReferenceOccurrenceCollapsed
+	ReferenceOccurrenceShortcut
+)
+
+// ReferenceOccurrenceMapping binds one simple single-line reference link/image occurrence to exact authored bytes.
+type ReferenceOccurrenceMapping struct {
+	Range          Range
+	LabelRange     Range
+	ReferenceRange Range
+	Form           ReferenceOccurrenceForm
+	Image          bool
+}
+
+// MapSimpleReferenceOccurrence proves one single-line reference link/image source occurrence.
+// Collapsed and shortcut forms expose a zero-width ReferenceRange at the point where
+// a full reference label can be inserted without changing the visible label.
+func MapSimpleReferenceOccurrence(input []byte, anchor int, image bool, form ReferenceOccurrenceForm, reference string) (ReferenceOccurrenceMapping, error) {
+	mapping, next, lineEnd, err := mapReferenceOccurrenceLabel(input, anchor, image, form, reference)
+	if err != nil {
+		return ReferenceOccurrenceMapping{}, err
+	}
+	if err := completeReferenceOccurrenceMapping(input, &mapping, next, lineEnd, reference); err != nil {
+		return ReferenceOccurrenceMapping{}, err
+	}
+	return mapping, nil
+}
+
+func mapReferenceOccurrenceLabel(input []byte, anchor int, image bool, form ReferenceOccurrenceForm, reference string) (ReferenceOccurrenceMapping, int, int, error) {
+	if anchor < 0 || anchor >= len(input) || reference == "" {
+		return ReferenceOccurrenceMapping{}, 0, 0, fmt.Errorf("%w: invalid anchor or empty reference", ErrUnsupportedReferenceOccurrenceShape)
+	}
+	lineEnd := physicalLineEnd(input, anchor)
+	open := anchor
+	if image {
+		if anchor+1 >= lineEnd || input[anchor] != '!' || input[anchor+1] != '[' {
+			return ReferenceOccurrenceMapping{}, 0, 0, fmt.Errorf("%w: expected image label opener", ErrUnsupportedReferenceOccurrenceShape)
+		}
+		open++
+	} else if input[anchor] != '[' {
+		return ReferenceOccurrenceMapping{}, 0, 0, fmt.Errorf("%w: expected link label opener", ErrUnsupportedReferenceOccurrenceShape)
+	}
+	labelRange, next, ok := scanBracketContent(input, open, lineEnd)
+	if !ok {
+		return ReferenceOccurrenceMapping{}, 0, 0, fmt.Errorf("%w: unsupported visible label", ErrUnsupportedReferenceOccurrenceShape)
+	}
+	return ReferenceOccurrenceMapping{
+		Range:      Range{Start: anchor, End: next},
+		LabelRange: labelRange,
+		Form:       form,
+		Image:      image,
+	}, next, lineEnd, nil
+}
+
+func completeReferenceOccurrenceMapping(input []byte, mapping *ReferenceOccurrenceMapping, next, lineEnd int, reference string) error {
+	switch mapping.Form {
+	case ReferenceOccurrenceFull:
+		return completeFullReferenceOccurrence(input, mapping, next, lineEnd, reference)
+	case ReferenceOccurrenceCollapsed:
+		if string(input[mapping.LabelRange.Start:mapping.LabelRange.End]) != reference || next+1 >= lineEnd || input[next] != '[' || input[next+1] != ']' {
+			return fmt.Errorf("%w: collapsed-reference payload mismatch", ErrUnsupportedReferenceOccurrenceShape)
+		}
+		mapping.ReferenceRange = Range{Start: next + 1, End: next + 1}
+		mapping.Range.End = next + 2
+		return nil
+	case ReferenceOccurrenceShortcut:
+		if string(input[mapping.LabelRange.Start:mapping.LabelRange.End]) != reference {
+			return fmt.Errorf("%w: shortcut-reference payload mismatch", ErrUnsupportedReferenceOccurrenceShape)
+		}
+		mapping.ReferenceRange = Range{Start: next, End: next}
+		return nil
+	default:
+		return fmt.Errorf("%w: unsupported reference form", ErrUnsupportedReferenceOccurrenceShape)
+	}
+}
+
+func completeFullReferenceOccurrence(input []byte, mapping *ReferenceOccurrenceMapping, next, lineEnd int, reference string) error {
+	if next >= lineEnd || input[next] != '[' {
+		return fmt.Errorf("%w: missing full-reference opener", ErrUnsupportedReferenceOccurrenceShape)
+	}
+	referenceRange, end, ok := scanBracketContent(input, next, lineEnd)
+	if !ok || string(input[referenceRange.Start:referenceRange.End]) != reference {
+		return fmt.Errorf("%w: full-reference payload mismatch", ErrUnsupportedReferenceOccurrenceShape)
+	}
+	mapping.ReferenceRange = referenceRange
+	mapping.Range.End = end
+	return nil
 }
 
 // MapSingleLineReferenceDefinition maps one parser-recognized single-line reference definition to its destination bytes.
@@ -123,7 +218,7 @@ func MapSingleLineReferenceDefinition(input []byte, observation Range, label, de
 	if containsLineBreak(input[lineStart:lineEnd]) {
 		return ReferenceDefinitionMapping{}, fmt.Errorf("%w: definition crosses a physical line", ErrUnsupportedReferenceDefinitionShape)
 	}
-	pos, err := referenceDefinitionDestinationStart(input, lineStart, lineEnd, label)
+	labelRange, pos, err := referenceDefinitionDestinationStart(input, lineStart, lineEnd, label)
 	if err != nil {
 		return ReferenceDefinitionMapping{}, err
 	}
@@ -142,6 +237,7 @@ func MapSingleLineReferenceDefinition(input []byte, observation Range, label, de
 	return ReferenceDefinitionMapping{
 		Range:            Range{Start: lineStart, End: end},
 		LineRange:        Range{Start: lineStart, End: lineRangeEnd},
+		LabelRange:       labelRange,
 		DestinationRange: destinationRange,
 		TitleRange:       titleRange,
 		AngleDestination: angle,
@@ -149,7 +245,7 @@ func MapSingleLineReferenceDefinition(input []byte, observation Range, label, de
 	}, nil
 }
 
-func referenceDefinitionDestinationStart(input []byte, lineStart, lineEnd int, label string) (int, error) {
+func referenceDefinitionDestinationStart(input []byte, lineStart, lineEnd int, label string) (Range, int, error) {
 	pos := lineStart
 	indent := 0
 	for pos < lineEnd && input[pos] == ' ' && indent < 4 {
@@ -157,13 +253,13 @@ func referenceDefinitionDestinationStart(input []byte, lineStart, lineEnd int, l
 		indent++
 	}
 	if indent > 3 || pos >= lineEnd || input[pos] != '[' {
-		return 0, fmt.Errorf("%w: unsupported definition indentation or label opener", ErrUnsupportedReferenceDefinitionShape)
+		return Range{}, 0, fmt.Errorf("%w: unsupported definition indentation or label opener", ErrUnsupportedReferenceDefinitionShape)
 	}
 	labelRange, next, ok := scanBracketContent(input, pos, lineEnd)
 	if !ok || string(input[labelRange.Start:labelRange.End]) != label || next >= lineEnd || input[next] != ':' {
-		return 0, fmt.Errorf("%w: source label does not match semantic label", ErrUnsupportedReferenceDefinitionShape)
+		return Range{}, 0, fmt.Errorf("%w: source label does not match semantic label", ErrUnsupportedReferenceDefinitionShape)
 	}
-	return skipHorizontalSpace(input, next+1, lineEnd), nil
+	return labelRange, skipHorizontalSpace(input, next+1, lineEnd), nil
 }
 
 func referenceDefinitionTitleTail(input []byte, start, lineEnd int, title string, hasTitle bool) (Range, int, error) {

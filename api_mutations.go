@@ -24,12 +24,44 @@ func (d *Document) PrepareReplaceParagraph(id NodeID, replacement []byte) (Chang
 	return publicChangeSet(d.document.PrepareReplace(internalNodeID(id), replacement))
 }
 
+// PrepareRemoveParagraph prepares removal of one complete promoted top-level paragraph.
+func (d *Document) PrepareRemoveParagraph(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindParagraph, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveParagraph(internalNodeID(id)))
+}
+
+// PrepareInsertParagraphBefore prepares insertion of one paragraph payload before a promoted top-level paragraph.
+func (d *Document) PrepareInsertParagraphBefore(id NodeID, content []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindParagraph, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareInsertParagraphBefore(internalNodeID(id), content))
+}
+
+// PrepareInsertParagraphAfter prepares insertion of one paragraph payload after a promoted top-level paragraph.
+func (d *Document) PrepareInsertParagraphAfter(id NodeID, content []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindParagraph, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareInsertParagraphAfter(internalNodeID(id), content))
+}
+
 // PrepareRenameHeading prepares a source-preserving rename of promoted heading content.
 func (d *Document) PrepareRenameHeading(id NodeID, replacement []byte) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindHeading, true); err != nil {
 		return ChangeSet{}, err
 	}
 	return publicChangeSet(d.document.PrepareRenameHeading(internalNodeID(id), replacement))
+}
+
+// PrepareSetHeadingLevel prepares a source-preserving level change for one promoted top-level heading.
+func (d *Document) PrepareSetHeadingLevel(id NodeID, level int) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareSetHeadingLevel(internalNodeID(id), level))
 }
 
 // PrepareRemoveThematicBreak prepares source-preserving removal of one complete promoted top-level thematic-break line.
@@ -194,6 +226,14 @@ func (d *Document) PrepareInsertListItemAfter(anchorID NodeID, fragment []byte) 
 		return ChangeSet{}, err
 	}
 	return publicChangeSet(d.document.PrepareInsertListItemAfter(internalNodeID(anchorID), fragment))
+}
+
+// PrepareAppendFirstListItemChild prepares the first direct child item from caller-owned content. Marksplice derives the source-proven container prefix/indentation and emits canonical '-' or '1.' child marker syntax.
+func (d *Document) PrepareAppendFirstListItemChild(parentID NodeID, content []byte, ordered bool) (ChangeSet, error) {
+	if _, err := d.promotedNode(parentID, splice.KindListItem, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareAppendFirstListItemChild(internalNodeID(parentID), content, ordered))
 }
 
 // PrepareAppendListItemChild prepares appending one complete direct-child subtree to a fully supported list-item subtree.
@@ -434,6 +474,22 @@ func (d *Document) PrepareReplaceInlineLinkTitle(id NodeID, replacement []byte) 
 	return publicChangeSet(d.document.PrepareReplaceInlineLinkTitle(internalNodeID(id), replacement))
 }
 
+// PrepareAddInlineLinkTitle inserts a canonical double-quoted title into a promoted simple inline link that currently has no title.
+func (d *Document) PrepareAddInlineLinkTitle(id NodeID, title []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindInlineLink, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareAddInlineLinkTitle(internalNodeID(id), title))
+}
+
+// PrepareRemoveInlineLinkTitle removes the delimiters and payload of an existing promoted simple inline-link title while preserving separator whitespace.
+func (d *Document) PrepareRemoveInlineLinkTitle(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindInlineLink, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveInlineLinkTitle(internalNodeID(id)))
+}
+
 // PrepareReplaceImageDestination prepares a source-preserving replacement of a promoted image destination.
 func (d *Document) PrepareReplaceImageDestination(id NodeID, replacement []byte) (ChangeSet, error) {
 	if _, err := d.promotedNode(id, splice.KindImage, false); err != nil {
@@ -458,6 +514,22 @@ func (d *Document) PrepareReplaceImageTitle(id NodeID, replacement []byte) (Chan
 	return publicChangeSet(d.document.PrepareReplaceImageTitle(internalNodeID(id), replacement))
 }
 
+// PrepareAddImageTitle inserts a canonical double-quoted title into a promoted simple inline image that currently has no title.
+func (d *Document) PrepareAddImageTitle(id NodeID, title []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindImage, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareAddImageTitle(internalNodeID(id), title))
+}
+
+// PrepareRemoveImageTitle removes the delimiters and payload of an existing promoted simple inline-image title while preserving separator whitespace.
+func (d *Document) PrepareRemoveImageTitle(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindImage, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveImageTitle(internalNodeID(id)))
+}
+
 // PrepareReplaceFootnoteDefinitionBody prepares a source-preserving replacement
 // of the conservative simple editable body of one promoted footnote definition.
 func (d *Document) PrepareReplaceFootnoteDefinitionBody(id NodeID, replacement []byte) (ChangeSet, error) {
@@ -467,6 +539,30 @@ func (d *Document) PrepareReplaceFootnoteDefinitionBody(id NodeID, replacement [
 	return publicChangeSet(d.document.PrepareReplaceFootnoteDefinitionBody(internalNodeID(id), replacement))
 }
 
+// PrepareReplaceFootnoteDefinitionBodyMultiline replaces one source-proven footnote body from logical LF-separated content while preserving its container EOL/indentation style.
+func (d *Document) PrepareReplaceFootnoteDefinitionBodyMultiline(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindFootnoteDefinition, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareReplaceFootnoteDefinitionBodyMultiline(internalNodeID(id), replacement))
+}
+
+// PrepareAppendFootnoteDefinition appends one canonical top-level footnote definition from logical LF-separated body content.
+func (d *Document) PrepareAppendFootnoteDefinition(label, body []byte) (ChangeSet, error) {
+	if d == nil || d.document == nil {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return publicChangeSet(d.document.PrepareAppendFootnoteDefinition(label, body))
+}
+
+// PrepareRemoveFootnoteDefinition removes one complete promoted top-level footnote definition while preserving source occurrences outside its owned container.
+func (d *Document) PrepareRemoveFootnoteDefinition(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindFootnoteDefinition, true); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveFootnoteDefinition(internalNodeID(id)))
+}
+
 // PrepareRenameFootnote atomically renames one promoted footnote definition and
 // every parser-proven reference occurrence bound to that definition.
 func (d *Document) PrepareRenameFootnote(id NodeID, replacement []byte) (ChangeSet, error) {
@@ -474,6 +570,54 @@ func (d *Document) PrepareRenameFootnote(id NodeID, replacement []byte) (ChangeS
 		return ChangeSet{}, err
 	}
 	return publicChangeSet(d.document.PrepareRenameFootnote(internalNodeID(id), replacement))
+}
+
+// PrepareRetargetReferenceOccurrence retargets one parser-proven reference link/image occurrence at sourceOffset to an existing uniquely normalized definition.
+func (d *Document) PrepareRetargetReferenceOccurrence(sourceOffset int, reference []byte) (ChangeSet, error) {
+	if d == nil || d.document == nil {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return publicChangeSet(d.document.PrepareRetargetReferenceOccurrence(sourceOffset, reference))
+}
+
+// PrepareRenameReferenceDefinition atomically renames one promoted reference definition and every parser-proven occurrence bound to it.
+func (d *Document) PrepareRenameReferenceDefinition(id NodeID, replacement []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindReferenceDefinition, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRenameReferenceDefinition(internalNodeID(id), replacement))
+}
+
+// PrepareAppendReferenceDefinition appends one canonical single-line reference definition using the document's proven line-ending style.
+func (d *Document) PrepareAppendReferenceDefinition(label, destination []byte) (ChangeSet, error) {
+	if d == nil || d.document == nil {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return publicChangeSet(d.document.PrepareAppendReferenceDefinition(label, destination))
+}
+
+// PrepareAppendReferenceDefinitionWithTitle appends one canonical single-line reference definition with a double-quoted title.
+func (d *Document) PrepareAppendReferenceDefinitionWithTitle(label, destination, title []byte) (ChangeSet, error) {
+	if d == nil || d.document == nil {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return publicChangeSet(d.document.PrepareAppendReferenceDefinitionWithTitle(label, destination, title))
+}
+
+// PrepareAddReferenceDefinitionTitle inserts a canonical double-quoted title into a promoted single-line reference definition that currently has no title.
+func (d *Document) PrepareAddReferenceDefinitionTitle(id NodeID, title []byte) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindReferenceDefinition, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareAddReferenceDefinitionTitle(internalNodeID(id), title))
+}
+
+// PrepareRemoveReferenceDefinitionTitle removes the source-owned title syntax of an existing promoted single-line reference definition.
+func (d *Document) PrepareRemoveReferenceDefinitionTitle(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNode(id, splice.KindReferenceDefinition, false); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveReferenceDefinitionTitle(internalNodeID(id)))
 }
 
 // PrepareReplaceReferenceDefinitionDestination prepares a source-preserving replacement of a promoted reference-definition destination.
@@ -506,6 +650,50 @@ func (d *Document) PrepareReplaceAutoLink(id NodeID, replacement []byte) (Change
 		return ChangeSet{}, err
 	}
 	return publicChangeSet(d.document.PrepareReplaceAutoLink(internalNodeID(id), replacement))
+}
+
+// PrepareRenameFrontMatterField renames one promoted simple YAML/TOML front-matter field key while preserving its value wrapper and line trivia.
+func (d *Document) PrepareRenameFrontMatterField(id NodeID, key []byte) (ChangeSet, error) {
+	if _, err := d.promotedNodeKinds(id, false, splice.KindYAMLFrontMatterField, splice.KindTOMLFrontMatterField); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRenameFrontMatterField(internalNodeID(id), key))
+}
+
+// PrepareRemoveFrontMatterField removes one complete promoted simple front-matter field physical line.
+func (d *Document) PrepareRemoveFrontMatterField(id NodeID) (ChangeSet, error) {
+	if _, err := d.promotedNodeKinds(id, false, splice.KindYAMLFrontMatterField, splice.KindTOMLFrontMatterField); err != nil {
+		return ChangeSet{}, err
+	}
+	return publicChangeSet(d.document.PrepareRemoveFrontMatterField(internalNodeID(id)))
+}
+
+// PrepareAppendFrontMatterField appends one canonical double-quoted simple field before the existing front-matter closing delimiter.
+func (d *Document) PrepareAppendFrontMatterField(key, value []byte) (ChangeSet, error) {
+	if d == nil || d.document == nil {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return publicChangeSet(d.document.PrepareAppendFrontMatterField(key, value))
+}
+
+// PrepareAddFrontMatter inserts one empty leading YAML or TOML front-matter envelope using the document's source-proven line ending.
+func (d *Document) PrepareAddFrontMatter(format FrontMatterFormat) (ChangeSet, error) {
+	if d == nil || d.document == nil {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	internal, ok := internalFrontMatterFormat(format)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return publicChangeSet(d.document.PrepareAddFrontMatter(internal))
+}
+
+// PrepareRemoveFrontMatter removes the complete leading front-matter envelope and its owned separator before the Markdown body.
+func (d *Document) PrepareRemoveFrontMatter() (ChangeSet, error) {
+	if d == nil || d.document == nil {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return publicChangeSet(d.document.PrepareRemoveFrontMatter())
 }
 
 // PrepareReplaceFrontMatterValue prepares a source-preserving replacement of a promoted simple front-matter scalar value.

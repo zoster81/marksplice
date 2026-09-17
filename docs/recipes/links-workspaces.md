@@ -37,7 +37,7 @@ for _, relationship := range doc.LinkRelationships() {
 }
 ```
 
-Relationships cover parser-resolved links, images, references, and autolinks in source order. The relationship view can be broader than ordinary editable link-node promotion; relationship intelligence does not grant a generic mutation span.
+Relationships cover parser-resolved links, images, references, and autolinks in source order. The relationship view can be broader than ordinary editable link-node promotion, so relationship intelligence still does not grant a generic mutation span. For the conservative parser-proven reference subset, `PrepareRetargetReferenceOccurrence` can retarget a full/collapsed/shortcut occurrence to an existing unique definition; definition rename/append/title lifecycle remains explicit through the dedicated `Prepare...ReferenceDefinition...` APIs.
 
 ## Load a caller-authorized filesystem workspace
 

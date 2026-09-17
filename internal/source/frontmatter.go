@@ -1,6 +1,9 @@
 package source
 
-import "bytes"
+import (
+	"bytes"
+	"unicode/utf8"
+)
 
 // FrontMatterFormat identifies a Marksplice-recognized document metadata envelope.
 type FrontMatterFormat uint8
@@ -357,4 +360,77 @@ func safeTOMLBareScalar(value []byte) bool {
 
 func isSimpleMetadataKeyByte(b byte) bool {
 	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_' || b == '-' || b == '.'
+}
+
+// CanonicalFrontMatterFieldLine renders one conservative source-proven simple
+// YAML/TOML string field. The value must fit the existing no-escaping contract.
+func CanonicalFrontMatterFieldLine(format FrontMatterFormat, key, value, eol []byte) ([]byte, bool) {
+	if !ValidCanonicalFrontMatterKey(key) || !ValidCanonicalFrontMatterValue(value) || !validPhysicalEOL(eol) {
+		return nil, false
+	}
+	separator := []byte(": ")
+	if format == FrontMatterTOML {
+		separator = []byte(" = ")
+	} else if format != FrontMatterYAML {
+		return nil, false
+	}
+	result := make([]byte, 0, len(key)+len(separator)+len(value)+2+len(eol))
+	result = append(result, key...)
+	result = append(result, separator...)
+	result = append(result, '"')
+	result = append(result, value...)
+	result = append(result, '"')
+	result = append(result, eol...)
+	return result, true
+}
+
+// CanonicalEmptyFrontMatter renders one empty leading envelope plus one blank
+// separator line using a caller-proven physical line ending.
+func CanonicalEmptyFrontMatter(format FrontMatterFormat, eol []byte) ([]byte, bool) {
+	if !validPhysicalEOL(eol) {
+		return nil, false
+	}
+	delimiter := []byte("---")
+	if format == FrontMatterTOML {
+		delimiter = []byte("+++")
+	} else if format != FrontMatterYAML {
+		return nil, false
+	}
+	result := make([]byte, 0, 2*len(delimiter)+3*len(eol))
+	result = append(result, delimiter...)
+	result = append(result, eol...)
+	result = append(result, delimiter...)
+	result = append(result, eol...)
+	result = append(result, eol...)
+	return result, true
+}
+
+// ValidCanonicalFrontMatterKey reports whether key fits the conservative simple-field alphabet.
+func ValidCanonicalFrontMatterKey(key []byte) bool {
+	if len(key) == 0 {
+		return false
+	}
+	for _, value := range key {
+		if !isSimpleMetadataKeyByte(value) {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidCanonicalFrontMatterValue reports whether value fits the canonical no-escaping string contract.
+func ValidCanonicalFrontMatterValue(value []byte) bool {
+	if len(value) == 0 || !utf8.Valid(value) {
+		return false
+	}
+	for _, current := range value {
+		if current < 0x20 || current == '"' || current == '\\' || current == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+func validPhysicalEOL(eol []byte) bool {
+	return bytes.Equal(eol, []byte("\n")) || bytes.Equal(eol, []byte("\r\n")) || bytes.Equal(eol, []byte("\r"))
 }

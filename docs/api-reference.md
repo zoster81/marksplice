@@ -932,6 +932,78 @@ func (d *Document) Paragraph(id NodeID) (Paragraph, bool)
 
 See the public Go signature and the task-oriented guide for usage constraints.
 
+#### `PrepareAddFrontMatter`
+
+```go
+func (d *Document) PrepareAddFrontMatter(format FrontMatterFormat) (ChangeSet, error)
+```
+
+PrepareAddFrontMatter inserts one empty leading YAML or TOML front-matter envelope using a source-proven physical line ending. It fails closed when front matter already exists or line-ending style cannot be proved.
+
+#### `PrepareAddImageTitle`
+
+```go
+func (d *Document) PrepareAddImageTitle(id NodeID, title []byte) (ChangeSet, error)
+```
+
+PrepareAddImageTitle inserts one canonical double-quoted title into a promoted simple inline image that currently has no title, without regenerating destination or wrapper syntax.
+
+#### `PrepareAddInlineLinkTitle`
+
+```go
+func (d *Document) PrepareAddInlineLinkTitle(id NodeID, title []byte) (ChangeSet, error)
+```
+
+PrepareAddInlineLinkTitle inserts one canonical double-quoted title into a promoted simple inline link that currently has no title, preserving the existing destination and wrapper spelling.
+
+#### `PrepareAddReferenceDefinitionTitle`
+
+```go
+func (d *Document) PrepareAddReferenceDefinitionTitle(id NodeID, title []byte) (ChangeSet, error)
+```
+
+PrepareAddReferenceDefinitionTitle inserts one canonical double-quoted title into a promoted single-line reference definition that currently has no title.
+
+#### `PrepareAppendFirstListItemChild`
+
+```go
+func (d *Document) PrepareAppendFirstListItemChild(parentID NodeID, content []byte, ordered bool) (ChangeSet, error)
+```
+
+PrepareAppendFirstListItemChild prepares the first direct child item for a promoted list item. Marksplice derives the source-proven container prefix, indentation, line ending, and canonical `-` or `1.` child marker.
+
+#### `PrepareAppendFootnoteDefinition`
+
+```go
+func (d *Document) PrepareAppendFootnoteDefinition(label, body []byte) (ChangeSet, error)
+```
+
+PrepareAppendFootnoteDefinition appends one canonical top-level footnote definition. `body` is logical LF-separated content; Marksplice renders continuation indentation and the document's proven physical line ending.
+
+#### `PrepareAppendFrontMatterField`
+
+```go
+func (d *Document) PrepareAppendFrontMatterField(key, value []byte) (ChangeSet, error)
+```
+
+PrepareAppendFrontMatterField appends one conservative canonical double-quoted simple field immediately before an existing recognized front-matter closing delimiter. Complex YAML/TOML values remain outside this authority.
+
+#### `PrepareAppendReferenceDefinition`
+
+```go
+func (d *Document) PrepareAppendReferenceDefinition(label, destination []byte) (ChangeSet, error)
+```
+
+PrepareAppendReferenceDefinition appends one canonical single-line reference definition using the document's proven line-ending style.
+
+#### `PrepareAppendReferenceDefinitionWithTitle`
+
+```go
+func (d *Document) PrepareAppendReferenceDefinitionWithTitle(label, destination, title []byte) (ChangeSet, error)
+```
+
+PrepareAppendReferenceDefinitionWithTitle appends one canonical single-line reference definition with a double-quoted title.
+
 #### `PrepareAppendListItemChild`
 
 ```go
@@ -971,6 +1043,22 @@ func (d *Document) PrepareInsertListItemBefore(anchorID NodeID, fragment []byte)
 ```
 
 PrepareInsertListItemBefore prepares insertion of one complete same-shape supported list-item subtree immediately before a complete supported anchor subtree.
+
+#### `PrepareInsertParagraphAfter`
+
+```go
+func (d *Document) PrepareInsertParagraphAfter(id NodeID, content []byte) (ChangeSet, error)
+```
+
+PrepareInsertParagraphAfter inserts one caller-provided paragraph payload after a promoted top-level paragraph. The payload must independently reparse as exactly one paragraph; Marksplice owns the required separator and line-ending bytes.
+
+#### `PrepareInsertParagraphBefore`
+
+```go
+func (d *Document) PrepareInsertParagraphBefore(id NodeID, content []byte) (ChangeSet, error)
+```
+
+PrepareInsertParagraphBefore inserts one caller-provided paragraph payload before a promoted top-level paragraph under the same one-paragraph and source-preservation proof as the after variant.
 
 #### `PrepareInsertSectionAfter`
 
@@ -1076,6 +1164,46 @@ func (d *Document) PrepareRemoveBlockquote(id NodeID) (ChangeSet, error)
 
 PrepareRemoveBlockquote prepares source-preserving removal of one complete promoted top-level blockquote container.
 
+#### `PrepareRemoveFootnoteDefinition`
+
+```go
+func (d *Document) PrepareRemoveFootnoteDefinition(id NodeID) (ChangeSet, error)
+```
+
+PrepareRemoveFootnoteDefinition removes one complete promoted top-level footnote-definition container while preserving source occurrences outside its owned range and validating surviving semantics.
+
+#### `PrepareRemoveFrontMatter`
+
+```go
+func (d *Document) PrepareRemoveFrontMatter() (ChangeSet, error)
+```
+
+PrepareRemoveFrontMatter removes the complete recognized leading front-matter envelope together with its owned separator before the Markdown body.
+
+#### `PrepareRemoveFrontMatterField`
+
+```go
+func (d *Document) PrepareRemoveFrontMatterField(id NodeID) (ChangeSet, error)
+```
+
+PrepareRemoveFrontMatterField removes one complete promoted simple YAML/TOML field physical line and validates the remaining envelope and Markdown body.
+
+#### `PrepareRemoveImageTitle`
+
+```go
+func (d *Document) PrepareRemoveImageTitle(id NodeID) (ChangeSet, error)
+```
+
+PrepareRemoveImageTitle removes only the delimiters and payload of an existing promoted simple inline-image title while preserving destination and separator trivia outside the owned title syntax.
+
+#### `PrepareRemoveInlineLinkTitle`
+
+```go
+func (d *Document) PrepareRemoveInlineLinkTitle(id NodeID) (ChangeSet, error)
+```
+
+PrepareRemoveInlineLinkTitle removes only the delimiters and payload of an existing promoted simple inline-link title while preserving destination and unrelated source.
+
 #### `PrepareRemoveListItem`
 
 ```go
@@ -1084,6 +1212,14 @@ func (d *Document) PrepareRemoveListItem(id NodeID) (ChangeSet, error)
 
 PrepareRemoveListItem prepares removal of one complete supported list-item subtree.
 
+#### `PrepareRemoveParagraph`
+
+```go
+func (d *Document) PrepareRemoveParagraph(id NodeID) (ChangeSet, error)
+```
+
+PrepareRemoveParagraph removes one complete promoted top-level paragraph together with only the separator bytes that Marksplice can prove belong to that removal, then validates all surviving nodes and relationships.
+
 #### `PrepareRemoveReferenceDefinition`
 
 ```go
@@ -1091,6 +1227,14 @@ func (d *Document) PrepareRemoveReferenceDefinition(id NodeID) (ChangeSet, error
 ```
 
 PrepareRemoveReferenceDefinition prepares source-preserving removal of one complete promoted single-line reference-definition line.
+
+#### `PrepareRemoveReferenceDefinitionTitle`
+
+```go
+func (d *Document) PrepareRemoveReferenceDefinitionTitle(id NodeID) (ChangeSet, error)
+```
+
+PrepareRemoveReferenceDefinitionTitle removes the source-owned title syntax of an existing promoted single-line reference definition and validates bound reference usages after reparsing.
 
 #### `PrepareRemoveSection`
 
@@ -1124,6 +1268,14 @@ func (d *Document) PrepareRemoveThematicBreak(id NodeID) (ChangeSet, error)
 
 PrepareRemoveThematicBreak prepares source-preserving removal of one complete promoted top-level thematic-break line.
 
+#### `PrepareRenameFrontMatterField`
+
+```go
+func (d *Document) PrepareRenameFrontMatterField(id NodeID, key []byte) (ChangeSet, error)
+```
+
+PrepareRenameFrontMatterField renames one promoted simple YAML/TOML front-matter key while preserving its value wrapper, separator spacing, comments, neighboring fields, delimiter lines, and line endings.
+
 #### `PrepareRenameFootnote`
 
 ```go
@@ -1140,6 +1292,14 @@ func (d *Document) PrepareRenameHeading(id NodeID, replacement []byte) (ChangeSe
 ```
 
 PrepareRenameHeading prepares a source-preserving rename of promoted heading content.
+
+#### `PrepareRenameReferenceDefinition`
+
+```go
+func (d *Document) PrepareRenameReferenceDefinition(id NodeID, replacement []byte) (ChangeSet, error)
+```
+
+PrepareRenameReferenceDefinition atomically renames one uniquely normalized promoted reference definition and every parser-proven occurrence bound to it. Ambiguous normalized-label ownership fails closed.
 
 #### `PrepareReplaceAlertBody`
 
@@ -1197,6 +1357,14 @@ func (d *Document) PrepareReplaceFootnoteDefinitionBody(id NodeID, replacement [
 
 PrepareReplaceFootnoteDefinitionBody prepares a source-preserving replacement
 of the conservative simple editable body of one promoted footnote definition.
+
+#### `PrepareReplaceFootnoteDefinitionBodyMultiline`
+
+```go
+func (d *Document) PrepareReplaceFootnoteDefinitionBodyMultiline(id NodeID, replacement []byte) (ChangeSet, error)
+```
+
+PrepareReplaceFootnoteDefinitionBodyMultiline replaces the complete logical body of one source-proven footnote definition. The payload uses LF as a logical separator; Marksplice reuses the definition's proven physical EOL and continuation-prefix style.
 
 #### `PrepareReplaceFrontMatterValue`
 
@@ -1367,6 +1535,14 @@ func (d *Document) PrepareReplaceTableRow(id NodeID, replacement []byte) (Change
 
 PrepareReplaceTableRow prepares source-preserving replacement of one complete promoted GFM table body row.
 
+#### `PrepareRetargetReferenceOccurrence`
+
+```go
+func (d *Document) PrepareRetargetReferenceOccurrence(sourceOffset int, reference []byte) (ChangeSet, error)
+```
+
+PrepareRetargetReferenceOccurrence retargets one parser-proven simple reference link/image occurrence at `sourceOffset` to an existing uniquely normalized definition. Collapsed and shortcut forms may be promoted to full form while preserving visible label text.
+
 #### `PrepareSetAlertKind`
 
 ```go
@@ -1382,6 +1558,14 @@ func (d *Document) PrepareSetFencedBlockInfo(id NodeID, info []byte) (ChangeSet,
 ```
 
 PrepareSetFencedBlockInfo prepares a source-preserving set, replacement, or clear of the parser-proven info string on one source-proven top-level fenced block.
+
+#### `PrepareSetHeadingLevel`
+
+```go
+func (d *Document) PrepareSetHeadingLevel(id NodeID, level int) (ChangeSet, error)
+```
+
+PrepareSetHeadingLevel changes one promoted top-level heading level while preserving supported authored syntax. ATX marker changes and Setext 1↔2 are direct source-owned edits; supported single-line Setext headings may convert to ATX for levels 3–6. The candidate section hierarchy is reparsed and validated.
 
 #### `PrepareSetTableAlignments`
 

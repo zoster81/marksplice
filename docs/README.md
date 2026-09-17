@@ -31,7 +31,7 @@ Use these when changing Marksplice itself or when you need the design rationale 
 
 These files preserve decisions and verification evidence but are not part of the normal user journey:
 
-- [`milestones/`](milestones/) — M0–M124 feature/design/test records; M120 records HTML-fragment conformance, M121 records standalone HTML/metadata, M122 records optional source mapping, M123 records canonical Markdown semantic/idempotence and profiling evidence, and M124 records the completed v1.0 stabilization/release gate.
+- [`milestones/`](milestones/) — M0–M124 feature/design/test records plus the post-v1.0 Scripthold R30 integration gate; M120 records HTML-fragment conformance, M121 standalone HTML/metadata, M122 optional source mapping, M123 canonical Markdown semantic/idempotence and profiling evidence, M124 the completed v1.0 stabilization/release gate, and `r30-scripthold-integration-gate.md` the structured-editing compatibility work required before M125.
 - [Goldmark capability matrix](goldmark-capability-matrix.md) — historical pre-M115 parser/source transition record.
 - [`CHANGELOG.md`](../CHANGELOG.md) — public release history and release notes.
 

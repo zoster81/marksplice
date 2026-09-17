@@ -268,11 +268,11 @@ The v1.0 release may be cut only after the exact reviewed M124 freeze commit pas
 
 ## Post-v1.0 — Scripthold R30 integration gate
 
-**Status: in progress; M125 is blocked until this gate is explicitly resolved.**
+**Status: Complete. The R30 Markdown-authority gate is closed; M125 remains not started and requires its own explicit development boundary.**
 
 Scripthold's pre-integration dogfood of `v1.0.0` identified one front-matter mutation bug plus a set of structured-editing gaps needed to keep Markdown semantics and source-preserving mutation inside Marksplice rather than duplicating them in the host application.
 
-The gate, dispositions, implemented additions, fail-closed boundaries, and remaining withheld R30 operations are tracked in [`milestones/r30-scripthold-integration-gate.md`](milestones/r30-scripthold-integration-gate.md). PDF work must not absorb or bypass these Markdown ownership decisions.
+The gate, dispositions, implemented additions, fail-closed boundaries, refactor/profiling evidence, and final verification state are tracked in [`milestones/r30-scripthold-integration-gate.md`](milestones/r30-scripthold-integration-gate.md). All reported G01–G11 capability gaps now have Marksplice-owned implementations or explicit fail-closed subsets, and the documented R30 freeze gate has passed. PDF work remains a separate future milestone and does not start implicitly.
 
 ## M125 — PDF backend contract (`v1.5.0` queue)
 

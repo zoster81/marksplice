@@ -478,6 +478,17 @@ func publicFrontMatterFormat(format splice.FrontMatterFormat) (FrontMatterFormat
 	}
 }
 
+func internalFrontMatterFormat(format FrontMatterFormat) (splice.FrontMatterFormat, bool) {
+	switch format {
+	case FrontMatterFormatYAML:
+		return splice.FrontMatterFormatYAML, true
+	case FrontMatterFormatTOML:
+		return splice.FrontMatterFormatTOML, true
+	default:
+		return splice.FrontMatterFormatUnknown, false
+	}
+}
+
 func publicHTMLAnchorAttribute(attribute string) (HTMLAnchorAttribute, bool) {
 	switch attribute {
 	case "id":

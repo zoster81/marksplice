@@ -40,22 +40,22 @@ Prefer the operation that matches the intent instead of replacing a wider contai
 
 Common scalar/content edits include:
 
-- `PrepareRenameHeading`
-- `PrepareReplaceParagraph`
+- `PrepareRenameHeading`, `PrepareSetHeadingLevel`
+- `PrepareReplaceParagraph`, `PrepareInsertParagraphBefore`, `PrepareInsertParagraphAfter`, `PrepareRemoveParagraph`
 - `PrepareSetTaskChecked`
 - `PrepareReplaceFencedCode`, `PrepareSetFencedBlockInfo`
 - `PrepareReplaceBlockquoteContent`, `PrepareSetAlertKind`, `PrepareReplaceAlertBody`
 - `PrepareReplaceCodeSpan`, `PrepareReplaceEmphasis`, `PrepareReplaceStrong`, `PrepareReplaceStrikethrough`
-- `PrepareReplaceInlineLinkDestination`, `PrepareReplaceInlineLinkLabel`, `PrepareReplaceInlineLinkTitle`
-- `PrepareReplaceImageDestination`, `PrepareReplaceImageAlt`, `PrepareReplaceImageTitle`, `PrepareReplaceAutoLink`
-- `PrepareReplaceReferenceDefinitionDestination`, `PrepareReplaceReferenceDefinitionTitle`
-- `PrepareReplaceFrontMatterValue`
+- `PrepareReplaceInlineLinkDestination`, `PrepareReplaceInlineLinkLabel`, `PrepareReplaceInlineLinkTitle`, `PrepareAddInlineLinkTitle`, `PrepareRemoveInlineLinkTitle`
+- `PrepareReplaceImageDestination`, `PrepareReplaceImageAlt`, `PrepareReplaceImageTitle`, `PrepareAddImageTitle`, `PrepareRemoveImageTitle`, `PrepareReplaceAutoLink`
+- `PrepareReplaceReferenceDefinitionDestination`, `PrepareReplaceReferenceDefinitionTitle`, `PrepareAddReferenceDefinitionTitle`, `PrepareRemoveReferenceDefinitionTitle`, `PrepareRenameReferenceDefinition`, `PrepareRetargetReferenceOccurrence`, `PrepareAppendReferenceDefinition`, `PrepareAppendReferenceDefinitionWithTitle`
+- `PrepareReplaceFrontMatterValue`, `PrepareRenameFrontMatterField`, `PrepareAppendFrontMatterField`, `PrepareRemoveFrontMatterField`, `PrepareAddFrontMatter`, `PrepareRemoveFrontMatter`
 - `PrepareReplaceHTMLComment`, `PrepareReplaceHTMLAnchor`
-- `PrepareReplaceFootnoteDefinitionBody`, `PrepareRenameFootnote`
+- `PrepareReplaceFootnoteDefinitionBody`, `PrepareReplaceFootnoteDefinitionBodyMultiline`, `PrepareRenameFootnote`, `PrepareAppendFootnoteDefinition`, `PrepareRemoveFootnoteDefinition`
 - `PrepareReplaceMathExpression`
 - `PrepareReplaceTableCell`
 
-Marksplice keeps syntax outside the operation-owned range untouched. A heading rename, for example, does not replace the whole heading line just to change its text. Direct-link/image title replacement currently targets only an existing title payload; adding or removing title presence remains outside that operation family. Blockquote/alert content replacement is available only when the existing physical lines prove one uniform marker-prefix and line-ending profile; lazy or mixed-prefix forms fail closed.
+Marksplice keeps syntax outside the operation-owned range untouched. A heading rename, for example, does not replace the whole heading line just to change its text. Title lifecycle operations own only the separator/delimiter bytes required to add or remove a proven simple title; destination spelling and wrappers remain untouched. Reference, footnote, paragraph, list-child, and front-matter structural operations reparse and validate the resulting candidate rather than exposing raw Markdown injection. Blockquote/alert content replacement is available only when the existing physical lines prove one uniform marker-prefix and line-ending profile; lazy or mixed-prefix forms fail closed.
 
 ## Combine independent edits
 

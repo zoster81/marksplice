@@ -30,6 +30,7 @@ Use:
 
 Structural operations are explicit:
 
+- `PrepareSetHeadingLevel` on the governing promoted heading
 - `PrepareReplaceSectionBody`
 - `PrepareReplaceSection`
 - `PrepareRemoveSection`
@@ -51,6 +52,7 @@ Available structural operations include:
 - `PrepareReplaceListItemSubtree`
 - `PrepareRemoveListItem`
 - `PrepareInsertListItemBefore` / `PrepareInsertListItemAfter`
+- `PrepareAppendFirstListItemChild` when the parent has no proven child layout yet
 - `PrepareAppendListItemChild`
 - `PrepareMoveListItemBefore` / `PrepareMoveListItemAfter`
 
@@ -62,7 +64,7 @@ change, err := doc.PrepareSetTaskChecked(task.ID(), true)
 
 That operation changes only the proven task-state byte, not the list item text or marker style.
 
-Marksplice does not silently reindent arbitrary fragments. Caller-provided list fragments must fit the requested sibling/parent/container shape after host-context validation.
+Marksplice does not silently reindent arbitrary fragments. Caller-provided sibling/subtree fragments must fit the requested host shape after validation. `PrepareAppendFirstListItemChild` is deliberately different: the caller supplies child content plus ordered/unordered intent, and Marksplice derives indentation, container prefix, EOL, and canonical child marker from the source-proven parent.
 
 ## Query tasks inside one section
 

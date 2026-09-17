@@ -134,6 +134,43 @@ func (d *Document) prepareInsertListItem(id NodeID, fragment []byte, after bool)
 	return change, nil
 }
 
+// PrepareAppendFirstListItemChild prepares the first direct child item from caller-owned content while deriving container prefix, indentation, marker syntax, and line ending inside Marksplice.
+func (d *Document) PrepareAppendFirstListItemChild(id NodeID, content []byte, ordered bool) (ChangeSet, error) {
+	parent, err := d.completeListItemTarget(id)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if parent.ListHasChildren || parent.ListDirectChildCount != 0 || parent.ListSubtreeEnd != parent.ListItemLineRange.End {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	if err := validateNonEmptySingleLine(content); err != nil {
+		return ChangeSet{}, err
+	}
+	if !parent.ListItemLineRange.Valid(len(d.source)) || !parent.Range.Valid(len(d.source)) || !parent.ContentRange.Valid(len(d.source)) ||
+		parent.Range.Start < parent.ListItemLineRange.Start || parent.ContentRange.Start <= parent.Range.Start {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	eol, ok := physicalLineEndingBefore(d.source, parent.ListItemLineRange.End)
+	if !ok {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	prefix := d.source[parent.ListItemLineRange.Start:parent.Range.Start]
+	indent := parent.ContentRange.Start - parent.Range.Start
+	marker := []byte("- ")
+	if ordered {
+		marker = []byte("1. ")
+	}
+	fragment := make([]byte, 0, len(prefix)+indent+len(marker)+len(content)+len(eol))
+	fragment = append(fragment, prefix...)
+	for range indent {
+		fragment = append(fragment, ' ')
+	}
+	fragment = append(fragment, marker...)
+	fragment = append(fragment, content...)
+	fragment = append(fragment, eol...)
+	return d.PrepareAppendListItemChild(id, fragment)
+}
+
 // PrepareAppendListItemChild prepares insertion of one complete direct-child subtree at the end of a fully supported list-item subtree.
 func (d *Document) PrepareAppendListItemChild(id NodeID, fragment []byte) (ChangeSet, error) {
 	parent, err := d.completeListItemTarget(id)

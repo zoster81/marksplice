@@ -13,6 +13,7 @@ var (
 	ErrUnsupportedInlineLinkShape          = errors.New("unsupported inline-link source shape")
 	ErrUnsupportedImageShape               = errors.New("unsupported image source shape")
 	ErrUnsupportedReferenceDefinitionShape = errors.New("unsupported reference-definition source shape")
+	ErrUnsupportedReferenceOccurrenceShape = errors.New("unsupported reference-occurrence source shape")
 	ErrUnsupportedAutoLinkShape            = errors.New("unsupported autolink source shape")
 	ErrUnsupportedCodeSpanShape            = errors.New("unsupported code-span source shape")
 	ErrUnsupportedEmphasisShape            = errors.New("unsupported emphasis source shape")

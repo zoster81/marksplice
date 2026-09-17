@@ -71,7 +71,7 @@ func validateFencedBlockInfoReplacement(candidate []byte, original source.Fenced
 	if err != nil {
 		return ErrInvalidReplacement
 	}
-	mapping, info, _, ok := fencedBlockCandidateAt(candidateDocument, original.OpeningFenceRange.Start)
+	mapping, info, ok := fencedBlockCandidateAt(candidateDocument, original.OpeningFenceRange.Start)
 	if !ok || info != string(replacement) {
 		return ErrInvalidReplacement
 	}
@@ -94,7 +94,7 @@ func validatePopulatedFencedBlock(candidate []byte, original source.FencedBlockM
 	if err != nil {
 		return ErrInvalidReplacement
 	}
-	mapping, info, _, ok := fencedBlockCandidateAt(candidateDocument, original.OpeningFenceRange.Start)
+	mapping, info, ok := fencedBlockCandidateAt(candidateDocument, original.OpeningFenceRange.Start)
 	if !ok || len(mapping.ContentRanges) == 0 {
 		return ErrInvalidReplacement
 	}
@@ -133,20 +133,20 @@ func shiftedRangesEqual(original, candidate []source.Range, delta int) bool {
 	return true
 }
 
-func fencedBlockCandidateAt(document *Document, openingFenceStart int) (source.FencedBlockMapping, string, string, bool) {
+func fencedBlockCandidateAt(document *Document, openingFenceStart int) (source.FencedBlockMapping, string, bool) {
 	if document == nil {
-		return source.FencedBlockMapping{}, "", "", false
+		return source.FencedBlockMapping{}, "", false
 	}
 	for _, node := range document.nodes {
 		if node.Kind != KindFencedCode || !node.TopLevel {
 			continue
 		}
-		mapping, info, language, ok := document.FencedBlockSource(node.ID)
+		mapping, info, _, ok := document.FencedBlockSource(node.ID)
 		if ok && mapping.OpeningFenceRange.Start == openingFenceStart {
-			return mapping, info, language, true
+			return mapping, info, true
 		}
 	}
-	return source.FencedBlockMapping{}, "", "", false
+	return source.FencedBlockMapping{}, "", false
 }
 
 func physicalLineEndingBefore(input []byte, offset int) ([]byte, bool) {
