@@ -1,48 +1,50 @@
 # Changelog
 
-All notable public changes to Marksplice will be documented in this file.
+All notable public changes to Marksplice are documented in this file.
 
-The project uses Semantic Versioning-compatible Go module tags. `v1.0.0` establishes the first stable public API contract; compatible fixes and additions remain within the v1 line, while intentionally breaking public API changes require a new major version.
+Marksplice follows Semantic Versioning-compatible Go module tags. `v1.0.0` established the first stable public API contract; compatible fixes and additions remain within the v1 line, while intentionally breaking public API changes require a new major version.
 
-## v1.1.0 — 2026-09-17
+## v1.1.1 — 2026-09-17
 
-- Fix variable-length YAML/TOML front-matter scalar replacement so closing-envelope source validation translates the complete closing range for positive/negative byte deltas, Unicode, LF/CRLF, and stale-source-safe edits.
-- Add source-preserving structural mutation authority required by Scripthold R30: top-level paragraph insert/remove, heading-level changes with section revalidation, first-child list insertion, direct-link/image title lifecycle, reference occurrence/definition lifecycle, multiline footnote definition editing/lifecycle, and conservative front-matter field/envelope lifecycle.
-- Expose parser-derived heading semantic text through `Heading.Text()` and add source-proven blockquote/alert content mutation plus fenced info-string/empty-block editing without whole-document regeneration.
-- Refactor new mutation proof paths back under the repository-wide production `gocyclo <= 15` limit and add focused mutation-planning benchmarks/profiles; candidate reparsing remains the dominant cost, so no persistent mutation cache is introduced.
+- Make `v1.1.1` the supported release for the v1.1 feature set and retract `v1.1.0`, which was observed by Go module tooling before its public release metadata and maintenance naming were fully cleaned up.
+- Replace internal development-phase terminology in active tests, benchmarks, helper names, and current documentation with behavior-oriented names. Public Go API behavior is unchanged from `v1.1.0`.
+- Simplify current architecture, conformance, contribution, and release documentation so it describes present Marksplice behavior directly; historical development chronology remains in explicitly historical records.
+
+## v1.1.0 — 2026-09-17 — retracted; use v1.1.1
+
+- Fix variable-length YAML/TOML front-matter scalar replacement for positive and negative byte deltas, Unicode values, LF/CRLF source, and stale-source-safe edits.
+- Add source-preserving top-level paragraph insertion/removal, heading-level mutation with section revalidation, first-child list insertion, direct-link/image title lifecycle operations, reference occurrence/definition lifecycle operations, multiline footnote definition editing/lifecycle, and conservative front-matter field/envelope lifecycle operations.
+- Expose parser-derived semantic heading text through `Heading.Text()`.
+- Add source-proven blockquote and alert content mutation, fenced info-string editing, and population of source-proven empty closed fenced blocks without whole-document regeneration.
+- Keep the new mutation proof paths within the production complexity gate and retain candidate reparsing as the safety boundary rather than adding a persistent mutation cache.
 
 ## v1.0.0 — 2026-09-16
 
-- Freeze the first stable Marksplice API contract without M124 public-surface reshaping, recertifying parser/source preservation, workspace bounds, semantic/HTML/source-map/canonical rendering, pathological scaling, fuzz/race behavior, dependencies, documentation, and release policy before the stable tag is cut.
-- Refresh the sole direct production dependency to `golang.org/x/text v0.42.0` while retaining the Go 1.26 compatibility floor; recertify the v1 candidate with the latest stable Go patches in the 1.26 and 1.27 lines and configure public CI to resolve the latest patch in each supported line.
-- Add the read-only `workspacefs` package for caller-authorized Markdown workspaces over `fs.FS`, with deterministic `.md`/`.markdown` scanning, cycle-safe relationship following, slash-relative document keys, finite document/byte/depth/relationship budgets, and direct reuse of the existing document graph/workspace validator.
-- Harden `workspacefs` relationship resolution around explicit URI-path semantics: normalize relative `.`/`..` only inside the supplied `fs.FS` namespace, percent-decode path components exactly once, separate query text from file lookup, preserve fragments for existing fragment resolution, and keep absolute/scheme/protocol-relative/backslash/encoded-traversal-or-separator/directory/extensionless targets outside filesystem authority.
-- Refactor `workspacefs.Follow` to one cached target-availability map plus index-based breadth-first traversal; measured 4x-document scan/follow workloads remain near-linear while reducing follow allocation bytes/counts without adding persistent caches or changing the public API.
-- Add deterministic HTML-fragment rendering through streaming `Document.RenderHTML` and buffered `Document.HTML`, with explicit raw-HTML, dangerous-URL, and GFM tag-filter policies, no hidden I/O or asset fetching, and no second Markdown parser/retained renderer AST.
-- Add deterministic standalone HTML through streaming `Document.RenderHTMLDocument` and buffered `Document.HTMLDocument`, reusing the fragment renderer and mapping only reviewed `title`, `description`, `author`, and `lang` front-matter scalars; no template engine, arbitrary YAML/TOML interpretation, asset manager, or new I/O authority.
-- Add opt-in HTML source mapping for fragment and standalone rendering, correlating snapshot-local Markdown byte ranges with exact emitted HTML byte ranges while preserving the ordinary mapping-off renderer path, caller-owned results, deferred footnote/image output offsets, and no persistent source-map index or durable `NodeID` identity.
-- Add explicit deterministic canonical Markdown export through streaming `Document.RenderCanonicalMarkdown` and buffered `Document.CanonicalMarkdown`, separate from source-preserving editing, with semantic reparse equivalence and byte idempotence across all 652 CommonMark and 677 published-GFM examples plus the retained 6,857-document real-world corpus.
-- Add permanent profile-aware HTML conformance against all 652 CommonMark 0.31.2 and all 677 published-GFM examples, including rendering-only `tagfilter`; deliberate Marksplice-profile divergences are explicitly named rather than accepted as generic mismatches.
+- Establish the first stable Marksplice public API and compatibility contract after full parser/source-preservation, workspace, rendering, performance, fuzz/race, dependency, documentation, and release-readiness recertification.
+- Require Go 1.26 or newer and refresh the direct `golang.org/x/text` dependency used for Unicode reference-label folding.
+- Add the read-only `workspacefs` package for caller-authorized Markdown workspaces over `fs.FS`, with deterministic scanning/following, finite resource limits, and shared document-graph/workspace validation semantics.
+- Harden filesystem relationship resolution with explicit URI-path rules, single percent-decoding, query/file separation, preserved fragments, and fail-closed handling for traversal, encoded separators, unsupported absolute/scheme forms, directories, and extensionless targets.
+- Add deterministic HTML fragment and standalone-document rendering with explicit raw-HTML, dangerous-URL, tag-filter, and reviewed front-matter metadata policies.
+- Add optional HTML source-to-output byte mapping for editor/preview tooling without retaining a persistent source-map index.
+- Add deterministic canonical Markdown export, separate from source-preserving editing, with semantic reparse equivalence and byte idempotence across the approved CommonMark/GFM examples and retained real-world corpus.
+- Add full-profile HTML conformance against all approved CommonMark and published-GFM examples, including rendering-only tag filtering and explicitly reviewed profile divergences.
 
 ## v0.5.0-beta.1 — 2026-08-28
 
-- Complete the pre-M116 v0.5 performance campaign: on the byte-certified 6,857-document / 60.8 MB corpus, same-host five-run medians improve public `Parse` from 15.04 to 25.06 MB/s and Native from 19.23 to 30.87 MB/s while reducing public/Native allocated bytes to about 2.702/1.902 GB per complete corpus pass and allocation counts to about 10.402/9.015 million.
-- Compact common parser/document node storage through sparse detail sidecars and narrower common records, reduce transient projection/index state and repeated source mapping, and add measured Native scanner/index fast paths without reintroducing Goldmark or adding persistent parse caches.
-- Make byte-identical replacements of already source-proven content deterministic snapshot-bound no-ops across reviewed mutation APIs, while keeping validators for genuinely new invalid content fail-closed; fuzzing found and regression-tested Setext-heading, math-NUL, and contextual-paragraph edge cases.
-- Fix source-preserving promotion of GFM table rows nested in indented block containers by tracking the semantic row anchor separately from complete physical-line ownership.
-- Surface Marksplice's verified engineering/agent-tooling characteristics more clearly in the public entry point, including conformance, stale-source safety, real-world corpus validation, measured parse performance, and explicit authority boundaries.
+- Improve public parsing throughput and reduce allocation on the retained 6,857-document / 60.8 MB engineering corpus through profile-guided parser/document-model optimization.
+- Compact common parser/document storage, reduce transient projection/index state and repeated source mapping, and add measured scanner/index fast paths without adding persistent parse caches.
+- Make byte-identical replacements of already source-proven content deterministic snapshot-bound no-ops while keeping genuinely invalid replacement content fail-closed.
+- Fix source-preserving promotion of GFM table rows nested in indented block containers.
+- Expand public engineering documentation for conformance, stale-source safety, corpus validation, measured performance, and authority boundaries.
 
 ## v0.1.0-beta.2 — 2026-08-27
 
 - Add source-proven footnote and mathematical-expression capabilities, generalized opaque YAML/TOML front-matter envelope reading, and syntax-independent knowledge-document indexing over explicit document graphs.
-- Complete fuzz/pathological/performance hardening and stabilize the public API contract before third-party extensibility work.
-- Replace the ambiguous four-value `WorkspaceDiagnostic.UnresolvedReference` result with typed immutable `UnresolvedReference` data; document concurrent-read safety for immutable public models, serialized build-time resolvers, caller-bounded operations, `errors.Is` error classification, and the closed core `Kind` namespace. This accessor change is intentionally source-incompatible during the v0 beta period.
-- Add the explicit `ParseWithOptions` third-party read-only extension SPI with namespaced extension kinds, validated snapshot ranges/scalar metadata, caller-owned retention limits, serial non-retained recognizers, panic/error isolation through `ErrInvalidExtension`, and no core mutation/construction/parser/graph authority.
-- Freeze the complete internal parser-backend substitution contract and add a reusable differential harness over the same pinned GFM corpus plus focused Marksplice semantic/source-position regressions, keeping Goldmark only as the temporary oracle for the native-parser transition.
-- Complete the Native parser transition: implement and harden the full CommonMark/GFM backend, switch production parsing and construction proof to Native, freeze parser-neutral conformance fixtures tied to the approved external specification inputs, and remove the Goldmark adapter, differential scaffolding, and `github.com/yuin/goldmark` module dependency.
-- Add a task-oriented module guide and an exhaustive exported-callable API reference, with documentation audits that keep the reference synchronized with the public Go declarations.
-- Refactor the public documentation into one clear README entry point, a first-use Getting Started path, goal-oriented recipes, a concise current capability matrix, and runnable file-based examples for inspection, editing, construction, querying, workspaces, and read-only extensions; keep milestone/parser history in advanced historical records instead of the normal user journey.
-- Document the approved path to stable v1.0: filesystem-backed workspace discovery, Native semantic rendering, HTML/source mapping, canonical Markdown, and a dedicated M124 stabilization/profile gate; defer PDF work to the planned v1.5 line.
+- Expand fuzz/pathological/performance hardening and stabilize the public API shape ahead of v1.
+- Replace an ambiguous unresolved-reference accessor tuple with typed immutable `UnresolvedReference` data and document concurrent-read safety, bounded operations, `errors.Is` classification, and the closed core `Kind` namespace.
+- Add the explicit `ParseWithOptions` read-only third-party observation SPI with namespaced extension kinds, validated snapshot ranges/metadata, caller-provided retention limits, serial non-retained recognizers, and no mutation/construction/parser/graph authority.
+- Complete the Marksplice-owned Native parser transition, freeze parser-neutral conformance fixtures tied to approved specification inputs, and remove the temporary third-party Markdown parser dependency.
+- Add a task-oriented module guide, exhaustive exported-callable API reference, clear documentation entry point, goal-oriented recipes, concise capability matrix, and runnable file-based examples.
 
 ## v0.1.0-beta.1 — 2026-08-23
 
@@ -50,5 +52,4 @@ The project uses Semantic Versioning-compatible Go module tags. `v1.0.0` establi
 - Source-preserving structural parsing and reviewed mutation APIs for existing GFM.
 - Deterministic `DocumentBuilder` construction for reviewed block, table, front-matter, blockquote, and typed-inline families.
 - Typed full reference-link and reference-image construction with exact existing-definition proof.
-- GFM 0.29 conformance policy with Goldmark isolated behind an internal adapter.
-- Apache-2.0 licensing and Go 1.26 minimum language/toolchain requirement.
+- GFM conformance policy, parser isolation, Apache-2.0 licensing, and Go 1.26 minimum toolchain requirement.

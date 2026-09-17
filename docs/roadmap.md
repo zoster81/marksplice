@@ -10,8 +10,8 @@ The roadmap has four explicit release horizons:
 
 - **Pre-M116 performance campaign -> `v0.5.0-beta.1`**. This beta is dedicated to parser/document-model throughput, allocation, and memory improvements before new product surface is added. Additional `v0.5.0-beta.N` iterations are allowed only when further measured optimization or correctness work justifies them.
 - **M116–M124 -> `v1.0.0`**. Completed and released on 2026-09-16 after the M124 stabilization, performance, API-review, and release-readiness gate.
-- **Post-v1.0 Scripthold R30 integration gate -> `v1.1.0`**. Compatible structured-editing additions plus the front-matter replacement fix form the first minor release on the stable v1 API line.
-- **M125–M126 -> `v1.5.0`**. PDF work is intentionally queued after the R30 compatibility release and remains a separate future line.
+- **Post-v1.0 structured-editing compatibility gate -> `v1.1.1`**. Compatible structured-editing additions plus the front-matter replacement fix form the first minor feature line on the stable v1 API; `v1.1.0` is retracted in favor of the corrected `v1.1.1` publication.
+- **M125–M126 -> `v1.5.0`**. PDF work is intentionally queued after the structured-editing compatibility release and remains a separate future line.
 
 A milestone number is an engineering boundary, not a public API version. A release is published only from an exact reviewed commit that passes the applicable local and public CI gates.
 
@@ -267,13 +267,13 @@ Required work includes:
 
 The v1.0 release may be cut only after the exact reviewed M124 freeze commit passes public CI and the release-state commit itself passes the same public gate. Both conditions are part of the `v1.0.0` publication sequence.
 
-## Post-v1.0 — Scripthold R30 integration gate
+## Post-v1.0 — structured-editing compatibility gate
 
-**Status: Complete; release-state prepared for `v1.1.0` on 2026-09-17. M125 remains not started and requires its own explicit development boundary.**
+**Status: Complete; corrected public release target `v1.1.1`. M125 remains not started and requires its own explicit development boundary.**
 
-Scripthold's pre-integration dogfood of `v1.0.0` identified one front-matter mutation bug plus a set of structured-editing gaps needed to keep Markdown semantics and source-preserving mutation inside Marksplice rather than duplicating them in the host application.
+The compatibility review found one variable-length front-matter replacement defect and several generally useful structured-editing gaps. Marksplice now owns the corresponding paragraph, heading, list, link/image title, reference, footnote, front-matter, blockquote/alert, and fenced-block operations with source-preserving or explicit fail-closed contracts.
 
-The gate, dispositions, implemented additions, fail-closed boundaries, refactor/profiling evidence, and final verification state are tracked in [`milestones/r30-scripthold-integration-gate.md`](milestones/r30-scripthold-integration-gate.md). All reported G01–G11 capability gaps now have Marksplice-owned implementations or explicit fail-closed subsets, and the documented R30 freeze gate has passed. PDF work remains a separate future milestone and does not start implicitly.
+Implementation details and consumer-specific integration notes are intentionally kept outside the public roadmap. PDF work remains a separate future milestone and does not start implicitly.
 
 ## M125 — PDF backend contract (`v1.5.0` queue)
 

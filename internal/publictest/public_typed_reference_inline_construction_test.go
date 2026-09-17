@@ -219,7 +219,7 @@ func TestPublicTypedForwardReferenceConstructionUsesDeferredDefinitions(t *testi
 	}
 }
 
-func TestPublicTypedForwardReferencePreservesM89AndRejectsDefinitionCollisions(t *testing.T) {
+func TestPublicTypedForwardReferencePreservesPriorBehaviorAndRejectsDefinitionCollisions(t *testing.T) {
 	t.Parallel()
 
 	var builder marksplice.DocumentBuilder

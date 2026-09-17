@@ -58,7 +58,7 @@ type publishedDocumentObservations struct {
 	MathExpressions           []parser.MathExpressionObservation
 }
 
-func TestM115NativeMatchesPublishedCommonMark0312Contract(t *testing.T) {
+func TestNativeMatchesPublishedCommonMark0312Contract(t *testing.T) {
 	specPath := os.Getenv("MARKSPLICE_COMMONMARK_SPEC_HTML")
 	if specPath == "" {
 		t.Skip("MARKSPLICE_COMMONMARK_SPEC_HTML is not set")
@@ -85,7 +85,7 @@ func TestM115NativeMatchesPublishedCommonMark0312Contract(t *testing.T) {
 	}
 }
 
-func TestM115NativeMatchesPublishedGFM029Contract(t *testing.T) {
+func TestNativeMatchesPublishedGFMContract(t *testing.T) {
 	specPath := os.Getenv("MARKSPLICE_GFM_SPEC_HTML")
 	if specPath == "" {
 		t.Skip("MARKSPLICE_GFM_SPEC_HTML is not set")

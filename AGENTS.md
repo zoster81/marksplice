@@ -70,7 +70,7 @@ Future work must extend, not bypass, the established invariants: source preserva
 
 The current production complexity gate is cyclomatic complexity **15 or lower per function** (`gocyclo -over 15` must report no production function), with production and test-inclusive `unparam` checks. Do not split cohesive lexical/state-machine logic merely to lower a metric; refactor when responsibility, reuse, or verification clarity improves.
 
-Do not add Scripthold-specific MCP, filesystem authorization, preview/apply, release, or workspace-crawling behavior to Marksplice core. Marksplice does not maintain first-party dialect extensions; broadly useful capabilities belong in core, while dialect/product syntax may use the explicit M110 read-only third-party SPI.
+Do not add consumer-specific MCP, filesystem authorization, preview/apply, release, or workspace-crawling behavior to Marksplice core. Marksplice does not maintain first-party dialect extensions; broadly useful capabilities belong in core, while dialect/product syntax may use the explicit M110 read-only third-party SPI.
 
 ## Language and style
 

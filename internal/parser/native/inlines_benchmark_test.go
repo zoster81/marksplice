@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func BenchmarkM113NativeInlineScaling(b *testing.B) {
+func BenchmarkNativeInlineScaling(b *testing.B) {
 	families := []struct {
 		name string
 		unit string

@@ -1,41 +1,41 @@
 # Documentation Map
 
-The repository [`README.md`](../README.md) is the single public entry point. This page is a map for readers who already know what they need.
+The repository [`README.md`](../README.md) is the single public entry point. This page helps readers jump directly to the right level of detail.
 
 ## User documentation
 
-Follow this path for normal library use:
+For normal library use:
 
-1. [Getting Started](getting-started.md) — install, parse a real file, inspect, query, edit, apply, and create.
+1. [Getting Started](getting-started.md) — install, parse a real file, inspect, query, edit, apply, create, and render.
 2. [User Guide](guide.md) — choose an API family by goal.
-3. [Recipes](recipes/README.md) — focused workflows tied to runnable file-based examples.
-4. [Examples](../examples/README.md) — complete programs that load tracked Markdown fixtures.
-5. [Capabilities](capabilities.md) — concise current read/edit/create boundaries.
-6. [API Reference](api-reference.md) — exhaustive exported callable signatures and GoDoc-derived descriptions.
+3. [Recipes](recipes/README.md) — focused workflows tied to runnable examples.
+4. [Examples](../examples/README.md) — complete programs using tracked Markdown fixtures.
+5. [Capabilities](capabilities.md) — concise current read/edit/create/render boundaries.
+6. [API Reference](api-reference.md) — exhaustive exported callable signatures and descriptions.
 
-Normal users should not need milestone records or parser-transition documentation to get started.
+Normal users should not need development chronology or parser-transition history to use Marksplice.
 
-## Advanced and maintainer documentation
+## Maintainer documentation
 
-Use these when changing Marksplice itself or when you need the design rationale behind a boundary:
+Use these when changing the project or when you need design rationale:
 
-- [Architecture](architecture.md) — durable package, source-preservation, mutation, construction, performance, and authority decisions.
-- [Roadmap](roadmap.md) — approved post-M115 development sequence; M116–M124 are complete as the stable v1.0 line, and M125–M126 remain the deferred v1.5 PDF line.
-- [Markdown Conformance Policy](gfm-conformance.md) — normative CommonMark/GFM hierarchy, pinned external specification inputs, and update procedure.
-- [Capability and Third-Party Extensibility Strategy](extension-strategy.md) — what belongs in core versus independent read-only extensions.
-- [Release and Versioning Policy](releasing.md) — public module/release procedure.
+- [Architecture](architecture.md) — current package boundaries, source preservation, mutation, construction, performance, and authority rules.
+- [Markdown Conformance Policy](gfm-conformance.md) — normative CommonMark/GFM hierarchy, approved external snapshots, and update procedure.
+- [Capability and Third-Party Extensibility Strategy](extension-strategy.md) — what belongs in core versus independent extensions/integrations.
+- [Roadmap](roadmap.md) — planned engineering/release sequence.
+- [Release and Versioning Policy](releasing.md) — module versioning and publication procedure.
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — contributor workflow and verification gates.
 - [`SECURITY.md`](../SECURITY.md) — private vulnerability reporting.
 
 ## Historical engineering records
 
-These files preserve decisions and verification evidence but are not part of the normal user journey:
+These files preserve implementation decisions and verification evidence. They are useful when reconstructing why a contract exists, but they are not part of the normal learning path:
 
-- [`milestones/`](milestones/) — M0–M124 feature/design/test records plus the post-v1.0 Scripthold R30 integration gate; M120 records HTML-fragment conformance, M121 standalone HTML/metadata, M122 optional source mapping, M123 canonical Markdown semantic/idempotence and profiling evidence, M124 the completed v1.0 stabilization/release gate, and `r30-scripthold-integration-gate.md` the structured-editing compatibility work required before M125.
-- [Goldmark capability matrix](goldmark-capability-matrix.md) — historical pre-M115 parser/source transition record.
-- [`CHANGELOG.md`](../CHANGELOG.md) — public release history and release notes.
+- [`milestones/`](milestones/) — detailed historical feature/design/test records.
+- [Historical parser capability matrix](goldmark-capability-matrix.md) — retired parser/source transition evidence.
+- [`CHANGELOG.md`](../CHANGELOG.md) — public release history and user-visible release notes.
 
-History remains tracked so maintainers can reconstruct why a contract exists without forcing new users to read the development chronology.
+Current documentation describes current behavior directly. Historical phase numbers and old implementation transitions stay in explicitly historical records rather than leaking into the user-facing API story.
 
 ## Repository layout
 
@@ -48,12 +48,12 @@ History remains tracked so maintainers can reconstruct why a contract exists wit
 ├── example_test.go          compact pkg.go.dev examples
 ├── examples/                runnable file-based user examples
 ├── workspacefs/             caller-authorized read-only fs.FS workspace adapter
-├── internal/                private parser/source/splice implementation and tests
-├── docs/                    user, reference, advanced, and historical documentation
+├── internal/                private parser/source/splice/rendering implementation and tests
+├── docs/                    user, reference, maintainer, roadmap, and historical documentation
 └── README.md                single public entry point
 ```
 
-The primary public Go package stays at the module root so consumers import:
+The main package import path is:
 
 ```text
 github.com/zoster81/marksplice
@@ -65,4 +65,4 @@ Filesystem-backed workspace discovery is an explicit separate package:
 github.com/zoster81/marksplice/workspacefs
 ```
 
-Do not create a duplicate public documentation tree or a cosmetic top-level `src/` package. New documentation should have one clear responsibility and link to the existing source of truth instead of copying it.
+New documentation should have one clear responsibility and link to the existing source of truth rather than duplicating it.

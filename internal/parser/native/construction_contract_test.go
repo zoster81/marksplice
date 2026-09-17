@@ -10,7 +10,7 @@ import (
 	"github.com/zoster81/marksplice/internal/parser/native"
 )
 
-func TestM115NativeConstructionProofAcceptsFrozenContract(t *testing.T) {
+func TestNativeConstructionProofAcceptsFrozenContract(t *testing.T) {
 	t.Parallel()
 	backend := native.New()
 
@@ -40,12 +40,12 @@ func TestM115NativeConstructionProofAcceptsFrozenContract(t *testing.T) {
 	t.Run("inline hierarchy", func(t *testing.T) {
 		source := []byte("*before ``a`b`` after* **_inside_** *~~gone~~*")
 		expected := []parser.ConstructionInlineExpectation{
-			m115InlineExpectation(source, "*before ``a`b`` after*", parser.KindEmphasis, '*', 1, -1),
-			m115InlineExpectation(source, "``a`b``", parser.KindCodeSpan, '`', 2, 0),
-			m115InlineExpectation(source, "**_inside_**", parser.KindStrong, '*', 2, -1),
-			m115InlineExpectation(source, "_inside_", parser.KindEmphasis, '_', 1, 2),
-			m115InlineExpectation(source, "*~~gone~~*", parser.KindEmphasis, '*', 1, -1),
-			m115InlineExpectation(source, "~~gone~~", parser.KindStrikethrough, '~', 2, 4),
+			inlineExpectation(source, "*before ``a`b`` after*", parser.KindEmphasis, '*', 1, -1),
+			inlineExpectation(source, "``a`b``", parser.KindCodeSpan, '`', 2, 0),
+			inlineExpectation(source, "**_inside_**", parser.KindStrong, '*', 2, -1),
+			inlineExpectation(source, "_inside_", parser.KindEmphasis, '_', 1, 2),
+			inlineExpectation(source, "*~~gone~~*", parser.KindEmphasis, '*', 1, -1),
+			inlineExpectation(source, "~~gone~~", parser.KindStrikethrough, '~', 2, 4),
 		}
 		if err := backend.ValidateConstructionInlineHierarchy(source, expected, nil); err != nil {
 			t.Fatalf("ValidateConstructionInlineHierarchy() error = %v", err)
@@ -55,7 +55,7 @@ func TestM115NativeConstructionProofAcceptsFrozenContract(t *testing.T) {
 	t.Run("unmatched backtick emphasis", func(t *testing.T) {
 		source := []byte("*a`b*")
 		expected := []parser.ConstructionInlineExpectation{
-			m115InlineExpectation(source, string(source), parser.KindEmphasis, '*', 1, -1),
+			inlineExpectation(source, string(source), parser.KindEmphasis, '*', 1, -1),
 		}
 		if err := backend.ValidateConstructionInlineHierarchy(source, expected, nil); err != nil {
 			t.Fatalf("ValidateConstructionInlineHierarchy() error = %v", err)
@@ -65,8 +65,8 @@ func TestM115NativeConstructionProofAcceptsFrozenContract(t *testing.T) {
 	t.Run("direct link image", func(t *testing.T) {
 		source := []byte("[**docs**](<target> \"Guide\") ![*logo*](<image.png>)")
 		expected := []parser.ConstructionLinkImageExpectation{
-			m115LinkImageExpectation(source, "[**docs**](<target> \"Guide\")", "**docs**", parser.KindInlineLink, "target", "Guide", true),
-			m115LinkImageExpectation(source, "![*logo*](<image.png>)", "*logo*", parser.KindImage, "image.png", "", false),
+			linkImageExpectation(source, "[**docs**](<target> \"Guide\")", "**docs**", parser.KindInlineLink, "target", "Guide", true),
+			linkImageExpectation(source, "![*logo*](<image.png>)", "*logo*", parser.KindImage, "image.png", "", false),
 		}
 		if err := backend.ValidateConstructionLinkImages(source, expected); err != nil {
 			t.Fatalf("ValidateConstructionLinkImages() error = %v", err)
@@ -76,8 +76,8 @@ func TestM115NativeConstructionProofAcceptsFrozenContract(t *testing.T) {
 	t.Run("reference inline", func(t *testing.T) {
 		source := []byte("[docs][ref] and ![logo][img]")
 		expected := []parser.ConstructionReferenceInlineExpectation{
-			m115ReferenceExpectation(source, "[docs][ref]", "docs", "ref", parser.KindInlineLink, "https://example.test", "Guide", true),
-			m115ReferenceExpectation(source, "![logo][img]", "logo", "img", parser.KindImage, "images/logo.png", "", false),
+			referenceExpectation(source, "[docs][ref]", "docs", "ref", parser.KindInlineLink, "https://example.test", "Guide", true),
+			referenceExpectation(source, "![logo][img]", "logo", "img", parser.KindImage, "images/logo.png", "", false),
 		}
 		if err := backend.ValidateConstructionReferenceInlines(source, expected); err != nil {
 			t.Fatalf("ValidateConstructionReferenceInlines() error = %v", err)
@@ -89,7 +89,7 @@ func TestM115NativeConstructionProofAcceptsFrozenContract(t *testing.T) {
 		[]byte("[docs][ref]"),
 	} {
 		label := string(source[1:bytes.IndexByte(source, ']')])
-		expected := m115ReferenceExpectation(source, string(source), label, "ref", parser.KindInlineLink, "target", "Guide", true)
+		expected := referenceExpectation(source, string(source), label, "ref", parser.KindInlineLink, "target", "Guide", true)
 		expected.StructuredLabel = true
 		if err := backend.ValidateConstructionReferenceInlines(source, []parser.ConstructionReferenceInlineExpectation{expected}); err != nil {
 			t.Fatalf("structured reference %q error = %v", source, err)
@@ -97,7 +97,7 @@ func TestM115NativeConstructionProofAcceptsFrozenContract(t *testing.T) {
 	}
 }
 
-func TestM115NativeConstructionProofRejectsFrozenContractChanges(t *testing.T) {
+func TestNativeConstructionProofRejectsFrozenContractChanges(t *testing.T) {
 	t.Parallel()
 	backend := native.New()
 
@@ -114,8 +114,8 @@ func TestM115NativeConstructionProofRejectsFrozenContractChanges(t *testing.T) {
 	t.Run("inline parent mismatch", func(t *testing.T) {
 		source := []byte("*outer `code`*")
 		expected := []parser.ConstructionInlineExpectation{
-			m115InlineExpectation(source, "*outer `code`*", parser.KindEmphasis, '*', 1, -1),
-			m115InlineExpectation(source, "`code`", parser.KindCodeSpan, '`', 1, -1),
+			inlineExpectation(source, "*outer `code`*", parser.KindEmphasis, '*', 1, -1),
+			inlineExpectation(source, "`code`", parser.KindCodeSpan, '`', 1, -1),
 		}
 		if err := backend.ValidateConstructionInlineHierarchy(source, expected, nil); err == nil {
 			t.Fatal("ValidateConstructionInlineHierarchy() error = nil, want rejection")
@@ -125,7 +125,7 @@ func TestM115NativeConstructionProofRejectsFrozenContractChanges(t *testing.T) {
 	t.Run("direct destination mismatch", func(t *testing.T) {
 		source := []byte("[docs](<target>)")
 		expected := []parser.ConstructionLinkImageExpectation{
-			m115LinkImageExpectation(source, string(source), "docs", parser.KindInlineLink, "other", "", false),
+			linkImageExpectation(source, string(source), "docs", parser.KindInlineLink, "other", "", false),
 		}
 		if err := backend.ValidateConstructionLinkImages(source, expected); err == nil {
 			t.Fatal("ValidateConstructionLinkImages() error = nil, want rejection")
@@ -134,7 +134,7 @@ func TestM115NativeConstructionProofRejectsFrozenContractChanges(t *testing.T) {
 
 	t.Run("structured reference declared plain", func(t *testing.T) {
 		source := []byte("[**docs** `v1`][ref]")
-		expected := m115ReferenceExpectation(source, string(source), "**docs** `v1`", "ref", parser.KindInlineLink, "target", "Guide", true)
+		expected := referenceExpectation(source, string(source), "**docs** `v1`", "ref", parser.KindInlineLink, "target", "Guide", true)
 		if err := backend.ValidateConstructionReferenceInlines(source, []parser.ConstructionReferenceInlineExpectation{expected}); err == nil {
 			t.Fatal("ValidateConstructionReferenceInlines() error = nil, want rejection")
 		}
@@ -142,15 +142,15 @@ func TestM115NativeConstructionProofRejectsFrozenContractChanges(t *testing.T) {
 
 	t.Run("conflicting reference semantics", func(t *testing.T) {
 		source := []byte("[a][ref] [b][ref]")
-		first := m115ReferenceExpectation(source, "[a][ref]", "a", "ref", parser.KindInlineLink, "first", "", false)
-		second := m115ReferenceExpectation(source, "[b][ref]", "b", "ref", parser.KindInlineLink, "second", "", false)
+		first := referenceExpectation(source, "[a][ref]", "a", "ref", parser.KindInlineLink, "first", "", false)
+		second := referenceExpectation(source, "[b][ref]", "b", "ref", parser.KindInlineLink, "second", "", false)
 		if err := backend.ValidateConstructionReferenceInlines(source, []parser.ConstructionReferenceInlineExpectation{first, second}); err == nil {
 			t.Fatal("ValidateConstructionReferenceInlines() error = nil, want rejection")
 		}
 	})
 }
 
-func TestM115NativeReferenceOperationsFrozenContract(t *testing.T) {
+func TestNativeReferenceOperationsFrozenContract(t *testing.T) {
 	t.Parallel()
 	backend := native.New()
 
@@ -186,7 +186,7 @@ func TestM115NativeReferenceOperationsFrozenContract(t *testing.T) {
 	}
 }
 
-func m115InlineExpectation(source []byte, token string, kind parser.Kind, marker byte, delimiterLength, parent int) parser.ConstructionInlineExpectation {
+func inlineExpectation(source []byte, token string, kind parser.Kind, marker byte, delimiterLength, parent int) parser.ConstructionInlineExpectation {
 	start := strings.Index(string(source), token)
 	end := start + len(token)
 	return parser.ConstructionInlineExpectation{
@@ -196,7 +196,7 @@ func m115InlineExpectation(source []byte, token string, kind parser.Kind, marker
 	}
 }
 
-func m115LinkImageExpectation(source []byte, token, label string, kind parser.Kind, destination, title string, hasTitle bool) parser.ConstructionLinkImageExpectation {
+func linkImageExpectation(source []byte, token, label string, kind parser.Kind, destination, title string, hasTitle bool) parser.ConstructionLinkImageExpectation {
 	start := strings.Index(string(source), token)
 	prefix := 1
 	if kind == parser.KindImage {
@@ -210,7 +210,7 @@ func m115LinkImageExpectation(source []byte, token, label string, kind parser.Ki
 	}
 }
 
-func m115ReferenceExpectation(source []byte, token, label, reference string, kind parser.Kind, destination, title string, hasTitle bool) parser.ConstructionReferenceInlineExpectation {
+func referenceExpectation(source []byte, token, label, reference string, kind parser.Kind, destination, title string, hasTitle bool) parser.ConstructionReferenceInlineExpectation {
 	start := strings.Index(string(source), token)
 	prefix := 1
 	if kind == parser.KindImage {

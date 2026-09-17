@@ -4,10 +4,10 @@ This guide takes you from installation to a real source-preserving edit. It assu
 
 ## 1. Install Marksplice
 
-Marksplice requires Go 1.26 or newer. Install the stable `v1.1.0` release explicitly:
+Marksplice requires Go 1.26 or newer. Install the stable `v1.1.1` release explicitly:
 
 ```sh
-go get github.com/zoster81/marksplice@v1.1.0
+go get github.com/zoster81/marksplice@v1.1.1
 ```
 
 Import the root package:
@@ -245,4 +245,4 @@ See [Render HTML](recipes/render-html.md) for fragment, standalone, metadata, sa
 - [API Reference](api-reference.md): exact signatures and exhaustive callable coverage.
 - [Capabilities](capabilities.md): what is supported today and where Marksplice intentionally stops.
 
-For parser architecture, conformance policy, and engineering history, use the [advanced/maintainer documentation map](README.md#advanced-and-maintainer-documentation). Those documents are not required for normal library use.
+For parser architecture, conformance policy, and engineering history, use the [maintainer documentation map](README.md#maintainer-documentation). Those documents are not required for normal library use.

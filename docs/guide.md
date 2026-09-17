@@ -170,4 +170,4 @@ Public variable-length results are caller-owned unless an API explicitly states 
 
 The root document/graph APIs perform no implicit filesystem, network, or command I/O. `workspacefs` adds only explicit read-only filesystem access through the caller's `fs.FS`; it does not write files, fetch URLs, or execute commands. Marksplice emits canonical Markdown or HTML only when explicitly requested; it does not render PDF, execute fenced languages, serialize arbitrary YAML/TOML, run templates, run a LaTeX/math engine, fetch assets, or normalize an existing document as a side effect of a structural edit.
 
-Those boundaries are summarized in [Capabilities](capabilities.md). Architecture and conformance rationale live in the [advanced documentation](README.md#advanced-and-maintainer-documentation).
+Those boundaries are summarized in [Capabilities](capabilities.md). Architecture and conformance rationale live in the [maintainer documentation](README.md#maintainer-documentation).

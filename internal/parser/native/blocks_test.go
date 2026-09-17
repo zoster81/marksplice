@@ -9,7 +9,7 @@ import (
 	"github.com/zoster81/marksplice/internal/parser"
 )
 
-func TestM114CommonMark0312BlockquoteTabStructures(t *testing.T) {
+func TestCommonMark0312BlockquoteTabStructures(t *testing.T) {
 	t.Parallel()
 
 	for _, source := range [][]byte{
@@ -55,7 +55,7 @@ func TestM114CommonMark0312BlockquoteTabStructures(t *testing.T) {
 	}
 }
 
-func TestM115GFMTableSplitsTrailingLineFromOpenParagraph(t *testing.T) {
+func TestGFMTableSplitsTrailingLineFromOpenParagraph(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("Intro line.\n| A | B |\n| --- | --- |\n| x | y |\n")
@@ -81,7 +81,7 @@ func TestM115GFMTableSplitsTrailingLineFromOpenParagraph(t *testing.T) {
 	}
 }
 
-func TestM114CommonMark0312EmptyListItemMayOwnIndentedNestedList(t *testing.T) {
+func TestCommonMark0312EmptyListItemMayOwnIndentedNestedList(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -107,7 +107,7 @@ func TestM114CommonMark0312EmptyListItemMayOwnIndentedNestedList(t *testing.T) {
 	}
 }
 
-func TestM114CommonMark0312LazyBlockquoteContinuationRequiresParagraphLeaf(t *testing.T) {
+func TestCommonMark0312LazyBlockquoteContinuationRequiresParagraphLeaf(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -142,7 +142,7 @@ func TestM114CommonMark0312LazyBlockquoteContinuationRequiresParagraphLeaf(t *te
 	}
 }
 
-func TestM114CommonMark0312HTMLBlockGrammar(t *testing.T) {
+func TestCommonMark0312HTMLBlockGrammar(t *testing.T) {
 	t.Parallel()
 
 	t.Run("textarea is type one", func(t *testing.T) {

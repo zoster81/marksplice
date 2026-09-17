@@ -150,7 +150,7 @@ func TestNativeRealWorldMarkdownCorpus(t *testing.T) {
 		nonUTF8Files, bomFiles, crlfFiles, tabFiles, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
-func TestM119NativeSemanticRealWorldCorpus(t *testing.T) {
+func TestNativeSemanticRealWorldCorpus(t *testing.T) {
 	files := loadRealWorldCorpus(t)
 	backend := native.New()
 	var totalBytes int64

@@ -1,12 +1,19 @@
 # Contributing to Marksplice
 
-Marksplice is in its public v0 beta series. Contributions should favor correctness, deterministic behavior, source preservation, and narrow evidence-backed changes over API breadth. Until v1, public APIs remain under active review and compatibility-breaking changes must be called out explicitly in the changelog and release notes.
+Marksplice is a stable v1 Go module. Contributions should favor correctness, deterministic behavior, source preservation, and narrow evidence-backed changes over unnecessary API breadth.
 
 ## Before changing code
 
-Read `AGENTS.md` first, then the source-of-truth documents relevant to the change. Architecture/parser/conformance work normally requires `docs/architecture.md` and `docs/gfm-conformance.md`; consult milestone records when their historical contract or evidence is relevant, not as a prerequisite for unrelated work. Inspect the relevant implementation and tests before editing. Public API changes must update `docs/api-reference.md` plus every affected getting-started, guide, recipe, capability, and runnable-example surface in the same change.
+Read `AGENTS.md`, then the current source-of-truth documents relevant to the change. Architecture/parser/conformance work normally requires [`docs/architecture.md`](docs/architecture.md) and [`docs/gfm-conformance.md`](docs/gfm-conformance.md). Historical milestone records are useful when reconstructing why an older contract exists, but they are not prerequisites for unrelated work.
 
-For substantive changes, document the four engineering phases in the working discussion: requirements/edge cases, architecture/test strategy, devil's advocate risks, and implementation/verification.
+Inspect the relevant implementation and tests before editing. Public API changes must update [`docs/api-reference.md`](docs/api-reference.md) plus every affected Getting Started, guide, recipe, capability, and runnable-example surface in the same change.
+
+For substantive work, cover four engineering phases in the working discussion:
+
+1. requirements and edge cases;
+2. architecture and test strategy;
+3. devil's-advocate risks and mitigations;
+4. implementation and verification.
 
 ## Test-first workflow
 
@@ -16,23 +23,24 @@ When practical:
 2. run it and confirm the expected failure;
 3. implement the smallest coherent fix;
 4. rerun the focused test;
-5. run the relevant regression suite.
+5. run relevant regressions.
 
-Source-preservation tests must verify bytes outside changed spans, not only semantic equivalence.
+Source-preservation tests must verify untouched bytes, not only semantic equivalence.
 
 ## Supported Go versions
 
-The minimum supported Go version is defined by the `go` directive in `go.mod`, currently Go 1.26. Public CI also tests the current Go 1.27 release on Linux, Windows, and macOS. Changes should remain compatible with the minimum version unless the minimum-version policy is deliberately changed in the same reviewed update.
+The minimum supported Go version is the `go` directive in `go.mod`, currently Go 1.26. Public CI also tests the current Go 1.27 line across supported operating systems. Do not raise the compatibility floor merely to use a newer release compiler.
 
 ## Required local checks
 
-For code changes, run the applicable subset of:
+Run the applicable subset for the change:
 
 ```text
 gofmt -w <changed-go-files>
-go test ./...
-go test -race ./...
+go test ./... -count=1
+go test -race ./... -count=1
 go vet ./...
+go build ./...
 staticcheck ./...
 golangci-lint run
 gocyclo -over 15 -ignore '_test\.go$' .
@@ -44,48 +52,80 @@ git diff --check
 git status --short
 ```
 
-Do not claim a check passed unless it was actually executed. A skipped check should be reported with the reason.
+Do not claim a check passed unless it was executed. Report skipped checks and their reason.
 
-The black-box public API suite lives in `internal/publictest` and imports `github.com/zoster81/marksplice` like an external consumer. Consequently, `go test . -cover` measures only the root package's local examples and is not a meaningful project coverage figure. Maintainer coverage gates must instrument the module packages across package boundaries; normal functional verification remains `go test ./...`.
+The black-box public API suite lives in `internal/publictest` and imports `github.com/zoster81/marksplice` like an external consumer. Consequently, `go test . -cover` is not a meaningful project-wide coverage figure; coverage gates must instrument packages across the module boundary.
 
-## Documentation changes
+## Documentation
 
-The repository `README.md` is the single public entry point. Keep learning material progressively disclosed instead of duplicating it:
+The repository [`README.md`](README.md) is the single public entry point. Keep learning material progressively disclosed:
 
 - `docs/getting-started.md` owns the first successful workflow;
-- `docs/guide.md` routes by user goal;
+- `docs/guide.md` routes readers by goal;
 - `docs/recipes/` owns focused workflows;
-- `examples/` owns runnable file-based examples and tracked Markdown fixtures;
-- `docs/capabilities.md` describes current capability, not development chronology;
-- `docs/api-reference.md` remains exhaustive and secondary to task-oriented learning;
-- advanced architecture/conformance/release documents and `docs/milestones/` retain the detail/history needed by maintainers.
+- `examples/` owns runnable file-based examples;
+- `docs/capabilities.md` describes the current product boundary;
+- `docs/api-reference.md` is the exhaustive callable reference;
+- `docs/architecture.md`, `docs/gfm-conformance.md`, and `docs/releasing.md` describe current maintainer contracts;
+- `docs/milestones/` preserves historical engineering chronology.
 
-When changing documentation, check relative links, run every affected example, preserve fixture files, and run `git diff --check`. New examples should prefer real tracked `.md` inputs over toy Markdown embedded in Go strings when the example is teaching a file/document workflow.
+Current documentation must explain present behavior directly. Do not require readers to know internal milestone numbers, development phases, or the name of a particular downstream consumer. Historical chronology belongs only in explicitly historical records or the maintainer roadmap.
+
+When changing documentation, check relative links, run affected examples, preserve fixtures, and run `git diff --check`.
 
 ## Repository layout
 
-The canonical document package stays at the module root so its import path remains `github.com/zoster81/marksplice`. Root Go files are grouped by responsibility: `api*.go` for parsed-document/read/edit APIs, `builder*.go` for new-document construction, plus `doc.go` and `example_test.go`. The separate public `workspacefs/` package owns only caller-authorized read-only `fs.FS` workspace loading; it must delegate parsing, graph, and validation semantics instead of becoming a second document core. Private parser/source/splice implementation and black-box tests live under `internal/`; longer-form documentation lives under `docs/` and is indexed by [`docs/README.md`](docs/README.md).
+The public document package stays at the module root so its import path remains:
 
-Do not introduce a top-level `src/` package merely for visual separation: in a Go module that would change the natural consumer import path or force a redundant forwarding facade. New directories should represent real package or documentation boundaries.
+```text
+github.com/zoster81/marksplice
+```
 
-## Markdown profile and dependency policy
+Root Go files are grouped by responsibility: `api*.go` for parsed-document/read/edit APIs and `builder*.go` for new-document construction. `workspacefs/` is the separate caller-authorized read-only filesystem adapter. Private parser/source/splice/rendering implementation and black-box tests live under `internal/`.
 
-Marksplice exposes one Markdown syntax profile: CommonMark 0.31.2 is the normative base grammar, with the published GFM extensions/corrections layered on top. Follow [`docs/gfm-conformance.md`](docs/gfm-conformance.md) for the normative source hierarchy, approved snapshots, advisory-source policy, and specification-update procedure. Do not add separate dialect modes or additional syntax without an explicit architecture decision and corresponding conformance tests.
+Do not add a cosmetic top-level `src/` package that changes the natural import path or requires a forwarding facade.
 
-Keep dependencies minimal. Production Markdown parsing and construction proof use the Marksplice-native `internal/parser/native` implementation behind the parser-independent `internal/parser.Backend` contract. M115 removed the former Goldmark adapter, differential oracle, compatibility implementation, and module dependency; reintroducing a third-party semantic parser or parser-specific public type requires an explicit architecture decision. `golang.org/x/text` remains the direct parser-owned dependency used for full Unicode case folding in GFM reference-label normalization, while GFM whitespace rules remain Marksplice-owned. Footnotes and mathematical expressions are reviewed Marksplice core overlays implemented by Native observations plus independent source proof, not separate dialect modes or third-party renderer dependencies. M120–M123 rendering consumes the internal Native semantic walk and must not add a second Markdown parser, retained renderer/source-map AST, hidden I/O, asset fetcher, template engine, syntax highlighter, or math engine. Standalone metadata must reuse the conservative front-matter model rather than adding general YAML/TOML interpretation. M122 source mapping remains opt-in: mapped output must be byte-identical to ordinary rendering under the same options, source/output coordinates are snapshot/result-local bytes rather than durable `NodeID` identity, and no persistent source-map index may be added without new measured evidence. M123 canonical Markdown is an explicit normalization export only: reparsing must preserve reviewed semantic facts, rendering it again must be byte-idempotent, and it must never replace source-preserving existing-document mutation. YAML/TOML front matter remains a Marksplice-owned source envelope, not a reason to add a YAML/TOML parser or serializer dependency. Exact dependency versions belong in `go.mod` and `go.sum`.
+## Markdown profile and dependencies
 
-When the approved specification snapshots are provisioned separately, set `MARKSPLICE_COMMONMARK_SPEC_HTML` and `MARKSPLICE_GFM_SPEC_HTML` to their HTML paths. Run the exact parser, semantic, and renderer contract gates documented in `docs/gfm-conformance.md`; the current anchored tests include `TestPublishedCommonMark0312Corpus`, `TestM115NativeMatchesPublishedCommonMark0312Contract`, `TestM115NativeMatchesPublishedGFM029Contract`, `TestM119PublishedCommonMarkSemanticContract`, `TestM119PublishedGFMSemanticContract`, `TestM120PublishedCommonMarkHTMLFullProfileContract`, `TestM120PublishedGFMHTMLFullProfileContract`, `TestM123PublishedCommonMarkCanonicalSemanticRoundTrip`, and `TestM123PublishedGFMCanonicalSemanticRoundTrip`. The M119 semantic tests complement rather than replace the complete parser-neutral corpora; the M120 HTML gates independently compare applicable cases against published expected HTML and include rendering-only `tagfilter`, while M123 verifies canonical Markdown by semantic reparse equivalence plus byte idempotence across all 652 CommonMark and 677 published-GFM examples. Inherited GFM core examples do not override the newer CommonMark base grammar. Use anchored exact test names: an incorrect `-run` filter can select zero tests while `go test` still exits successfully. Each loader verifies the approved SHA-256 before evaluating examples; an upstream specification change requires the reviewed update process in `docs/gfm-conformance.md`, not a hash-only or mechanically regenerated-fixture update.
+Marksplice exposes one Markdown profile: CommonMark 0.31.2 plus explicit published-GFM extensions/corrections. Follow [`docs/gfm-conformance.md`](docs/gfm-conformance.md) for normative hierarchy, approved snapshots, and update procedure.
+
+Production parsing uses the Marksplice-owned Native backend behind parser-independent internal contracts. Reintroducing a third-party semantic parser or exposing parser-specific public types requires an explicit architecture decision.
+
+Keep dependencies minimal. `golang.org/x/text` is the direct production dependency used for full Unicode GFM reference-label folding. Exact versions belong in `go.mod` and `go.sum`.
+
+Footnotes, mathematical source forms, alerts, and front matter are reviewed Marksplice capabilities with independent source proof; they are not hidden caller-selectable dialect modes.
+
+Rendering consumes the on-demand Native semantic walk and must not introduce a second Markdown parser, retained renderer AST, hidden filesystem/network I/O, asset fetcher, template engine, syntax highlighter, or math engine. Source mapping remains optional and must not change emitted HTML bytes. Canonical Markdown remains an explicit normalization export rather than an edit path.
+
+## Conformance
+
+When approved specification snapshots are available, set:
+
+```text
+MARKSPLICE_COMMONMARK_SPEC_HTML
+MARKSPLICE_GFM_SPEC_HTML
+```
+
+Then run the exact anchored parser, semantic, renderer, and canonical-Markdown gates documented in [`docs/gfm-conformance.md`](docs/gfm-conformance.md). An incorrect `-run` filter may select zero tests while `go test` still exits successfully; use the documented exact names.
+
+Each loader verifies the approved snapshot identity before evaluating examples. Do not accept an upstream change by updating only a hash or by mechanically regenerating expectations from current Native output.
 
 ## Source preservation
 
-Ordinary edits to existing Markdown must not render and replace the complete document. Prepared changes must use validated source ranges, preserve untouched bytes, and fail closed when applied to a different source snapshot.
+Ordinary existing-document edits must not render and replace the complete document. Prepared changes use validated source ownership, preserve untouched bytes, and fail closed when applied to a different source snapshot.
 
-Use byte offsets for source mutation boundaries. Be deliberate about LF/CRLF, Unicode, malformed input, duplicate human-readable labels, large inputs, and deterministic behavior.
+Use byte offsets for mutation boundaries. Be deliberate about LF/CRLF, Unicode, malformed input, duplicate labels, large inputs, and deterministic failure behavior.
 
-## Releases and publication
+## Authority boundaries
 
-Public module versioning, beta policy, release preparation, and publication verification are defined in [`docs/releasing.md`](docs/releasing.md). Contributors should not move or recreate published module tags. A release must be cut from the exact reviewed commit that passed the applicable verification gates.
+The document core performs no arbitrary filesystem traversal, URL fetching, network access, command execution, or host authorization.
 
-## Scope discipline
+`workspacefs` may consume only caller-supplied `fs.FS` read authority under explicit finite limits. Host authorization, writes, backups, encoding/BOM policy, network fetching, commands, and application-specific security policy remain outside Marksplice.
 
-Do not add Scripthold-specific MCP adapters or host-specific filesystem/security policy to this repository. `workspacefs` may consume only caller-supplied `fs.FS` read authority under explicit finite limits. Its local relationship resolver uses slash-based URI-path rules, a single percent-decode of path components, query/file separation, preserved fragments, and fail-closed handling for encoded traversal/separators and other non-filesystem forms; caller `fs.FS` case/symlink behavior remains caller-owned. Host authorization, writes, URL fetching, commands, and security policy remain outside Marksplice. Future public API and document-intelligence work must extend the proven architecture and source-preservation invariants rather than bypassing them or promoting parser/source internals wholesale.
+Do not add consumer-specific adapters or workflow policy to core. A generally useful capability should be expressed through a product-neutral public contract; product-specific syntax or semantics belongs in an independent package or host application.
+
+## Releases
+
+Public module versioning and publication verification are defined in [`docs/releasing.md`](docs/releasing.md). A release is cut only from the exact reviewed commit that passed the applicable local and public CI gates.
+
+A version already observed by Go module tooling must not be reused for different source bytes. If release metadata or documentation needs correction after proxy publication, publish a new version and retract the affected one when appropriate.

@@ -41,7 +41,7 @@ type semanticFact struct {
 	math        parser.MathExpressionStyle
 }
 
-func TestM123CanonicalMarkdownSemanticRoundTripComplexFamilies(t *testing.T) {
+func TestCanonicalMarkdownSemanticRoundTripComplexFamilies(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("---\r\ntitle: demo\r\n---\r\n\r\nHeading\r\n=======\r\n\r\nParagraph with *em **strong** ~~strike~~*, [direct](target.md 'a \\\"title\\\"'), [reference][ref], ![image *alt*](image.png), <https://example.test/a>, www.example.test, `code`, and $x$ plus $`y`$.  \r\nnext line\r\n\r\n[ref]: /reference 'reference title'\r\n\r\n> quote\r\n>\r\n> 3. outer\r\n>    - inner\r\n\r\n> [!NOTE]\r\n> alert **body**\r\n>\r\n> - child\r\n\r\n- [x] task\r\n- plain\r\n\r\n3. loose one\r\n\r\n4. loose two\r\n\r\n| Left | Right |\r\n| :--- | ---: |\r\n| `a\\|b` | ~~cell~~ |\r\n\r\n~~~go`x\r\n```\r\nbody\r\n~~~\r\n\r\n    indented\r\n    code\r\n\r\n<div data-x=\"a|b\">\r\nraw\r\n</div>\r\n\r\nuse[^note]\r\n\r\n[^note]:\r\n    first *footnote* block\r\n\r\n    - nested item\r\n\r\n$$z^2$$\r\n")
@@ -69,7 +69,7 @@ func TestM123CanonicalMarkdownSemanticRoundTripComplexFamilies(t *testing.T) {
 	}
 }
 
-func TestM123PublishedCommonMarkCanonicalSemanticRoundTrip(t *testing.T) {
+func TestPublishedCommonMarkCanonicalSemanticRoundTrip(t *testing.T) {
 	path := os.Getenv("MARKSPLICE_COMMONMARK_SPEC_HTML")
 	if path == "" {
 		t.Skip("MARKSPLICE_COMMONMARK_SPEC_HTML is not set")
@@ -90,7 +90,7 @@ func TestM123PublishedCommonMarkCanonicalSemanticRoundTrip(t *testing.T) {
 	}
 }
 
-func TestM123PublishedGFMCanonicalSemanticRoundTrip(t *testing.T) {
+func TestPublishedGFMCanonicalSemanticRoundTrip(t *testing.T) {
 	path := os.Getenv("MARKSPLICE_GFM_SPEC_HTML")
 	if path == "" {
 		t.Skip("MARKSPLICE_GFM_SPEC_HTML is not set")
@@ -111,7 +111,7 @@ func TestM123PublishedGFMCanonicalSemanticRoundTrip(t *testing.T) {
 	}
 }
 
-func TestM123CanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
+func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {

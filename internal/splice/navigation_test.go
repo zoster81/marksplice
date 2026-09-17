@@ -48,7 +48,7 @@ func TestHeadingSemanticTextResolvesMarkupEntitiesButPreservesCode(t *testing.T)
 	}
 }
 
-func TestFragmentResolverReusesM98ResolutionSemantics(t *testing.T) {
+func TestFragmentResolverReusesResolutionSemantics(t *testing.T) {
 	t.Parallel()
 
 	doc, err := Parse([]byte("# Café\n\n<a id=\"dup\"></a>\n\n## Dup\n"))

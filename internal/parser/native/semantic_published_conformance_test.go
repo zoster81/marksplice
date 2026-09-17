@@ -37,7 +37,7 @@ type publishedSemanticExpectation struct {
 	events  []publishedSemanticEvent
 }
 
-func TestM119PublishedCommonMarkSemanticContract(t *testing.T) {
+func TestPublishedCommonMarkSemanticContract(t *testing.T) {
 	specPath := os.Getenv("MARKSPLICE_COMMONMARK_SPEC_HTML")
 	if specPath == "" {
 		t.Skip("MARKSPLICE_COMMONMARK_SPEC_HTML is not set")
@@ -94,7 +94,7 @@ func TestM119PublishedCommonMarkSemanticContract(t *testing.T) {
 	assertPublishedCommonMarkSemanticCases(t, cases, expected)
 }
 
-func TestM119PublishedGFMSemanticContract(t *testing.T) {
+func TestPublishedGFMSemanticContract(t *testing.T) {
 	specPath := os.Getenv("MARKSPLICE_GFM_SPEC_HTML")
 	if specPath == "" {
 		t.Skip("MARKSPLICE_GFM_SPEC_HTML is not set")

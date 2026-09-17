@@ -10,7 +10,7 @@ import (
 	"github.com/zoster81/marksplice/internal/parser/native"
 )
 
-func assertM114NativeCorpusStable(t *testing.T, tests []struct {
+func assertNativeCorpusStable(t *testing.T, tests []struct {
 	name   string
 	source []byte
 }) {
@@ -26,7 +26,7 @@ func assertM114NativeCorpusStable(t *testing.T, tests []struct {
 			if !bytes.Equal(before, tt.source) {
 				t.Fatal("ParseDocument() mutated source")
 			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			assertObservationsSourceBound(t, first, len(tt.source))
 			second, err := candidate.ParseDocument(tt.source)
 			if err != nil {
 				t.Fatalf("second ParseDocument() error = %v", err)
@@ -38,12 +38,12 @@ func assertM114NativeCorpusStable(t *testing.T, tests []struct {
 	}
 }
 
-func m114StringCases(pairs ...string) []struct {
+func stringCases(pairs ...string) []struct {
 	name   string
 	source []byte
 } {
 	if len(pairs)%2 != 0 {
-		panic("m114StringCases requires name/source pairs")
+		panic("stringCases requires name/source pairs")
 	}
 	result := make([]struct {
 		name   string
@@ -56,7 +56,7 @@ func m114StringCases(pairs ...string) []struct {
 	return result
 }
 
-func TestM114CommonMark0312InlineHTMLGrammar(t *testing.T) {
+func TestCommonMark0312InlineHTMLGrammar(t *testing.T) {
 	backend := native.New()
 	tests := []struct {
 		name    string
@@ -87,7 +87,7 @@ func TestM114CommonMark0312InlineHTMLGrammar(t *testing.T) {
 	}
 }
 
-func TestM114PublishedGFMAutolinkGrammar(t *testing.T) {
+func TestPublishedGFMAutolinkGrammar(t *testing.T) {
 	backend := native.New()
 	tests := []struct {
 		name      string
@@ -132,7 +132,7 @@ func TestM114PublishedGFMAutolinkGrammar(t *testing.T) {
 	}
 }
 
-func TestM114NativeBackendPathologicalInputsRemainSourceBound(t *testing.T) {
+func TestNativeBackendPathologicalInputsRemainSourceBound(t *testing.T) {
 	backend := native.New()
 	tests := []struct {
 		name   string
@@ -156,7 +156,7 @@ func TestM114NativeBackendPathologicalInputsRemainSourceBound(t *testing.T) {
 			if !bytes.Equal(tt.source, before) {
 				t.Fatal("ParseDocument() mutated source")
 			}
-			assertM114ObservationsSourceBound(t, first, len(tt.source))
+			assertObservationsSourceBound(t, first, len(tt.source))
 			second, err := backend.ParseDocument(tt.source)
 			if err != nil {
 				t.Fatalf("second ParseDocument() error = %v", err)
@@ -168,7 +168,7 @@ func TestM114NativeBackendPathologicalInputsRemainSourceBound(t *testing.T) {
 	}
 }
 
-func TestM114NativeBracketedDelimiterCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeBracketedDelimiterCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -201,11 +201,11 @@ func TestM114NativeBracketedDelimiterCorpusRemainsSourceBound(t *testing.T) {
 		{name: "single underscore crossing direct link", source: []byte("_0[*_](x)")},
 		{name: "single underscore crossing reference link", source: []byte("_0[*_][r]\n[r]:x")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeInlineHTMLDeclarationCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeInlineHTMLDeclarationCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -232,11 +232,11 @@ func TestM114NativeInlineHTMLDeclarationCorpusRemainsSourceBound(t *testing.T) {
 		{name: "unclosed declaration", source: []byte("0<!A")},
 		{name: "cdata remains independent", source: []byte("0<![CDATA[x]]>")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeExtendedWWWAutolinkCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeExtendedWWWAutolinkCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -274,11 +274,11 @@ func TestM114NativeExtendedWWWAutolinkCorpusRemainsSourceBound(t *testing.T) {
 		{name: "www punctuation after numeric tld", source: []byte("www.000,")},
 		{name: "www alphabetic tld path", source: []byte("www.example.com/path")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativePartiallyConsumedDelimiterCorpusRemainsSourceBound(t *testing.T) {
+func TestNativePartiallyConsumedDelimiterCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -291,11 +291,11 @@ func TestM114NativePartiallyConsumedDelimiterCorpusRemainsSourceBound(t *testing
 		{name: "partially consumed star control", source: []byte("*a***b*")},
 		{name: "partially consumed underscore control", source: []byte("_!___!_ 00")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114CommonMark0312FailedLinkRemovalPreservesOuterEmphasis(t *testing.T) {
+func TestCommonMark0312FailedLinkRemovalPreservesOuterEmphasis(t *testing.T) {
 	backend := native.New()
 	for _, source := range [][]byte{
 		[]byte("_[*_ \r]"),
@@ -322,7 +322,7 @@ func TestM114CommonMark0312FailedLinkRemovalPreservesOuterEmphasis(t *testing.T)
 	}
 }
 
-func TestM114CommonMark0312RuleOfThreeUsesOriginalDelimiterRunLength(t *testing.T) {
+func TestCommonMark0312RuleOfThreeUsesOriginalDelimiterRunLength(t *testing.T) {
 	source := []byte("*0 **0*~*~")
 	observed, err := native.New().ParseDocument(source)
 	if err != nil {
@@ -335,7 +335,7 @@ func TestM114CommonMark0312RuleOfThreeUsesOriginalDelimiterRunLength(t *testing.
 	}
 }
 
-func TestM114NativeInlineHTMLProcessingInstructionCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeInlineHTMLProcessingInstructionCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -356,12 +356,12 @@ func TestM114NativeInlineHTMLProcessingInstructionCorpusRemainsSourceBound(t *te
 		{name: "across isolated cr owns delimiters", source: []byte("0<?x\r*0*?>")},
 		{name: "across crlf owns delimiters", source: []byte("0<?x\r\n*0*?>")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeMixedLineEndingCorpusRemainsSourceBound(t *testing.T) {
-	assertM114NativeCorpusStable(t, m114StringCases(
+func TestNativeMixedLineEndingCorpusRemainsSourceBound(t *testing.T) {
+	assertNativeCorpusStable(t, stringCases(
 		"isolated cr before crlf", "\r*\r\n",
 		"isolated cr before lf", "\r*\n",
 		"leading lf before crlf", "\n*\r\n",
@@ -379,7 +379,7 @@ func TestM114NativeMixedLineEndingCorpusRemainsSourceBound(t *testing.T) {
 	))
 }
 
-func TestM114M104NestedFootnoteDefinitionAmbiguityFailsClosed(t *testing.T) {
+func TestNestedFootnoteDefinitionAmbiguityFailsClosed(t *testing.T) {
 	backend := native.New()
 	tests := []struct {
 		name   string
@@ -404,7 +404,7 @@ func TestM114M104NestedFootnoteDefinitionAmbiguityFailsClosed(t *testing.T) {
 		})
 	}
 }
-func TestM114M104FootnoteDefinitionsRemainTopLevel(t *testing.T) {
+func TestFootnoteDefinitionsRemainTopLevel(t *testing.T) {
 	backend := native.New()
 	tests := []struct {
 		name   string
@@ -433,7 +433,7 @@ func TestM114M104FootnoteDefinitionsRemainTopLevel(t *testing.T) {
 		})
 	}
 }
-func TestM114M104FootnoteCaretPrecedence(t *testing.T) {
+func TestFootnoteCaretPrecedence(t *testing.T) {
 	backend := native.New()
 	tests := []struct {
 		name             string
@@ -465,7 +465,7 @@ func TestM114M104FootnoteCaretPrecedence(t *testing.T) {
 		})
 	}
 }
-func TestM114NativeFootnoteReferenceOverlayCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeFootnoteReferenceOverlayCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -479,11 +479,11 @@ func TestM114NativeFootnoteReferenceOverlayCorpusRemainsSourceBound(t *testing.T
 		{name: "ordinary reference remains", source: []byte("[^n] [ok][docs]\n\n[^n]: note\n\n[docs]: /target")},
 		{name: "definition without gfm destination", source: []byte("[^n]\n\n[^n]:")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeNestedFootnoteInputsRemainSourceBound(t *testing.T) {
+func TestNativeNestedFootnoteInputsRemainSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -501,11 +501,11 @@ func TestM114NativeNestedFootnoteInputsRemainSourceBound(t *testing.T) {
 		{name: "top level ordered container definition remains valid", source: []byte("0) [^0]:")},
 		{name: "top level bullet container definition remains valid", source: []byte("- [^0]: body")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeFootnoteLabelWhitespaceCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeFootnoteLabelWhitespaceCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -520,11 +520,11 @@ func TestM114NativeFootnoteLabelWhitespaceCorpusRemainsSourceBound(t *testing.T)
 		{name: "embedded space", source: []byte("[^a b]:")},
 		{name: "nul", source: []byte{'[', '^', 0, ']', ':'}},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeLooseTaskMarkerCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeLooseTaskMarkerCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -537,11 +537,11 @@ func TestM114NativeLooseTaskMarkerCorpusRemainsSourceBound(t *testing.T) {
 		{name: "loose marker with reference definition", source: []byte("- [X]\n\n-\n\n[X]: /target")},
 		{name: "tight marker with trailing space", source: []byte("- [X] \n- next")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeReferenceLabelWhitespaceCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeReferenceLabelWhitespaceCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -557,11 +557,11 @@ func TestM114NativeReferenceLabelWhitespaceCorpusRemainsSourceBound(t *testing.T
 		{name: "nul", source: []byte{'[', 0, ']', ':', '0'}},
 		{name: "line break only", source: []byte("[\n]:0")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeExtendedEmailTrailingDotCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeExtendedEmailTrailingDotCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -574,12 +574,12 @@ func TestM114NativeExtendedEmailTrailingDotCorpusRemainsSourceBound(t *testing.T
 		{name: "internal empty domain label", source: []byte("0@00..000")},
 		{name: "domain only dots", source: []byte("0@...")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeExtendedEmailDomainSuffixCorpusRemainsSourceBound(t *testing.T) {
-	assertM114NativeCorpusStable(t, m114StringCases(
+func TestNativeExtendedEmailDomainSuffixCorpusRemainsSourceBound(t *testing.T) {
+	assertNativeCorpusStable(t, stringCases(
 		"exact round 51 artifact", "0@0.0._",
 		"terminal underscore", "0@0.0_",
 		"terminal hyphen", "0@0.0-",
@@ -597,7 +597,7 @@ func TestM114NativeExtendedEmailDomainSuffixCorpusRemainsSourceBound(t *testing.
 	))
 }
 
-func TestM114NativeExtendedEmailLocalPunctuationCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeExtendedEmailLocalPunctuationCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -629,11 +629,11 @@ func TestM114NativeExtendedEmailLocalPunctuationCorpusRemainsSourceBound(t *test
 		{name: "xmpp broad punctuation rejected", source: []byte("xmpp:0!@0.0/resource")},
 		{name: "xmpp gfm punctuation accepted", source: []byte("xmpp:0+@0.0/resource")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeContainerLazyContinuationCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeContainerLazyContinuationCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -669,11 +669,11 @@ func TestM114NativeContainerLazyContinuationCorpusRemainsSourceBound(t *testing.
 		{name: "top level pipe delimiter", source: []byte("| a | b |\n| - | - |")},
 		{name: "reference definition leaf", source: []byte("> [a]: /url\n0")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeBlockquoteTabPaddingCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeBlockquoteTabPaddingCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -706,11 +706,11 @@ func TestM114NativeBlockquoteTabPaddingCorpusRemainsSourceBound(t *testing.T) {
 		{name: "spaced nested two spaces tab", source: []byte("> >  \t0")},
 		{name: "triple nested two spaces tab", source: []byte(">>>  \t0")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeBlockquoteStructuralTabPaddingRemainsSourceBound(t *testing.T) {
+func TestNativeBlockquoteStructuralTabPaddingRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -757,11 +757,11 @@ func TestM114NativeBlockquoteStructuralTabPaddingRemainsSourceBound(t *testing.T
 		{name: "three leading spaces two spaces tab level two empty heading", source: []byte("   >  \t##")},
 		{name: "three leading spaces two spaces tab ordinary text", source: []byte("   >  \ttext")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeNestedListTabPaddingCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeNestedListTabPaddingCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -774,11 +774,11 @@ func TestM114NativeNestedListTabPaddingCorpusRemainsSourceBound(t *testing.T) {
 		{name: "nested marker two spaces tab", source: []byte("* *  \t0")},
 		{name: "ordinary nested list", source: []byte("* - child")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeEmptyListSiblingAfterBlankCorpusRemainsSourceBound(t *testing.T) {
+func TestNativeEmptyListSiblingAfterBlankCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
 		source []byte
@@ -795,12 +795,12 @@ func TestM114NativeEmptyListSiblingAfterBlankCorpusRemainsSourceBound(t *testing
 		{name: "ordered same punctuation", source: []byte("1.\n\n   2. 0")},
 		{name: "ordered different punctuation", source: []byte("1.\n\n   2) 0")},
 	}
-	assertM114NativeCorpusStable(t, tests)
+	assertNativeCorpusStable(t, tests)
 
 }
 
-func TestM114NativeNestedListWidePaddingContinuationCorpusRemainsSourceBound(t *testing.T) {
-	assertM114NativeCorpusStable(t, m114StringCases(
+func TestNativeNestedListWidePaddingContinuationCorpusRemainsSourceBound(t *testing.T) {
+	assertNativeCorpusStable(t, stringCases(
 		"artifact isolated cr", "*\n\n+\r  *     0\n  0",
 		"artifact lf", "*\n\n+\n  *     0\n  0",
 		"artifact crlf", "*\n\n+\r\n  *     0\n  0",
@@ -822,8 +822,8 @@ func TestM114NativeNestedListWidePaddingContinuationCorpusRemainsSourceBound(t *
 	))
 }
 
-func TestM114NativeListReferenceDefinitionLineEndingCorpusRemainsSourceBound(t *testing.T) {
-	assertM114NativeCorpusStable(t, m114StringCases(
+func TestNativeListReferenceDefinitionLineEndingCorpusRemainsSourceBound(t *testing.T) {
+	assertNativeCorpusStable(t, stringCases(
 		"ordered lf", "0) [0]:0\n0",
 		"ordered crlf", "0) [0]:0\r\n0",
 		"ordered isolated cr", "0) [0]:0\r0",
@@ -845,8 +845,8 @@ func TestM114NativeListReferenceDefinitionLineEndingCorpusRemainsSourceBound(t *
 	))
 }
 
-func TestM114NativeWhitespaceOnlyMultilineCodeSpanCorpusRemainsSourceBound(t *testing.T) {
-	assertM114NativeCorpusStable(t, m114StringCases(
+func TestNativeWhitespaceOnlyMultilineCodeSpanCorpusRemainsSourceBound(t *testing.T) {
+	assertNativeCorpusStable(t, stringCases(
 		"one space lf", "` \n`",
 		"two spaces lf", "`  \n`",
 		"three spaces lf", "`   \n`",
@@ -864,7 +864,7 @@ func TestM114NativeWhitespaceOnlyMultilineCodeSpanCorpusRemainsSourceBound(t *te
 	))
 }
 
-func FuzzM114NativeBackendObservationsRemainSourceBound(f *testing.F) {
+func FuzzNativeBackendObservationsRemainSourceBound(f *testing.F) {
 	for _, seed := range [][]byte{
 		[]byte("# Title\n\nparagraph with *em* [link](<target>)\n"),
 		[]byte("Title\r\n=====\r\n\r\n> quote\r\n"),
@@ -887,7 +887,7 @@ func FuzzM114NativeBackendObservationsRemainSourceBound(f *testing.F) {
 		if !bytes.Equal(source, before) {
 			t.Fatal("ParseDocument() mutated fuzz source")
 		}
-		assertM114ObservationsSourceBound(t, first, len(source))
+		assertObservationsSourceBound(t, first, len(source))
 		second, err := native.New().ParseDocument(source)
 		if err != nil {
 			t.Fatalf("second ParseDocument() error = %v", err)
@@ -898,7 +898,7 @@ func FuzzM114NativeBackendObservationsRemainSourceBound(f *testing.F) {
 	})
 }
 
-func FuzzM114NativeBackendLegacyDifferentialCorpusRemainsSourceBound(f *testing.F) {
+func FuzzNativeBackendLegacyDifferentialCorpusRemainsSourceBound(f *testing.F) {
 	for _, seed := range [][]byte{
 		[]byte("plain\n"),
 		[]byte("# *head* `code`\n"),
@@ -1007,7 +1007,7 @@ func FuzzM114NativeBackendLegacyDifferentialCorpusRemainsSourceBound(f *testing.
 		if !bytes.Equal(source, before) {
 			t.Fatal("ParseDocument() mutated fuzz source")
 		}
-		assertM114ObservationsSourceBound(t, first, len(source))
+		assertObservationsSourceBound(t, first, len(source))
 		second, err := native.New().ParseDocument(source)
 		if err != nil {
 			t.Fatalf("second ParseDocument() error = %v", err)
@@ -1018,7 +1018,7 @@ func FuzzM114NativeBackendLegacyDifferentialCorpusRemainsSourceBound(f *testing.
 	})
 }
 
-func FuzzM115NativeDirectLinkProofStability(f *testing.F) {
+func FuzzNativeDirectLinkProofStability(f *testing.F) {
 	f.Add(uint8(0), uint16(0))
 	f.Add(uint8(1), uint16(3))
 	f.Add(uint8(2), uint16(12))
@@ -1053,7 +1053,7 @@ func FuzzM115NativeDirectLinkProofStability(f *testing.F) {
 		}
 	})
 }
-func FuzzM115NativeReferenceProofStability(f *testing.F) {
+func FuzzNativeReferenceProofStability(f *testing.F) {
 	f.Add(uint8(0), uint16(0))
 	f.Add(uint8(1), uint16(5))
 	f.Add(uint8(2), uint16(9))
@@ -1093,7 +1093,7 @@ func FuzzM115NativeReferenceProofStability(f *testing.F) {
 		}
 	})
 }
-func assertM114ObservationsSourceBound(t testing.TB, observations parser.DocumentObservations, total int) {
+func assertObservationsSourceBound(t testing.TB, observations parser.DocumentObservations, total int) {
 	t.Helper()
 	usedBlockquotes := make([]bool, len(observations.BlockquoteDetails))
 	usedFenced := make([]bool, len(observations.FencedCodeDetails))

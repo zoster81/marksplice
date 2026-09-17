@@ -110,7 +110,7 @@ func TestPublicAppendListItemChildRejectsIncompleteSupportedParentSubtree(t *tes
 	}
 }
 
-func TestPublicAppendListItemChildCanAppendAgainAfterM21Reparse(t *testing.T) {
+func TestPublicAppendListItemChildCanAppendAgainAfterReparse(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("- parent\n- tail\n")

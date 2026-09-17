@@ -69,7 +69,7 @@ func TestPublicListItemParentIDIsContainerAware(t *testing.T) {
 	}
 }
 
-func TestPublicListItemParentIDTracksM21ResultSnapshot(t *testing.T) {
+func TestPublicListItemParentIDTracksResultSnapshot(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("- parent\n- tail\n")

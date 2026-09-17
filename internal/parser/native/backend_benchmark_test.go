@@ -9,9 +9,9 @@ import (
 	"github.com/zoster81/marksplice/internal/parser/native"
 )
 
-var m114ObservationsSink parser.DocumentObservations
+var observationsSink parser.DocumentObservations
 
-func BenchmarkM114NativeBackendScaling(b *testing.B) {
+func BenchmarkNativeBackendScaling(b *testing.B) {
 	backend := native.New()
 	families := []struct {
 		name string
@@ -31,7 +31,7 @@ func BenchmarkM114NativeBackendScaling(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					m114ObservationsSink = observations
+					observationsSink = observations
 				}
 			})
 		}
@@ -46,16 +46,16 @@ func BenchmarkM114NativeBackendScaling(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m114ObservationsSink = observations
+				observationsSink = observations
 			}
 		})
 	}
 }
 
-func BenchmarkM114NativeBackendRealisticScaling(b *testing.B) {
+func BenchmarkNativeBackendRealisticScaling(b *testing.B) {
 	backend := native.New()
 	for _, sizeKiB := range []int{64, 256, 1024} {
-		source := m114RealisticSource(sizeKiB << 10)
+		source := realisticSource(sizeKiB << 10)
 		b.Run(fmt.Sprintf("%dKiB", sizeKiB), func(b *testing.B) {
 			b.ReportAllocs()
 			b.SetBytes(int64(len(source)))
@@ -64,13 +64,13 @@ func BenchmarkM114NativeBackendRealisticScaling(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m114ObservationsSink = observations
+				observationsSink = observations
 			}
 		})
 	}
 }
 
-func m114RealisticSource(minBytes int) []byte {
+func realisticSource(minBytes int) []byte {
 	var source strings.Builder
 	source.Grow(minBytes + 4096)
 	source.WriteString("---\ntitle: \"M108 benchmark\"\nowner: \"marksplice\"\n---\n\n")
@@ -85,7 +85,7 @@ func m114RealisticSource(minBytes int) []byte {
 	return []byte(source.String())
 }
 
-func BenchmarkM114NativeReferenceDefinitionReuse(b *testing.B) {
+func BenchmarkNativeReferenceDefinitionReuse(b *testing.B) {
 	backend := native.New()
 	for _, test := range []struct {
 		definitions int
@@ -94,7 +94,7 @@ func BenchmarkM114NativeReferenceDefinitionReuse(b *testing.B) {
 		{definitions: 64, blocks: 256},
 		{definitions: 256, blocks: 1024},
 	} {
-		source := m114ReferenceDefinitionSource(test.definitions, test.blocks)
+		source := referenceDefinitionSource(test.definitions, test.blocks)
 		b.Run(fmt.Sprintf("Definitions%d/Blocks%d", test.definitions, test.blocks), func(b *testing.B) {
 			b.ReportAllocs()
 			b.SetBytes(int64(len(source)))
@@ -103,13 +103,13 @@ func BenchmarkM114NativeReferenceDefinitionReuse(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m114ObservationsSink = observations
+				observationsSink = observations
 			}
 		})
 	}
 }
 
-func m114ReferenceDefinitionSource(definitions, blocks int) []byte {
+func referenceDefinitionSource(definitions, blocks int) []byte {
 	var source strings.Builder
 	for index := range definitions {
 		fmt.Fprintf(&source, "[label-%d]: <target-%d>\n", index, index)
@@ -121,7 +121,7 @@ func m114ReferenceDefinitionSource(definitions, blocks int) []byte {
 	return []byte(source.String())
 }
 
-func BenchmarkM114NativeFootnoteReferenceDefinitionReuse(b *testing.B) {
+func BenchmarkNativeFootnoteReferenceDefinitionReuse(b *testing.B) {
 	backend := native.New()
 	for _, test := range []struct {
 		definitions int
@@ -130,7 +130,7 @@ func BenchmarkM114NativeFootnoteReferenceDefinitionReuse(b *testing.B) {
 		{definitions: 64, blocks: 256},
 		{definitions: 256, blocks: 1024},
 	} {
-		source := m114FootnoteReferenceDefinitionSource(test.definitions, test.blocks)
+		source := footnoteReferenceDefinitionSource(test.definitions, test.blocks)
 		b.Run(fmt.Sprintf("Definitions%d/Blocks%d", test.definitions, test.blocks), func(b *testing.B) {
 			b.ReportAllocs()
 			b.SetBytes(int64(len(source)))
@@ -139,13 +139,13 @@ func BenchmarkM114NativeFootnoteReferenceDefinitionReuse(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m114ObservationsSink = observations
+				observationsSink = observations
 			}
 		})
 	}
 }
 
-func m114FootnoteReferenceDefinitionSource(definitions, blocks int) []byte {
+func footnoteReferenceDefinitionSource(definitions, blocks int) []byte {
 	var source strings.Builder
 	source.WriteString("[^note]: footnote body\n\n")
 	for index := range definitions {
@@ -158,10 +158,10 @@ func m114FootnoteReferenceDefinitionSource(definitions, blocks int) []byte {
 	return []byte(source.String())
 }
 
-func BenchmarkM114NativeConstructionProofScaling(b *testing.B) {
+func BenchmarkNativeConstructionProofScaling(b *testing.B) {
 	backend := native.New()
 	for _, count := range []int{256, 1024, 4096} {
-		source, expected := m114SiblingEmphasisProof(count)
+		source, expected := siblingEmphasisProof(count)
 		b.Run(fmt.Sprintf("SiblingEmphasis/%d", count), func(b *testing.B) {
 			b.ReportAllocs()
 			b.SetBytes(int64(len(source)))
@@ -174,7 +174,7 @@ func BenchmarkM114NativeConstructionProofScaling(b *testing.B) {
 	}
 }
 
-func m114SiblingEmphasisProof(count int) ([]byte, []parser.ConstructionInlineExpectation) {
+func siblingEmphasisProof(count int) ([]byte, []parser.ConstructionInlineExpectation) {
 	var source strings.Builder
 	source.Grow(count * 4)
 	expected := make([]parser.ConstructionInlineExpectation, count)

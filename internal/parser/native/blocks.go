@@ -63,7 +63,7 @@ type blockquoteParseResult struct {
 
 // ParseBlocks returns the parser-independent block observations owned by the
 // native block parser. Inline-derived observations are added by the native
-// inline parser in the following parser milestone.
+// inline parser before the complete document observation set is returned.
 func ParseBlocks(source []byte) ([]parser.Node, error) {
 	result := parseBlockLines(source, physicalLines(source), true)
 	return result.nodes, nil

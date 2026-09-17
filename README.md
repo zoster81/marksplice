@@ -47,10 +47,10 @@ The document core does not crawl files or fetch URLs. `workspacefs` performs onl
 
 ## Install
 
-Marksplice requires Go 1.26 or newer. The current stable release is `v1.1.0`:
+Marksplice requires Go 1.26 or newer. The current stable release is `v1.1.1`:
 
 ```sh
-go get github.com/zoster81/marksplice@v1.1.0
+go get github.com/zoster81/marksplice@v1.1.1
 ```
 
 ## Try a real file
@@ -123,7 +123,7 @@ See the concise [capability matrix](docs/capabilities.md) for current boundaries
 
 ## Status
 
-Marksplice `v1.1.0` is the current stable release; `v1.0.0` established the first stable API contract. Public API compatibility follows Semantic Versioning: compatible fixes and additions stay within the v1 line, while an intentionally breaking public API requires a new major version and the corresponding Go module-path decision. The production parser is Marksplice's native CommonMark/GFM implementation; ordinary users do not need parser internals to use the public API.
+Marksplice `v1.1.1` is the current stable release; `v1.0.0` established the first stable API contract. `v1.1.0` is retracted; use `v1.1.1` for the v1.1 feature set. Public API compatibility follows Semantic Versioning: compatible fixes and additions stay within the v1 line, while an intentionally breaking public API requires a new major version and the corresponding Go module-path decision. The production parser is Marksplice's native CommonMark/GFM implementation; ordinary users do not need parser internals to use the public API.
 
 ## License
 

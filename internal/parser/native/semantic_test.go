@@ -146,7 +146,7 @@ func TestWalkSemanticFoundationBlockAndSupplementalFamilies(t *testing.T) {
 	}
 }
 
-func TestM120SemanticDelimiterConsumptionPreservesNestedAndResidualRuns(t *testing.T) {
+func TestSemanticDelimiterConsumptionPreservesNestedAndResidualRuns(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -273,7 +273,7 @@ func TestWalkSemanticIsDeterministicAndRetainsNoSourceSlice(t *testing.T) {
 	t.Fatalf("retained semantic values changed after caller source mutation: %#v", first)
 }
 
-func TestM119SemanticPathologicalInputsRemainBalanced(t *testing.T) {
+func TestSemanticPathologicalInputsRemainBalanced(t *testing.T) {
 	t.Parallel()
 
 	deepQuote := []byte(strings.Repeat("> ", 256) + "body\n")
@@ -299,7 +299,7 @@ func TestM119SemanticPathologicalInputsRemainBalanced(t *testing.T) {
 	}
 }
 
-func FuzzM119SemanticWalkRemainsSourceBound(f *testing.F) {
+func FuzzSemanticWalkRemainsSourceBound(f *testing.F) {
 	for _, seed := range [][]byte{
 		[]byte("# Title\n\nparagraph with *em* [link](<target>)\n"),
 		[]byte("---\ntitle: demo\n---\n\n> [!NOTE]\n> body\n\n- [x] task\n"),
@@ -348,7 +348,7 @@ func TestWalkSemanticStopsDuringSupplementalEvents(t *testing.T) {
 	}
 }
 
-func TestSemanticVocabularyReservesM119PolicyFamilies(t *testing.T) {
+func TestSemanticVocabularyReservesPolicyFamilies(t *testing.T) {
 	t.Parallel()
 
 	for _, kind := range []parser.SemanticKind{parser.SemanticReferenceDefinition, parser.SemanticAlert, parser.SemanticFrontMatter} {
@@ -358,7 +358,7 @@ func TestSemanticVocabularyReservesM119PolicyFamilies(t *testing.T) {
 	}
 }
 
-func TestM119SemanticNestedBlockOwnershipAndListFacts(t *testing.T) {
+func TestSemanticNestedBlockOwnershipAndListFacts(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("> outer\n>\n> 3. first\n>    - child\n> 4. second\n")
@@ -407,7 +407,7 @@ func TestM119SemanticNestedBlockOwnershipAndListFacts(t *testing.T) {
 	}
 }
 
-func TestM119SemanticLooseListFacts(t *testing.T) {
+func TestSemanticLooseListFacts(t *testing.T) {
 	t.Parallel()
 
 	events := collectSemanticEvents(t, []byte("3. one\n\n4. two\n"))
@@ -420,7 +420,7 @@ func TestM119SemanticLooseListFacts(t *testing.T) {
 	}
 }
 
-func TestM119SemanticIndentedCodeAndReferenceDefinition(t *testing.T) {
+func TestSemanticIndentedCodeAndReferenceDefinition(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("    code\n    next\n\n[label]: /target \"title\"\n\n[use][label]\n")
@@ -437,7 +437,7 @@ func TestM119SemanticIndentedCodeAndReferenceDefinition(t *testing.T) {
 	}
 }
 
-func TestM119SemanticFrontMatterEnvelope(t *testing.T) {
+func TestSemanticFrontMatterEnvelope(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("---\ntitle: demo\n---\n\n# Body\n")
@@ -463,7 +463,7 @@ func TestM119SemanticFrontMatterEnvelope(t *testing.T) {
 	}
 }
 
-func TestM119SemanticAlertOwnsBodyWithoutMarkerText(t *testing.T) {
+func TestSemanticAlertOwnsBodyWithoutMarkerText(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("> [!NOTE]\n> **Body**\n")
@@ -492,7 +492,7 @@ func TestM119SemanticAlertOwnsBodyWithoutMarkerText(t *testing.T) {
 	}
 }
 
-func TestM119UnknownAlertMarkerRemainsBlockquote(t *testing.T) {
+func TestUnknownAlertMarkerRemainsBlockquote(t *testing.T) {
 	t.Parallel()
 
 	events := collectSemanticEvents(t, []byte("> [!CUSTOM]\n> body\n"))
@@ -504,7 +504,7 @@ func TestM119UnknownAlertMarkerRemainsBlockquote(t *testing.T) {
 	}
 }
 
-func TestM123SemanticFootnoteOverlayOwnsResidualTopLevelBlocks(t *testing.T) {
+func TestSemanticFootnoteOverlayOwnsResidualTopLevelBlocks(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("use[^2]\n\n  [^2]:\n    first paragraph\n\n    second paragraph\n")
@@ -532,7 +532,7 @@ func TestM123SemanticFootnoteOverlayOwnsResidualTopLevelBlocks(t *testing.T) {
 	}
 }
 
-func TestM123SemanticFootnoteSyntaxInsideFencedCodeRemainsOpaque(t *testing.T) {
+func TestSemanticFootnoteSyntaxInsideFencedCodeRemainsOpaque(t *testing.T) {
 	t.Parallel()
 
 	source := []byte("```\n[^fake]: See [^fake]\n```\n\nreal[^real]\n\n[^real]: body\n")
@@ -549,7 +549,7 @@ func TestM123SemanticFootnoteSyntaxInsideFencedCodeRemainsOpaque(t *testing.T) {
 	}
 }
 
-func TestM119SemanticFootnoteDefinitionAndReferenceInPlace(t *testing.T) {
+func TestSemanticFootnoteDefinitionAndReferenceInPlace(t *testing.T) {
 	t.Parallel()
 
 	events := collectSemanticEvents(t, []byte("before[^n] after\n\n[^n]: *note* body\n"))
@@ -570,7 +570,7 @@ func TestM119SemanticFootnoteDefinitionAndReferenceInPlace(t *testing.T) {
 	}
 }
 
-func TestM119SemanticInlineMathReplacesSourceText(t *testing.T) {
+func TestSemanticInlineMathReplacesSourceText(t *testing.T) {
 	t.Parallel()
 
 	events := collectSemanticEvents(t, []byte("a $x$ b $`y`$ c\n"))
@@ -595,7 +595,7 @@ func TestM119SemanticInlineMathReplacesSourceText(t *testing.T) {
 	}
 }
 
-func TestM119SemanticBlockMathReplacesParagraph(t *testing.T) {
+func TestSemanticBlockMathReplacesParagraph(t *testing.T) {
 	t.Parallel()
 
 	events := collectSemanticEvents(t, []byte("$$x+y$$\n"))
@@ -614,7 +614,7 @@ func TestM119SemanticBlockMathReplacesParagraph(t *testing.T) {
 	}
 }
 
-func TestM119SemanticTaskMarkerIsMetadataNotText(t *testing.T) {
+func TestSemanticTaskMarkerIsMetadataNotText(t *testing.T) {
 	t.Parallel()
 
 	events := collectSemanticEvents(t, []byte("- [ ] foo\n- [x] bar\n"))
@@ -636,7 +636,7 @@ func TestM119SemanticTaskMarkerIsMetadataNotText(t *testing.T) {
 	}
 }
 
-func TestM119SemanticEmailAutolinkCarriesEmailFact(t *testing.T) {
+func TestSemanticEmailAutolinkCarriesEmailFact(t *testing.T) {
 	t.Parallel()
 
 	events := collectSemanticEvents(t, []byte("<foo@bar.example.com>\n"))
@@ -649,7 +649,7 @@ func TestM119SemanticEmailAutolinkCarriesEmailFact(t *testing.T) {
 	}
 }
 
-func TestM119SemanticCodeSpanValueMatchesCommonMarkNormalization(t *testing.T) {
+func TestSemanticCodeSpanValueMatchesCommonMarkNormalization(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct {
