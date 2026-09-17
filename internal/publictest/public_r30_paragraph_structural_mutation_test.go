@@ -17,7 +17,7 @@ func TestR30ParagraphStructuralMutationsOwnSeparatorsAndPreserveNeighbors(t *tes
 		if err != nil {
 			t.Fatal(err)
 		}
-		paragraph := publicParagraphContaining(t, doc, source, "remove me")
+		paragraph := publicParagraphContaining(t, doc, "remove me")
 		change, err := doc.PrepareRemoveParagraph(paragraph.ID())
 		if err != nil {
 			t.Fatalf("PrepareRemoveParagraph() error = %v", err)
@@ -38,7 +38,7 @@ func TestR30ParagraphStructuralMutationsOwnSeparatorsAndPreserveNeighbors(t *tes
 		if err != nil {
 			t.Fatal(err)
 		}
-		target := publicParagraphContaining(t, doc, source, "target")
+		target := publicParagraphContaining(t, doc, "target")
 		change, err := doc.PrepareInsertParagraphBefore(target.ID(), []byte("new *paragraph*"))
 		if err != nil {
 			t.Fatalf("PrepareInsertParagraphBefore() error = %v", err)
@@ -59,7 +59,7 @@ func TestR30ParagraphStructuralMutationsOwnSeparatorsAndPreserveNeighbors(t *tes
 		if err != nil {
 			t.Fatal(err)
 		}
-		target := publicParagraphContaining(t, doc, source, "target")
+		target := publicParagraphContaining(t, doc, "target")
 		change, err := doc.PrepareInsertParagraphAfter(target.ID(), []byte("new **paragraph**"))
 		if err != nil {
 			t.Fatalf("PrepareInsertParagraphAfter() error = %v", err)
@@ -83,7 +83,7 @@ func TestR30ParagraphStructuralMutationsFailClosedAndRemainSnapshotBound(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := publicParagraphContaining(t, doc, source, "target")
+	target := publicParagraphContaining(t, doc, "target")
 	for _, replacement := range [][]byte{nil, []byte("# heading"), []byte("one\n\ntwo")} {
 		if _, err := doc.PrepareInsertParagraphBefore(target.ID(), replacement); !errors.Is(err, marksplice.ErrInvalidReplacement) {
 			t.Fatalf("before content %q error = %v, want ErrInvalidReplacement", replacement, err)
@@ -95,7 +95,7 @@ func TestR30ParagraphStructuralMutationsFailClosedAndRemainSnapshotBound(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	noEOLTarget := publicParagraphContaining(t, noEOLDoc, noEOL, "target")
+	noEOLTarget := publicParagraphContaining(t, noEOLDoc, "target")
 	if _, err := noEOLDoc.PrepareInsertParagraphAfter(noEOLTarget.ID(), []byte("new")); !errors.Is(err, marksplice.ErrInvalidReplacement) {
 		t.Fatalf("after EOF error = %v, want ErrInvalidReplacement", err)
 	}
@@ -110,7 +110,7 @@ func TestR30ParagraphStructuralMutationsFailClosedAndRemainSnapshotBound(t *test
 	}
 }
 
-func publicParagraphContaining(t *testing.T, doc *marksplice.Document, source []byte, needle string) marksplice.Paragraph {
+func publicParagraphContaining(t *testing.T, doc *marksplice.Document, needle string) marksplice.Paragraph {
 	t.Helper()
 	for _, node := range doc.Nodes() {
 		if node.Kind() != marksplice.KindParagraph {

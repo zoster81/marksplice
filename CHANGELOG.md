@@ -4,7 +4,7 @@ All notable public changes to Marksplice will be documented in this file.
 
 The project uses Semantic Versioning-compatible Go module tags. `v1.0.0` establishes the first stable public API contract; compatible fixes and additions remain within the v1 line, while intentionally breaking public API changes require a new major version.
 
-## Unreleased
+## v1.1.0 — 2026-09-17
 
 - Fix variable-length YAML/TOML front-matter scalar replacement so closing-envelope source validation translates the complete closing range for positive/negative byte deltas, Unicode, LF/CRLF, and stale-source-safe edits.
 - Add source-preserving structural mutation authority required by Scripthold R30: top-level paragraph insert/remove, heading-level changes with section revalidation, first-child list insertion, direct-link/image title lifecycle, reference occurrence/definition lifecycle, multiline footnote definition editing/lifecycle, and conservative front-matter field/envelope lifecycle.

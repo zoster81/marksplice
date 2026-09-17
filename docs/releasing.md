@@ -30,9 +30,10 @@ The approved post-M115 roadmap targets:
 
 - `v0.5.0-beta.1` as the pre-M116 performance beta after the dedicated parser/document-model optimization campaign meets its measured throughput/allocation gates and full correctness/conformance verification;
 - `v1.0.0` as the first stable release after M124 completed the full API-stability, refactor, profiling, conformance, documentation, and release-readiness gate;
+- `v1.1.0` as the first backward-compatible minor release on the stable v1 line, carrying the post-v1.0 Scripthold R30 structured-editing additions and front-matter replacement fix;
 - `v1.5.0` after the deferred M125–M126 PDF backend/adapter line completes its own release gate.
 
-The v0.5 line was intentionally optimization-first. `v0.5.0-beta.1` is the completed pre-M116 performance beta. M124 closes the first stable v1.0 line; M125–M126 remain deferred v1.5 work and must not be folded into the v1.0 release. Reaching a milestone implementation boundary does not by itself publish a release: tags/releases are created only from the exact reviewed commit after the required local and GitHub Actions gates are green.
+The v0.5 line was intentionally optimization-first. `v0.5.0-beta.1` is the completed pre-M116 performance beta. M124 closes the first stable v1.0 line. The post-v1.0 R30 integration gate is a compatible v1 API expansion and therefore belongs to the `v1.1.0` minor release rather than a `v1.0.x` patch. M125–M126 remain deferred v1.5 work and must not be folded into the R30 release. Reaching a milestone implementation boundary does not by itself publish a release: tags/releases are created only from the exact reviewed commit after the required local and GitHub Actions gates are green.
 
 Official Go module references:
 

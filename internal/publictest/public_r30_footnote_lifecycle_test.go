@@ -16,7 +16,7 @@ func TestR30FootnoteMultilineBodyMutationPreservesContainerLayout(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition := publicFootnoteDefinitionByLabel(t, doc, "n")
+	definition := publicFootnoteDefinitionN(t, doc)
 	change, err := doc.PrepareReplaceFootnoteDefinitionBodyMultiline(definition.ID(), []byte("alpha\n\nbeta"))
 	if err != nil {
 		t.Fatalf("PrepareReplaceFootnoteDefinitionBodyMultiline() error = %v", err)
@@ -33,7 +33,7 @@ func TestR30FootnoteMultilineBodyMutationPreservesContainerLayout(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	bodyRanges, ok := candidate.FootnoteDefinitionBodyRanges(publicFootnoteDefinitionByLabel(t, candidate, "n").ID())
+	bodyRanges, ok := candidate.FootnoteDefinitionBodyRanges(publicFootnoteDefinitionN(t, candidate).ID())
 	if !ok || len(bodyRanges) != 2 {
 		t.Fatalf("candidate body ranges = %v/%v, want two semantic ranges", bodyRanges, ok)
 	}
@@ -89,7 +89,7 @@ func TestR30RemoveFootnoteDefinitionLeavesOccurrenceUnresolved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition := publicFootnoteDefinitionByLabel(t, doc, "n")
+	definition := publicFootnoteDefinitionN(t, doc)
 	change, err := doc.PrepareRemoveFootnoteDefinition(definition.ID())
 	if err != nil {
 		t.Fatalf("PrepareRemoveFootnoteDefinition() error = %v", err)
@@ -122,7 +122,7 @@ func TestR30FootnoteLifecycleFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition := publicFootnoteDefinitionByLabel(t, doc, "n")
+	definition := publicFootnoteDefinitionN(t, doc)
 	if _, err := doc.PrepareReplaceFootnoteDefinitionBodyMultiline(definition.ID(), []byte("one\r\ntwo")); !errors.Is(err, marksplice.ErrInvalidReplacement) {
 		t.Fatalf("CRLF logical body error = %v, want ErrInvalidReplacement", err)
 	}
@@ -131,13 +131,13 @@ func TestR30FootnoteLifecycleFailsClosed(t *testing.T) {
 	}
 }
 
-func publicFootnoteDefinitionByLabel(t *testing.T, doc *marksplice.Document, label string) marksplice.FootnoteDefinition {
+func publicFootnoteDefinitionN(t *testing.T, doc *marksplice.Document) marksplice.FootnoteDefinition {
 	t.Helper()
 	for _, definition := range doc.FootnoteDefinitions() {
-		if definition.Label() == label {
+		if definition.Label() == "n" {
 			return definition
 		}
 	}
-	t.Fatalf("footnote definition %q not found", label)
+	t.Fatal("footnote definition \"n\" not found")
 	return marksplice.FootnoteDefinition{}
 }

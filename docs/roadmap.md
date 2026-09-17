@@ -6,11 +6,12 @@ This document records the planned product and engineering sequence after the Nat
 
 ## Release targets
 
-The roadmap has three explicit release horizons:
+The roadmap has four explicit release horizons:
 
 - **Pre-M116 performance campaign -> `v0.5.0-beta.1`**. This beta is dedicated to parser/document-model throughput, allocation, and memory improvements before new product surface is added. Additional `v0.5.0-beta.N` iterations are allowed only when further measured optimization or correctness work justifies them.
 - **M116–M124 -> `v1.0.0`**. Completed and released on 2026-09-16 after the M124 stabilization, performance, API-review, and release-readiness gate.
-- **M125–M126 -> `v1.5.0`**. PDF work is intentionally queued after v1.0 and must not delay the first stable release.
+- **Post-v1.0 Scripthold R30 integration gate -> `v1.1.0`**. Compatible structured-editing additions plus the front-matter replacement fix form the first minor release on the stable v1 API line.
+- **M125–M126 -> `v1.5.0`**. PDF work is intentionally queued after the R30 compatibility release and remains a separate future line.
 
 A milestone number is an engineering boundary, not a public API version. A release is published only from an exact reviewed commit that passes the applicable local and public CI gates.
 
@@ -268,7 +269,7 @@ The v1.0 release may be cut only after the exact reviewed M124 freeze commit pas
 
 ## Post-v1.0 — Scripthold R30 integration gate
 
-**Status: Complete. The R30 Markdown-authority gate is closed; M125 remains not started and requires its own explicit development boundary.**
+**Status: Complete; release-state prepared for `v1.1.0` on 2026-09-17. M125 remains not started and requires its own explicit development boundary.**
 
 Scripthold's pre-integration dogfood of `v1.0.0` identified one front-matter mutation bug plus a set of structured-editing gaps needed to keep Markdown semantics and source-preserving mutation inside Marksplice rather than duplicating them in the host application.
 

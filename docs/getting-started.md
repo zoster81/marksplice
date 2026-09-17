@@ -4,10 +4,10 @@ This guide takes you from installation to a real source-preserving edit. It assu
 
 ## 1. Install Marksplice
 
-Marksplice requires Go 1.26 or newer. Install the stable `v1.0.0` release explicitly:
+Marksplice requires Go 1.26 or newer. Install the stable `v1.1.0` release explicitly:
 
 ```sh
-go get github.com/zoster81/marksplice@v1.0.0
+go get github.com/zoster81/marksplice@v1.1.0
 ```
 
 Import the root package:
