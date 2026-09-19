@@ -410,12 +410,13 @@ func reconcileNativeFootnotes(source []byte, nodes []parser.Node, usages []parse
 		})
 	}
 	filteredUsages = deduplicateNativeLinkUsages(filteredUsages)
-	filteredUnresolved := make([]parser.UnresolvedReferenceUsage, 0, len(unresolved))
+	filteredUnresolved := unresolved[:0]
 	for _, usage := range unresolved {
 		if !nativeOffsetInsideAny(usage.Anchor, claims) {
 			filteredUnresolved = append(filteredUnresolved, usage)
 		}
 	}
+	clear(unresolved[len(filteredUnresolved):])
 	return filteredNodes, filteredUsages, filteredUnresolved
 }
 

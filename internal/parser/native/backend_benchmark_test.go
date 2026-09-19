@@ -158,6 +158,29 @@ func footnoteReferenceDefinitionSource(definitions, blocks int) []byte {
 	return []byte(source.String())
 }
 
+func BenchmarkNativeFootnoteUnresolvedFiltering(b *testing.B) {
+	backend := native.New()
+	source := footnoteUnresolvedSource(2048)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(source)))
+	for b.Loop() {
+		observations, err := backend.ParseDocument(source)
+		if err != nil {
+			b.Fatal(err)
+		}
+		observationsSink = observations
+	}
+}
+
+func footnoteUnresolvedSource(blocks int) []byte {
+	var source strings.Builder
+	source.WriteString("[^note]: footnote body\n\n")
+	for index := range blocks {
+		fmt.Fprintf(&source, "paragraph %d using [missing-%d][missing-%d] and [^note].\n\n", index, index, index)
+	}
+	return []byte(source.String())
+}
+
 func BenchmarkNativeConstructionProofScaling(b *testing.B) {
 	backend := native.New()
 	for _, count := range []int{256, 1024, 4096} {

@@ -87,6 +87,39 @@ func TestFilterNativeFootnoteConflictUsagesReusesBackingStorage(t *testing.T) {
 	}
 }
 
+func TestReconcileNativeFootnotesReusesUnresolvedBackingStorage(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("before\n[^n]: note\nafter\n")
+	definitionAnchor := len("before\n")
+	unresolved := []parser.UnresolvedReferenceUsage{
+		{Kind: parser.KindInlineLink, Anchor: 0, Reference: "before"},
+		{Kind: parser.KindInlineLink, Anchor: definitionAnchor, Reference: "claimed"},
+		{Kind: parser.KindInlineLink, Anchor: len(source) - 2, Reference: "after"},
+	}
+	first := &unresolved[0]
+	_, _, got := reconcileNativeFootnotes(
+		source,
+		nil,
+		nil,
+		unresolved,
+		[]parser.FootnoteDefinitionObservation{{Anchor: definitionAnchor, Label: "n"}},
+		nil,
+	)
+
+	if len(got) != 2 || got[0].Anchor != 0 || got[1].Anchor != len(source)-2 {
+		t.Fatalf("filtered unresolved usages = %#v", got)
+	}
+	if &got[0] != first {
+		t.Fatal("reconcileNativeFootnotes() replaced reusable unresolved backing storage")
+	}
+	for index := len(got); index < len(unresolved); index++ {
+		if !reflect.DeepEqual(unresolved[index], parser.UnresolvedReferenceUsage{}) {
+			t.Fatalf("filtered unresolved tail %d = %#v, want zero value", index, unresolved[index])
+		}
+	}
+}
+
 func TestAttachNodeDetailsCompactsRemovedSparseFacts(t *testing.T) {
 	t.Parallel()
 
