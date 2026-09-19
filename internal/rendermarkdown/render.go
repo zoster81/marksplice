@@ -829,8 +829,20 @@ func (r *renderer) preserveNestedStrikethroughDelimiters(current *frame) {
 	if !ok {
 		return
 	}
+	r.restoreTrailingTabBeforeNestedStrikethrough(parent, current.event)
 	parent.delimiter = parentDelimiter
 	current.delimiter = currentDelimiter
+}
+
+func (r *renderer) restoreTrailingTabBeforeNestedStrikethrough(parent *frame, child parser.SemanticEvent) {
+	if parent == nil || child.Range.Start <= 0 || child.Range.Start > len(r.source) || r.source[child.Range.Start-1] != '\t' {
+		return
+	}
+	const escapedTab = "&#9;"
+	if len(parent.inline) < len(escapedTab) || string(parent.inline[len(parent.inline)-len(escapedTab):]) != escapedTab {
+		return
+	}
+	parent.inline = append(parent.inline[:len(parent.inline)-len(escapedTab)], '\t')
 }
 
 func (r *renderer) sourceStrikethroughDelimiter(event parser.SemanticEvent) (string, bool) {

@@ -180,6 +180,10 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "\\~~~x~~\n",
 		},
 		{
+			name:   "nested strikethrough preserves tab flanking",
+			source: "~#\t~#~~\n",
+		},
+		{
 			name:   "empty heading and thematic break",
 			source: "#\n\n***\n",
 		},
