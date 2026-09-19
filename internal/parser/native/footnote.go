@@ -424,7 +424,7 @@ func filterNativeFootnoteConflictNodes(nodes []parser.Node, claims []parser.Rang
 	for _, definition := range definitions {
 		anchors[definition.Anchor] = struct{}{}
 	}
-	filtered := make([]parser.Node, 0, len(nodes))
+	filtered := nodes[:0]
 	for _, node := range nodes {
 		_, claimedAnchor := anchors[node.Range.Start]
 		if nativeRangeInsideAny(node.Range, claims) || node.Kind == parser.KindReferenceDefinition && claimedAnchor {
@@ -432,6 +432,7 @@ func filterNativeFootnoteConflictNodes(nodes []parser.Node, claims []parser.Rang
 		}
 		filtered = append(filtered, node)
 	}
+	clear(nodes[len(filtered):])
 	return filtered
 }
 

@@ -26,6 +26,35 @@ func TestMergeDocumentNodesPreservesStableDocumentOrder(t *testing.T) {
 	assertMergedNodeLabels(t, mergeDocumentNodes(unsortedBlocks, fallbackInlines), want)
 }
 
+func TestFilterNativeFootnoteConflictNodesReusesBackingStorage(t *testing.T) {
+	t.Parallel()
+
+	nodes := []parser.Node{
+		{Kind: parser.KindParagraph, Range: parser.Range{Start: 0, End: 5}, Label: "keep-first"},
+		{Kind: parser.KindParagraph, Range: parser.Range{Start: 10, End: 15}, Label: "remove-claimed"},
+		{Kind: parser.KindReferenceDefinition, Range: parser.Range{Start: 30, End: 40}, Label: "^note"},
+		{Kind: parser.KindHeading, Range: parser.Range{Start: 50, End: 55}, Label: "keep-last"},
+	}
+	first := &nodes[0]
+	got := filterNativeFootnoteConflictNodes(
+		nodes,
+		[]parser.Range{{Start: 10, End: 20}},
+		[]parser.FootnoteDefinitionObservation{{Anchor: 30, Label: "note"}},
+	)
+
+	if len(got) != 2 || got[0].Label != "keep-first" || got[1].Label != "keep-last" {
+		t.Fatalf("filtered nodes = %#v", got)
+	}
+	if &got[0] != first {
+		t.Fatal("filterNativeFootnoteConflictNodes() replaced reusable backing storage")
+	}
+	for index := len(got); index < len(nodes); index++ {
+		if !reflect.DeepEqual(nodes[index], parser.Node{}) {
+			t.Fatalf("filtered tail node %d = %#v, want zero value", index, nodes[index])
+		}
+	}
+}
+
 func TestAttachNodeDetailsCompactsRemovedSparseFacts(t *testing.T) {
 	t.Parallel()
 
