@@ -11,7 +11,7 @@ The roadmap has four explicit release horizons:
 - **Pre-M116 performance campaign -> `v0.5.0-beta.1`**. This beta is dedicated to parser/document-model throughput, allocation, and memory improvements before new product surface is added. Additional `v0.5.0-beta.N` iterations are allowed only when further measured optimization or correctness work justifies them.
 - **M116–M124 -> `v1.0.0`**. Completed and released on 2026-09-16 after the M124 stabilization, performance, API-review, and release-readiness gate.
 - **Post-v1.0 structured-editing compatibility gate -> `v1.1.1`**. Compatible structured-editing additions plus the front-matter replacement fix form the first minor feature line on the stable v1 API; `v1.1.0` is retracted in favor of the corrected `v1.1.1` publication.
-- **M125–M126 -> `v1.5.0`**. PDF work is intentionally queued after the structured-editing compatibility release and remains a separate future line.
+- **M125–M126 -> `v1.5.0`**. PDF work remains a separate future line and is currently suspended until explicitly resumed.
 
 A milestone number is an engineering boundary, not a public API version. A release is published only from an exact reviewed commit that passes the applicable local and public CI gates.
 
@@ -269,11 +269,11 @@ The v1.0 release may be cut only after the exact reviewed M124 freeze commit pas
 
 ## Post-v1.0 — structured-editing compatibility gate
 
-**Status: Complete; corrected public release target `v1.1.1`. M125 remains not started and requires its own explicit development boundary.**
+**Status: Complete; corrected public release target `v1.1.1`. PDF backend work remains not started and is suspended until explicitly resumed.**
 
 The compatibility review found one variable-length front-matter replacement defect and several generally useful structured-editing gaps. Marksplice now owns the corresponding paragraph, heading, list, link/image title, reference, footnote, front-matter, blockquote/alert, and fenced-block operations with source-preserving or explicit fail-closed contracts.
 
-Implementation details and consumer-specific integration notes are intentionally kept outside the public roadmap. PDF work remains a separate future milestone and does not start implicitly.
+Implementation details and consumer-specific integration notes are intentionally kept outside the public roadmap. PDF work remains a separate future line and does not resume implicitly.
 
 ## M125 — PDF backend contract (`v1.5.0` queue)
 

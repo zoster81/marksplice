@@ -19,9 +19,9 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 	if d == nil {
 		return ChangeSet{}, ErrSourceConflict
 	}
-	combined, err := source.ComposeChangeSets(d.source, changes...)
+	combined, err := d.composeSourceChanges(changes)
 	if err != nil {
-		return ChangeSet{}, compositionSourceError(err)
+		return ChangeSet{}, err
 	}
 	if len(changes) <= 1 {
 		return combined, nil
@@ -73,6 +73,25 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 		!slices.Equal(compositionFootnoteReferenceViews(candidateDocument), expectedFootnotes) {
 		return ChangeSet{}, fmt.Errorf("%w: combined candidate does not match independently validated model deltas", ErrInvalidReplacement)
 	}
+	return combined, nil
+}
+
+func (d *Document) composeSourceChanges(changes []ChangeSet) (ChangeSet, error) {
+	sourceChanges := make([]source.ChangeSet, len(changes))
+	relocations := make([]changeRelocation, 0)
+	correspondences := make([]changeCorrespondence, 0)
+	for index, change := range changes {
+		sourceChanges[index] = change.sourceChange()
+		relocations = append(relocations, change.relocationCopy()...)
+		correspondences = append(correspondences, change.correspondenceCopy()...)
+	}
+	combinedSource, err := source.ComposeChangeSets(d.source, sourceChanges...)
+	if err != nil {
+		return ChangeSet{}, compositionSourceError(err)
+	}
+	combined := newSpliceChangeSet(combinedSource)
+	combined.relocations = relocations
+	combined.correspondences = correspondences
 	return combined, nil
 }
 

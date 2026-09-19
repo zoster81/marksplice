@@ -56,7 +56,7 @@ func (d *Document) unchangedRangeChange(range_ Range, replacement []byte) (Chang
 	if err != nil {
 		return ChangeSet{}, false
 	}
-	return change, true
+	return newSpliceChangeSet(change), true
 }
 
 func (d *Document) newChange(range_ Range, replacement []byte, operation string) (ChangeSet, error) {
@@ -68,7 +68,7 @@ func (d *Document) newChanges(patches []source.Patch, operation string) (ChangeS
 	if err != nil {
 		return ChangeSet{}, fmt.Errorf("prepare %s: %w", operation, err)
 	}
-	return change, nil
+	return newSpliceChangeSet(change), nil
 }
 
 func (d *Document) prepareCandidateChange(range_ Range, replacement []byte, operation string) (ChangeSet, []byte, error) {
@@ -94,6 +94,9 @@ func (d *Document) prepareMoveCandidate(moved Range, insertAt int, fragment []by
 		{Range: insertRange, Replacement: fragment},
 	}
 	change, candidate, err := d.prepareCandidateChanges(patches, operation)
+	if err == nil {
+		change = change.withRelocation(moved, insertAt)
+	}
 	return change, candidate, insertRange, err
 }
 

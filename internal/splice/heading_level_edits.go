@@ -37,7 +37,9 @@ func (d *Document) PrepareSetHeadingLevel(id NodeID, level int) (ChangeSet, erro
 	if err := d.validateHeadingLevelCandidate(candidate, target, sectionIndex, level, plan); err != nil {
 		return ChangeSet{}, err
 	}
-	return change, nil
+	candidateRange := target.Range
+	candidateRange.End += len(plan.replacement) - (plan.range_.End - plan.range_.Start)
+	return change.withCorrespondence(target.ID, target.Range, candidateRange), nil
 }
 
 func planHeadingLevelPatch(input []byte, target Node, level int) (headingLevelPatch, bool) {

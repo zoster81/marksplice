@@ -84,6 +84,8 @@ Public operations classify failure families with `errors.Is`. The root-package s
 - `FencedCode` — FencedCode is immutable typed detail for one fenced code block whose payload is proven to be one exact contiguous source span suitable for the historical source-preserving replacement API. Use Document.FencedBlocks for broader read-only fenced-container ownership.
 - `FootnoteDefinition` — FootnoteDefinition is immutable typed detail for one source-proven top-level footnote definition. Range owns the complete physical definition container; BodyRange is available only for the conservative simple editable subset.
 - `FootnoteReference` — FootnoteReference is one immutable parser-proven footnote reference occurrence. It is relationship data and does not grant generic mutation authority.
+- `FragmentContinuity` — FragmentContinuity describes one previously resolved local-fragment relationship and its correlated state in the final candidate produced by a prepared change.
+- `FragmentContinuityStatus` — FragmentContinuityStatus classifies one previously resolved local-fragment relationship after a prepared change is applied to its exact source snapshot.
 - `FragmentTarget` — FragmentTarget is one uniquely resolved fragment destination in this snapshot.
 - `FragmentTargetKind` — FragmentTargetKind identifies one supported intra-document fragment target kind.
 - `FrontMatter` — FrontMatter is immutable source ownership for one recognized document-leading metadata envelope. It is document-envelope state rather than a structural Markdown node.
@@ -872,6 +874,14 @@ func (d *Document) LinkRelationships() []LinkRelationship
 LinkRelationships returns all parser-resolved outgoing link/image/autolink
 relationships in source order. The returned slice is caller-owned and does not
 persist any relationship index or graph in the snapshot.
+
+#### `LocalFragmentContinuity`
+
+```go
+func (d *Document) LocalFragmentContinuity(change ChangeSet) ([]FragmentContinuity, error)
+```
+
+LocalFragmentContinuity evaluates every previously resolved local-fragment relationship whose source syntax survives the prepared change. The change must be bound to this exact snapshot. Candidate parsing and semantic target correspondence are owned by Marksplice; snapshot-scoped NodeID values are never compared across snapshots.
 
 #### `ListItem`
 
@@ -2558,6 +2568,32 @@ func (r FootnoteReference) Range() Range
 ```
 
 Range returns the exact `[^label]` source token span.
+
+### `FragmentContinuity` methods
+
+#### `After`
+
+```go
+func (c FragmentContinuity) After() (LinkRelationship, bool)
+```
+
+After returns the correlated candidate relationship when it still exists semantically.
+
+#### `Before`
+
+```go
+func (c FragmentContinuity) Before() LinkRelationship
+```
+
+Before returns the relationship from the document snapshot that prepared the change.
+
+#### `Status`
+
+```go
+func (c FragmentContinuity) Status() FragmentContinuityStatus
+```
+
+Status returns one of `FragmentContinuityPreserved`, `FragmentContinuityRetargeted`, `FragmentContinuityTargetChanged`, `FragmentContinuityMissing`, `FragmentContinuityAmbiguous`, or `FragmentContinuityInvalid`. The zero value is `FragmentContinuityUnknown`.
 
 ### `FragmentTarget` methods
 

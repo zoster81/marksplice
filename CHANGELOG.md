@@ -4,6 +4,10 @@ All notable public changes to Marksplice are documented in this file.
 
 Marksplice follows Semantic Versioning-compatible Go module tags. `v1.0.0` established the first stable public API contract; compatible fixes and additions remain within the v1 line, while intentionally breaking public API changes require a new major version.
 
+## Unreleased
+
+- Add prepared-change local-fragment continuity analysis so callers can distinguish preserved targets, explicit retargets, silent target changes, and missing/ambiguous/invalid fragment results across structural edits and composed changes without comparing snapshot-scoped `NodeID` values.
+
 ## v1.1.1 — 2026-09-17
 
 - Make `v1.1.1` the supported release for the v1.1 feature set and retract `v1.1.0`, which was observed by Go module tooling before its public release metadata and maintenance naming were fully cleaned up.

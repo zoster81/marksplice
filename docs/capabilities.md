@@ -90,6 +90,7 @@ Front matter and reference-definition declarations are source/semantic metadata 
 | TOC generation | `GenerateTOC` | Deterministic from current section hierarchy |
 | Existing TOC synchronization | `TOCStale`, `PrepareSyncTOC` | Only caller-designated conservative managed-TOC bodies |
 | Link intelligence | `LinkRelationships` | Read-only semantic relationships; destinations outside the current document remain caller-interpreted data unless an explicit adapter such as `workspacefs` is used |
+| Prepared-change fragment continuity | `LocalFragmentContinuity` | Correlates previously resolved local-fragment relationships across one snapshot-bound `ChangeSet`, distinguishing preserved targets, explicit retargets, silent target changes, missing/ambiguous/invalid results, and authoritative moves without treating `NodeID` as a cross-snapshot identity |
 
 ## Multi-document capabilities
 

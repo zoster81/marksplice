@@ -149,8 +149,74 @@ type Node struct {
 	TopLevel                  bool
 }
 
-// ChangeSet is a source-bound prepared mutation.
-type ChangeSet = source.ChangeSet
+// ChangeSet is a source-bound prepared mutation with private semantic provenance.
+type ChangeSet struct {
+	change          source.ChangeSet
+	relocations     []changeRelocation
+	correspondences []changeCorrespondence
+}
+
+type changeRelocation struct {
+	source   Range
+	insertAt int
+}
+
+type changeCorrespondence struct {
+	sourceID       NodeID
+	sourceRange    Range
+	candidateRange Range
+	patchRanges    []Range
+}
+
+func newSpliceChangeSet(change source.ChangeSet) ChangeSet {
+	return ChangeSet{change: change}
+}
+
+func (c ChangeSet) Apply(input []byte) ([]byte, error) {
+	return c.change.Apply(input)
+}
+
+func (c ChangeSet) Patches() []source.Patch {
+	return c.change.Patches()
+}
+
+func (c ChangeSet) sourceChange() source.ChangeSet {
+	return c.change
+}
+
+func (c ChangeSet) withRelocation(sourceRange Range, insertAt int) ChangeSet {
+	c.relocations = append(append([]changeRelocation(nil), c.relocations...), changeRelocation{source: sourceRange, insertAt: insertAt})
+	return c
+}
+
+func (c ChangeSet) relocationCopy() []changeRelocation {
+	return append([]changeRelocation(nil), c.relocations...)
+}
+
+func (c ChangeSet) withCorrespondence(id NodeID, sourceRange, candidateRange Range) ChangeSet {
+	patches := c.Patches()
+	patchRanges := make([]Range, len(patches))
+	for index, patch := range patches {
+		patchRanges[index] = patch.Range
+	}
+	entry := changeCorrespondence{
+		sourceID:       id,
+		sourceRange:    sourceRange,
+		candidateRange: candidateRange,
+		patchRanges:    patchRanges,
+	}
+	c.correspondences = append(append([]changeCorrespondence(nil), c.correspondences...), entry)
+	return c
+}
+
+func (c ChangeSet) correspondenceCopy() []changeCorrespondence {
+	result := make([]changeCorrespondence, len(c.correspondences))
+	for index, entry := range c.correspondences {
+		result[index] = entry
+		result[index].patchRanges = append([]Range(nil), entry.patchRanges...)
+	}
+	return result
+}
 
 type frontMatterEnvelope struct {
 	Format       source.FrontMatterFormat

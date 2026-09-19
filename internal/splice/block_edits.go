@@ -129,7 +129,9 @@ func (d *Document) PrepareRenameHeading(id NodeID, replacement []byte) (ChangeSe
 	if err := validateRenamedHeading(candidate, target); err != nil {
 		return ChangeSet{}, err
 	}
-	return change, nil
+	candidateRange := target.Range
+	candidateRange.End += len(replacement) - (target.ContentRange.End - target.ContentRange.Start)
+	return change.withCorrespondence(target.ID, target.Range, candidateRange), nil
 }
 
 // PrepareSetTaskChecked prepares a one-byte GFM task checkbox state change.
@@ -139,7 +141,8 @@ func (d *Document) PrepareSetTaskChecked(id NodeID, checked bool) (ChangeSet, er
 		return ChangeSet{}, err
 	}
 	if target.Checked == checked {
-		return source.NewChangeSet(d.source, nil)
+		change, err := source.NewChangeSet(d.source, nil)
+		return newSpliceChangeSet(change), err
 	}
 
 	state := byte(' ')

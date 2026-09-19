@@ -39,6 +39,25 @@ for _, relationship := range doc.LinkRelationships() {
 
 Relationships cover parser-resolved links, images, references, and autolinks in source order. The relationship view can be broader than ordinary editable link-node promotion, so relationship intelligence still does not grant a generic mutation span. For the conservative parser-proven reference subset, `PrepareRetargetReferenceOccurrence` can retarget a full/collapsed/shortcut occurrence to an existing unique definition; definition rename/append/title lifecycle remains explicit through the dedicated `Prepare...ReferenceDefinition...` APIs.
 
+When a prepared structural change may affect local fragment targets, validate the final candidate through Marksplice rather than comparing `NodeID` values across snapshots:
+
+```go
+continuity, err := doc.LocalFragmentContinuity(change)
+if err != nil {
+    return err
+}
+for _, item := range continuity {
+    switch item.Status() {
+    case marksplice.FragmentContinuityPreserved, marksplice.FragmentContinuityRetargeted:
+        // Relationship continuity is explicit.
+    default:
+        // Review changed/missing/ambiguous/invalid target state.
+    }
+}
+```
+
+The analysis reparses only the final candidate, keeps target correspondence ephemeral, understands Marksplice-authoritative moves and target-preserving heading edits, and never turns snapshot-scoped `NodeID` values into durable cross-revision identities. Relationships whose source syntax is intentionally removed or replaced are not reported.
+
 ## Load a caller-authorized filesystem workspace
 
 Use `workspacefs.Scan` when you want every Markdown document under one supplied filesystem root:
@@ -172,6 +191,7 @@ Knowledge queries include alias resolution, tags, logical references/backlinks, 
 | --- | --- |
 | Resolve `#fragment` in one document | `ResolveFragment` |
 | Enumerate semantic outgoing links | `LinkRelationships` |
+| Check local-fragment target continuity across a prepared change | `LocalFragmentContinuity` |
 | Discover all Markdown under an explicit `fs.FS` root | `workspacefs.Scan` |
 | Follow local Markdown from explicit entries | `workspacefs.Follow` |
 | Backlinks/reachability across an explicit set | `BuildDocumentGraph` or `workspacefs.Workspace.BuildGraph` |

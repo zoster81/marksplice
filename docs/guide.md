@@ -41,7 +41,7 @@ The public API exposes several levels of detail:
 - Typed accessors such as `Heading`, `Task`, `TableCell`, `FencedCode`, `InlineLink`, and `ReferenceDefinition` expose operation-specific detail; `Heading.Text()` provides parser-derived semantic heading text while `Heading.Range()` retains exact authored source ownership.
 - Higher-level views such as `Sections`, `FencedBlocks`, `Alerts`, `MathExpressions`, `FootnoteDefinitions`, and `FrontMatter` expose reviewed semantics that do not always imply mutation authority.
 - `QueryNodes` and `QuerySections` provide bounded structural selection.
-- `HeadingAnchors`, `ResolveFragment`, and `LinkRelationships` provide navigation and relationship intelligence.
+- `HeadingAnchors`, `ResolveFragment`, and `LinkRelationships` provide navigation and relationship intelligence; `LocalFragmentContinuity` validates how already-resolved local-fragment relationships behave across one prepared `ChangeSet` without comparing snapshot-scoped node IDs.
 
 A public `Range` always means exactly what the accessor documents. Marksplice intentionally does not define one universal "full node range" for every construct.
 
