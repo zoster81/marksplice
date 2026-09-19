@@ -250,7 +250,7 @@ func validateInlineLinkLabelReplacement(candidate []byte, target Node, original 
 	}
 	delta := len(replacement) - (original.LabelRange.End - original.LabelRange.Start)
 	for _, observation := range observations {
-		mapping, ok := matchingInlineLinkMapping(candidate, observation, target)
+		mapping, ok := matchingInlineLinkMapping(candidate, observation, target.Anchor, target.Destination, target.Title, target.HasTitle)
 		if ok && inlineLinkLabelMappingMatches(mapping, original, len(replacement), delta) {
 			return nil
 		}
@@ -258,9 +258,9 @@ func validateInlineLinkLabelReplacement(candidate []byte, target Node, original 
 	return ErrInvalidReplacement
 }
 
-func matchingInlineLinkMapping(candidate []byte, observation parser.Node, target Node) (source.InlineLinkMapping, bool) {
-	if observation.Kind != parser.KindInlineLink || observation.Anchor != target.Anchor ||
-		observation.Destination != target.Destination || observation.Title != target.Title || observation.HasTitle != target.HasTitle {
+func matchingInlineLinkMapping(candidate []byte, observation parser.Node, anchor int, destination, title string, hasTitle bool) (source.InlineLinkMapping, bool) {
+	if observation.Kind != parser.KindInlineLink || observation.Anchor != anchor ||
+		observation.Destination != destination || observation.Title != title || observation.HasTitle != hasTitle {
 		return source.InlineLinkMapping{}, false
 	}
 	mapping, err := source.MapSimpleInlineLink(candidate, observation.Anchor, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Destination, observation.Title, observation.HasTitle)
@@ -286,12 +286,10 @@ func validateInlineLinkTitleReplacement(candidate []byte, target Node, original 
 		return err
 	}
 	delta := len(replacement) - (original.TitleRange.End - original.TitleRange.Start)
+	expectedTitle := string(replacement)
 	for _, observation := range observations {
-		if observation.Kind != parser.KindInlineLink || observation.Anchor != target.Anchor || observation.Destination != target.Destination || observation.Title != string(replacement) || !observation.HasTitle {
-			continue
-		}
-		mapping, err := source.MapSimpleInlineLink(candidate, observation.Anchor, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Destination, observation.Title, observation.HasTitle)
-		if err != nil {
+		mapping, ok := matchingInlineLinkMapping(candidate, observation, target.Anchor, target.Destination, expectedTitle, true)
+		if !ok {
 			continue
 		}
 		if mapping.Range == shiftedEnd(original.Range, delta) && mapping.LabelRange == original.LabelRange &&
@@ -309,12 +307,10 @@ func validateInlineLinkDestinationReplacement(candidate []byte, target Node, ori
 		return err
 	}
 	delta := len(replacement) - (original.DestinationRange.End - original.DestinationRange.Start)
+	expectedDestination := string(replacement)
 	for _, observation := range observations {
-		if observation.Kind != parser.KindInlineLink || observation.Anchor != target.Anchor || observation.Destination != string(replacement) || observation.Title != target.Title || observation.HasTitle != target.HasTitle {
-			continue
-		}
-		mapping, err := source.MapSimpleInlineLink(candidate, observation.Anchor, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Destination, observation.Title, observation.HasTitle)
-		if err != nil {
+		mapping, ok := matchingInlineLinkMapping(candidate, observation, target.Anchor, expectedDestination, target.Title, target.HasTitle)
+		if !ok {
 			continue
 		}
 		if mapping.Range == shiftedEnd(original.Range, delta) &&
@@ -422,12 +418,10 @@ func validateReferenceDefinitionDestinationReplacement(candidate []byte, target 
 		return err
 	}
 	delta := len(replacement) - (original.DestinationRange.End - original.DestinationRange.Start)
+	expectedDestination := string(replacement)
 	for _, observation := range observations {
-		if observation.Kind != parser.KindReferenceDefinition || observation.Label != target.Label || observation.Destination != string(replacement) || observation.Title != target.Title || observation.HasTitle != target.HasTitle {
-			continue
-		}
-		mapping, err := source.MapSingleLineReferenceDefinition(candidate, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Label, observation.Destination, observation.Title, observation.HasTitle)
-		if err != nil {
+		mapping, ok := matchingReferenceDefinitionMapping(candidate, observation, target.Label, expectedDestination, target.Title, target.HasTitle)
+		if !ok {
 			continue
 		}
 		if mapping.Range == shiftedEnd(original.Range, delta) && mapping.LineRange == shiftedEnd(original.LineRange, delta) &&
@@ -439,18 +433,25 @@ func validateReferenceDefinitionDestinationReplacement(candidate []byte, target 
 	return ErrInvalidReplacement
 }
 
+func matchingReferenceDefinitionMapping(candidate []byte, observation parser.Node, label, destination, title string, hasTitle bool) (source.ReferenceDefinitionMapping, bool) {
+	if observation.Kind != parser.KindReferenceDefinition || observation.Label != label ||
+		observation.Destination != destination || observation.Title != title || observation.HasTitle != hasTitle {
+		return source.ReferenceDefinitionMapping{}, false
+	}
+	mapping, err := source.MapSingleLineReferenceDefinition(candidate, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Label, observation.Destination, observation.Title, observation.HasTitle)
+	return mapping, err == nil
+}
+
 func validateReferenceDefinitionTitleReplacement(candidate []byte, target Node, original source.ReferenceDefinitionMapping, replacement []byte) error {
 	observations, err := parseCandidate(candidate)
 	if err != nil {
 		return err
 	}
 	delta := len(replacement) - (original.TitleRange.End - original.TitleRange.Start)
+	expectedTitle := string(replacement)
 	for _, observation := range observations {
-		if observation.Kind != parser.KindReferenceDefinition || observation.Label != target.Label || observation.Destination != target.Destination || observation.Title != string(replacement) || !observation.HasTitle {
-			continue
-		}
-		mapping, err := source.MapSingleLineReferenceDefinition(candidate, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Label, observation.Destination, observation.Title, observation.HasTitle)
-		if err != nil {
+		mapping, ok := matchingReferenceDefinitionMapping(candidate, observation, target.Label, target.Destination, expectedTitle, true)
+		if !ok {
 			continue
 		}
 		if mapping.Range == shiftedEnd(original.Range, delta) && mapping.LineRange == shiftedEnd(original.LineRange, delta) &&
