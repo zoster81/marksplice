@@ -343,7 +343,7 @@ func documentFromObservations(snapshot []byte, observed parser.DocumentObservati
 	if err != nil {
 		return nil, fmt.Errorf("index structural nodes: %w", err)
 	}
-	resolvedFootnoteReferences := resolveFootnoteReferences(nodes, footnoteReferences)
+	resolvedFootnoteReferences := resolveFootnoteReferences(nodes, footnoteReferences, len(footnoteSources))
 	sections, sectionIndex, err := buildSections(snapshot, nodes)
 	if err != nil {
 		return nil, fmt.Errorf("index sections: %w", err)

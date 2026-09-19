@@ -138,8 +138,8 @@ func mergeSourceOrderedNodeSets(nodes, firstAdditions, secondAdditions []Node) [
 	return nodes
 }
 
-func resolveFootnoteReferences(nodes []Node, observed []parser.FootnoteReferenceObservation) []FootnoteReference {
-	definitionIDs := make(map[int]NodeID)
+func resolveFootnoteReferences(nodes []Node, observed []parser.FootnoteReferenceObservation, definitionCapacity int) []FootnoteReference {
+	definitionIDs := make(map[int]NodeID, definitionCapacity)
 	for _, node := range nodes {
 		if node.Kind == KindFootnoteDefinition {
 			definitionIDs[node.Anchor] = node.ID
