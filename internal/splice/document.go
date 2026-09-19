@@ -302,8 +302,8 @@ func documentFromObservations(snapshot []byte, observed parser.DocumentObservati
 
 	fingerprint := source.Sum(snapshot)
 	nodes := make([]Node, 0, len(observations)+len(frontMatter.Fields)+len(footnoteDefinitions)+len(mathExpressions))
-	tableRows := make(map[int]tableRowSourceResult)
-	tableSources := make(map[int]source.TableMapping)
+	tableRows := make(map[int]tableRowSourceResult, len(parserDetails.tableRows))
+	tableSources := make(map[int]source.TableMapping, len(parserDetails.tables))
 	fencedCapacity, blockquoteCapacity := sourceDetailCapacities(observations)
 	fencedSources := make([]fencedSourceDetail, 0, fencedCapacity)
 	blockquoteSources := make([]source.BlockquoteMapping, 0, blockquoteCapacity)
