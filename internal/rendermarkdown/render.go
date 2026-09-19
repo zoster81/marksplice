@@ -153,6 +153,7 @@ func (r *renderer) enter(event parser.SemanticEvent) error {
 		current.delimiter = r.emphasisDelimiter(event.Kind)
 		r.preserveAdjacentEmphasisDelimiters(&current)
 		r.preserveNestedEmphasisDelimiters(&current)
+		r.preserveWrappedEmphasisDelimiters(&current)
 	case parser.SemanticStrikethrough:
 		current.delimiter = r.strikethroughDelimiter()
 		r.preserveNestedStrikethroughDelimiters(&current)
@@ -744,6 +745,36 @@ func (r *renderer) preserveNestedEmphasisDelimiters(current *frame) {
 	}
 	parent.delimiter = parentDelimiter
 	current.delimiter = currentDelimiter
+}
+
+func (r *renderer) preserveWrappedEmphasisDelimiters(current *frame) {
+	if current == nil {
+		return
+	}
+	width := delimiterWidth(current.event.Kind)
+	if width == 0 || len(current.delimiter) != width {
+		return
+	}
+	currentSource, ok := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	if !ok {
+		return
+	}
+	for index := len(r.stack) - 1; index >= 0; index-- {
+		ancestor := &r.stack[index]
+		if delimiterWidth(ancestor.event.Kind) != width || len(ancestor.delimiter) != width {
+			continue
+		}
+		ancestorSource, ok := r.sourceEmphasisDelimiter(ancestor.event.Kind, ancestor.event.Range)
+		if !ok {
+			return
+		}
+		if ancestorSource[0] == currentSource[0] || ancestor.delimiter[0] != current.delimiter[0] {
+			return
+		}
+		ancestor.delimiter = ancestorSource
+		current.delimiter = currentSource
+		return
+	}
 }
 
 func (r *renderer) sourceEmphasisDelimiterUsable(event parser.SemanticEvent, delimiter string) bool {

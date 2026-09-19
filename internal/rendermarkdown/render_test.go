@@ -188,6 +188,20 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "~*#\t~#~*~\n",
 		},
 		{
+			name:   "emphasis alternation survives strikethrough wrapper",
+			source: "*~_)_~*\n",
+		},
+		{
+			name:   "matching emphasis markers remain canonical through strikethrough",
+			source: "*~*x*~*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*~~*x*~~*\n" {
+					t.Fatalf("canonical matching emphasis markers = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "raw link destination rejects ASCII control",
 			source: "[](>\x00)\n",
 		},
