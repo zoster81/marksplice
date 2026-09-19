@@ -248,7 +248,7 @@ func strikethroughRunEligible(source []byte, segment parser.Range, start, length
 		return false
 	}
 	before, ok := delimiterPrecedingRune(source, segment, start)
-	return !ok || before != '~'
+	return !ok || before != '~' || inlineByteEscaped(source, segment.Start, start-1)
 }
 
 func delimiterPrecedingRune(source []byte, segment parser.Range, position int) (rune, bool) {

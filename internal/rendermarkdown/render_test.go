@@ -176,6 +176,10 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "*>\t*|**\n",
 		},
 		{
+			name:   "escaped tilde before strikethrough",
+			source: "\\~~~x~~\n",
+		},
+		{
 			name:   "empty heading and thematic break",
 			source: "#\n\n***\n",
 		},

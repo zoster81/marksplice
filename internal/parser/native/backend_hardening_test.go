@@ -335,6 +335,53 @@ func TestCommonMark0312RuleOfThreeUsesOriginalDelimiterRunLength(t *testing.T) {
 	}
 }
 
+func TestEscapedTildeDoesNotSuppressFollowingStrikethroughRun(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("\\~~~x~~")
+	observed, err := native.New().ParseDocument(source)
+	if err != nil {
+		t.Fatalf("ParseDocument() error = %v", err)
+	}
+	var strikes []parser.Node
+	for _, node := range observed.Nodes {
+		if node.Kind == parser.KindStrikethrough {
+			strikes = append(strikes, node)
+		}
+	}
+	if len(strikes) != 1 || strikes[0].Range != (parser.Range{Start: 4, End: 5}) {
+		t.Fatalf("strikethrough nodes = %#v, want content range {4 5}", strikes)
+	}
+
+	events := collectSemanticEvents(t, source)
+	strikeEvents := semanticEventsOfKind(events, parser.SemanticStrikethrough, parser.SemanticEnter)
+	if len(strikeEvents) != 1 ||
+		strikeEvents[0].Range != (parser.Range{Start: 2, End: 7}) ||
+		strikeEvents[0].ContentRange != (parser.Range{Start: 4, End: 5}) {
+		t.Fatalf("semantic strikethrough events = %#v", strikeEvents)
+	}
+
+	for _, control := range []struct {
+		name   string
+		source []byte
+	}{
+		{name: "raw triple tilde run", source: []byte("~~~x~~")},
+		{name: "even backslash prefix", source: []byte("\\\\~~~x~~")},
+	} {
+		t.Run(control.name, func(t *testing.T) {
+			observed, err := native.New().ParseDocument(control.source)
+			if err != nil {
+				t.Fatalf("ParseDocument() error = %v", err)
+			}
+			for _, node := range observed.Nodes {
+				if node.Kind == parser.KindStrikethrough {
+					t.Fatalf("ParseDocument(%q) projected strikethrough: %#v", control.source, node)
+				}
+			}
+		})
+	}
+}
+
 func TestNativeInlineHTMLProcessingInstructionCorpusRemainsSourceBound(t *testing.T) {
 	tests := []struct {
 		name   string
