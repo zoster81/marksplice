@@ -55,6 +55,38 @@ func TestFilterNativeFootnoteConflictNodesReusesBackingStorage(t *testing.T) {
 	}
 }
 
+func TestFilterNativeFootnoteConflictUsagesReusesBackingStorage(t *testing.T) {
+	t.Parallel()
+
+	usages := []parser.LinkUsage{
+		{Kind: parser.KindInlineLink, Form: parser.LinkUsageDirect, Anchor: 0, Destination: "/keep"},
+		{Kind: parser.KindInlineLink, Form: parser.LinkUsageDirect, Anchor: 10, Destination: "/claimed"},
+		{Kind: parser.KindInlineLink, Form: parser.LinkUsageFull, Anchor: 20, Reference: "^note"},
+		{Kind: parser.KindInlineLink, Form: parser.LinkUsageFull, Anchor: 30, Reference: "docs"},
+	}
+	first := &usages[0]
+	got, suppressed := filterNativeFootnoteConflictUsages(
+		usages,
+		[]parser.Range{{Start: 10, End: 11}},
+		map[string]struct{}{ReferenceLabelKey("^note"): {}},
+	)
+
+	if len(got) != 2 || got[0].Anchor != 0 || got[1].Anchor != 30 {
+		t.Fatalf("filtered usages = %#v", got)
+	}
+	if len(suppressed) != 1 {
+		t.Fatalf("suppressed anchors = %#v", suppressed)
+	}
+	if &got[0] != first {
+		t.Fatal("filterNativeFootnoteConflictUsages() replaced reusable backing storage")
+	}
+	for index := len(got); index < len(usages); index++ {
+		if !reflect.DeepEqual(usages[index], parser.LinkUsage{}) {
+			t.Fatalf("filtered tail usage %d = %#v, want zero value", index, usages[index])
+		}
+	}
+}
+
 func TestAttachNodeDetailsCompactsRemovedSparseFacts(t *testing.T) {
 	t.Parallel()
 

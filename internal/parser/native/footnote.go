@@ -437,7 +437,7 @@ func filterNativeFootnoteConflictNodes(nodes []parser.Node, claims []parser.Rang
 }
 
 func filterNativeFootnoteConflictUsages(usages []parser.LinkUsage, claims []parser.Range, caretKeys map[string]struct{}) ([]parser.LinkUsage, map[constructionSemanticKey]struct{}) {
-	filtered := make([]parser.LinkUsage, 0, len(usages))
+	filtered := usages[:0]
 	suppressedAnchors := make(map[constructionSemanticKey]struct{})
 	for _, usage := range usages {
 		if nativeOffsetInsideAny(usage.Anchor, claims) {
@@ -451,6 +451,7 @@ func filterNativeFootnoteConflictUsages(usages []parser.LinkUsage, claims []pars
 		}
 		filtered = append(filtered, usage)
 	}
+	clear(usages[len(filtered):])
 	return filtered, suppressedAnchors
 }
 
