@@ -95,6 +95,8 @@ Canonical Markdown is normalization, not source reproduction. Every approved Com
 
 This proves semantic round-trip plus byte idempotence. It does not require canonical output to retain the original source spelling.
 
+Focused canonical regressions additionally exercise delimiter collisions and nesting, source-proven marker alternation, escaped punctuation boundaries, whitespace/entity flanking changes, and parser-owned destination grammar so edge-case normalization cannot silently invent or discard semantic structure.
+
 Canonical conformance uses no per-example “accept current output” allowlist.
 
 ## Updating a specification snapshot or fixture

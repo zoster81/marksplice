@@ -8,6 +8,9 @@ Marksplice follows Semantic Versioning-compatible Go module tags. `v1.0.0` estab
 
 - Add prepared-change local-fragment continuity analysis so callers can distinguish preserved targets, explicit retargets, silent target changes, and missing/ambiguous/invalid fragment results across structural edits and composed changes without comparing snapshot-scoped `NodeID` values.
 - Add explicit canonical multiline footnote construction for immediate and deferred `DocumentBuilder` definitions while retaining the established single-line methods and fail-closed parser/source proof.
+- Fix `DocumentBuilder` footnote ownership proof so a valid single-line definition can be followed by another block without `Markdown()` incorrectly rejecting the generated document.
+- Fix canonical Markdown semantic round-trip and byte idempotence across nested emphasis/strong/strikethrough delimiter collisions, wrapper nesting, escaped-tilde boundaries, and tab-sensitive delimiter flanking while preserving ordinary canonical formatting.
+- Fix Native raw link-destination parsing to reject ASCII control characters, including control bytes following a backslash, as required by CommonMark 0.31.2.
 
 ## v1.1.1 — 2026-09-17
 
