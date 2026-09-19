@@ -817,11 +817,11 @@ func (r *renderer) preserveNestedStrikethroughDelimiters(current *frame) {
 	if current == nil || len(r.stack) == 0 {
 		return
 	}
-	parent := &r.stack[len(r.stack)-1]
-	if parent.event.Kind != parser.SemanticStrikethrough {
+	ancestor := r.nearestStrikethroughAncestor()
+	if ancestor == nil {
 		return
 	}
-	parentDelimiter, ok := r.sourceStrikethroughDelimiter(parent.event)
+	ancestorDelimiter, ok := r.sourceStrikethroughDelimiter(ancestor.event)
 	if !ok {
 		return
 	}
@@ -829,9 +829,19 @@ func (r *renderer) preserveNestedStrikethroughDelimiters(current *frame) {
 	if !ok {
 		return
 	}
+	parent := &r.stack[len(r.stack)-1]
 	r.restoreTrailingTabBeforeNestedStrikethrough(parent, current.event)
-	parent.delimiter = parentDelimiter
+	ancestor.delimiter = ancestorDelimiter
 	current.delimiter = currentDelimiter
+}
+
+func (r *renderer) nearestStrikethroughAncestor() *frame {
+	for index := len(r.stack) - 1; index >= 0; index-- {
+		if r.stack[index].event.Kind == parser.SemanticStrikethrough {
+			return &r.stack[index]
+		}
+	}
+	return nil
 }
 
 func (r *renderer) restoreTrailingTabBeforeNestedStrikethrough(parent *frame, child parser.SemanticEvent) {
