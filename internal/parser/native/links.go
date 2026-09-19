@@ -810,6 +810,9 @@ func scanInlineRawCursorDestination(source []byte, cursor *inlineHTMLCursor) (st
 }
 
 func rawCursorDestinationBoundary(current byte, depth int) bool {
+	if rawLinkDestinationASCIIControl(current) {
+		return true
+	}
 	switch current {
 	case ' ', '\t', '\n', '\r', '<':
 		return true
@@ -824,7 +827,7 @@ func appendInlineCursorEscape(source []byte, cursor *inlineHTMLCursor, value []b
 	value = append(value, '\\')
 	cursor.advance()
 	escaped, ok := cursor.peek(source)
-	if !ok || escaped == '\n' || escaped == '\r' {
+	if !ok || rawLinkDestinationASCIIControl(escaped) {
 		return value, false
 	}
 	value = append(value, escaped)
@@ -912,7 +915,13 @@ func scanRawLinkDestination(source []byte, start, limit int) (int, bool) {
 	depth := 0
 	for position < limit {
 		value := source[position]
+		if rawLinkDestinationASCIIControl(value) {
+			return position, true
+		}
 		if value == '\\' && position+1 < limit {
+			if rawLinkDestinationASCIIControl(source[position+1]) {
+				return position + 1, true
+			}
 			position += 2
 			continue
 		}
@@ -933,6 +942,10 @@ func scanRawLinkDestination(source []byte, start, limit int) (int, bool) {
 		position++
 	}
 	return position, true
+}
+
+func rawLinkDestinationASCIIControl(value byte) bool {
+	return value < 0x20 || value == 0x7f
 }
 
 func scanInlineLinkTitleValue(source []byte, start, limit int) (string, int, bool) {

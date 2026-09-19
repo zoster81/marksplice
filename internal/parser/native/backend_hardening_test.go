@@ -87,6 +87,33 @@ func TestCommonMark0312InlineHTMLGrammar(t *testing.T) {
 	}
 }
 
+func TestCommonMark0312RawLinkDestinationRejectsASCIIControls(t *testing.T) {
+	backend := native.New()
+	controls := make([]byte, 0, 33)
+	for value := byte(0); value < 0x20; value++ {
+		controls = append(controls, value)
+	}
+	controls = append(controls, 0x7f)
+	for _, control := range controls {
+		for _, escaped := range []bool{false, true} {
+			source := []byte{'[', ']', '(', 'a'}
+			if escaped {
+				source = append(source, '\\')
+			}
+			source = append(source, control, 'b', ')')
+			err := backend.WalkSemantic(source, func(event parser.SemanticEvent) error {
+				if event.Phase == parser.SemanticEnter && event.Kind == parser.SemanticLink {
+					t.Fatalf("WalkSemantic(control=0x%02x, escaped=%v) emitted link: %#v", control, escaped, event)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("WalkSemantic(control=0x%02x, escaped=%v) error = %v", control, escaped, err)
+			}
+		}
+	}
+}
+
 func TestPublishedGFMAutolinkGrammar(t *testing.T) {
 	backend := native.New()
 	tests := []struct {
