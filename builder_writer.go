@@ -32,20 +32,19 @@ func appendConstructionBlocks(output *bytes.Buffer, blocks []constructionBlock) 
 		if index != 0 {
 			separatorStart := output.Len()
 			output.WriteByte('\n')
-			extendMultilineFootnoteContainer(expected, separatorStart, output.Len())
+			extendFootnoteContainer(expected, separatorStart, output.Len())
 		}
 		expected = append(expected, writeConstructionBlock(output, block)...)
 	}
 	return expected
 }
 
-func extendMultilineFootnoteContainer(expected []constructionExpectation, separatorStart, separatorEnd int) {
+func extendFootnoteContainer(expected []constructionExpectation, separatorStart, separatorEnd int) {
 	if len(expected) == 0 {
 		return
 	}
 	previous := &expected[len(expected)-1]
-	if previous.kind != splice.KindFootnoteDefinition || len(previous.footnote.bodyRanges) < 2 ||
-		previous.sourceRange.End != separatorStart {
+	if previous.kind != splice.KindFootnoteDefinition || previous.sourceRange.End != separatorStart {
 		return
 	}
 	previous.sourceRange.End = separatorEnd

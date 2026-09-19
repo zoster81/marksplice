@@ -273,6 +273,59 @@ func TestFootnoteLabelsResolveExactly(t *testing.T) {
 	}
 }
 
+func TestDocumentBuilderKeepsCaseDistinctFootnoteDefinitions(t *testing.T) {
+	t.Parallel()
+
+	builder := marksplice.NewDocumentBuilder()
+	if err := builder.AppendFootnoteDefinition("Case", "one"); err != nil {
+		t.Fatalf("AppendFootnoteDefinition(Case) error = %v", err)
+	}
+	if err := builder.AppendFootnoteDefinition("case", "two"); err != nil {
+		t.Fatalf("AppendFootnoteDefinition(case) error = %v", err)
+	}
+	if err := builder.AppendParagraphContent(
+		marksplice.FootnoteReferenceInline("Case"),
+		marksplice.TextInline(" "),
+		marksplice.FootnoteReferenceInline("case"),
+	); err != nil {
+		t.Fatalf("AppendParagraphContent() error = %v", err)
+	}
+
+	markdown, err := builder.Markdown()
+	if err != nil {
+		t.Fatalf("Markdown() error = %v", err)
+	}
+	doc := mustParseFootnoteDocument(t, markdown)
+	definitions := doc.FootnoteDefinitions()
+	if len(definitions) != 2 || definitions[0].Label() != "Case" || definitions[1].Label() != "case" {
+		t.Fatalf("FootnoteDefinitions() = %+v, want exact Case/case definitions", definitions)
+	}
+	references := doc.FootnoteReferences()
+	if len(references) != 2 || references[0].Label() != "Case" || references[1].Label() != "case" {
+		t.Fatalf("FootnoteReferences() = %+v, want exact Case/case references", references)
+	}
+}
+
+func TestDocumentBuilderConstructsSingleLineFootnoteBeforeFollowingBlock(t *testing.T) {
+	t.Parallel()
+
+	builder := marksplice.NewDocumentBuilder()
+	if err := builder.AppendFootnoteDefinition("note", "body"); err != nil {
+		t.Fatalf("AppendFootnoteDefinition() error = %v", err)
+	}
+	if err := builder.AppendParagraph("tail"); err != nil {
+		t.Fatalf("AppendParagraph() error = %v", err)
+	}
+	markdown, err := builder.Markdown()
+	if err != nil {
+		t.Fatalf("Markdown() error = %v", err)
+	}
+	want := []byte("[^note]: body\n\ntail\n")
+	if !bytes.Equal(markdown, want) {
+		t.Fatalf("Markdown() = %q, want %q", markdown, want)
+	}
+}
+
 func TestDocumentBuilderConstructsMultilineFootnoteDefinitions(t *testing.T) {
 	t.Parallel()
 
