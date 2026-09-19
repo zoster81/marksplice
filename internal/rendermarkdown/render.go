@@ -24,17 +24,26 @@ type Backend interface {
 }
 
 type frame struct {
-	event            parser.SemanticEvent
-	inline           []byte
-	blocks           []string
-	items            []listItem
-	rows             []tableRow
-	cells            []tableCell
-	task             bool
-	checked          bool
-	delimiter        string
-	bareAutoLinkTail bool
-	lastList         listBoundary
+	event                parser.SemanticEvent
+	inline               []byte
+	blocks               []string
+	items                []listItem
+	rows                 []tableRow
+	cells                []tableCell
+	task                 bool
+	checked              bool
+	delimiter            string
+	bareAutoLinkTail     bool
+	lastList             listBoundary
+	lastDelimiterSibling inlineDelimiterSibling
+}
+
+type inlineDelimiterSibling struct {
+	kind        parser.SemanticKind
+	sourceRange parser.Range
+	outputStart int
+	outputEnd   int
+	valid       bool
 }
 
 type listItem struct {
@@ -142,6 +151,7 @@ func (r *renderer) enter(event parser.SemanticEvent) error {
 		parser.SemanticTable, parser.SemanticTableRow, parser.SemanticTableCell, parser.SemanticFootnoteDefinition:
 	case parser.SemanticEmphasis, parser.SemanticStrong:
 		current.delimiter = r.emphasisDelimiter(event.Kind)
+		r.preserveAdjacentEmphasisDelimiters(&current)
 	case parser.SemanticStrikethrough:
 		current.delimiter = r.strikethroughDelimiter()
 	default:
@@ -284,7 +294,9 @@ func (r *renderer) exitDocument(current frame) error {
 
 func (r *renderer) exitInline(current frame) error {
 	switch current.event.Kind {
-	case parser.SemanticEmphasis, parser.SemanticStrong, parser.SemanticStrikethrough:
+	case parser.SemanticEmphasis, parser.SemanticStrong:
+		return r.appendEmphasisInline(current)
+	case parser.SemanticStrikethrough:
 		return r.appendInline(current.delimiter + string(current.inline) + current.delimiter)
 	case parser.SemanticLink:
 		return r.appendInline(r.renderLinkLike(current.event, string(current.inline), false))
@@ -404,10 +416,30 @@ func (r *renderer) appendInline(value string) error {
 		parser.SemanticStrikethrough, parser.SemanticLink, parser.SemanticImage, parser.SemanticTableCell:
 		current.inline = append(current.inline, value...)
 		current.bareAutoLinkTail = false
+		current.lastDelimiterSibling = inlineDelimiterSibling{}
 		return nil
 	default:
 		return fmt.Errorf("%w: inline output inside kind %d", ErrInvalidInput, current.event.Kind)
 	}
+}
+
+func (r *renderer) appendEmphasisInline(current frame) error {
+	if len(r.stack) == 0 {
+		return fmt.Errorf("%w: inline output outside container", ErrInvalidInput)
+	}
+	parent := &r.stack[len(r.stack)-1]
+	start := len(parent.inline)
+	if err := r.appendInline(current.delimiter + string(current.inline) + current.delimiter); err != nil {
+		return err
+	}
+	parent.lastDelimiterSibling = inlineDelimiterSibling{
+		kind:        current.event.Kind,
+		sourceRange: current.event.Range,
+		outputStart: start,
+		outputEnd:   len(parent.inline),
+		valid:       true,
+	}
+	return nil
 }
 
 func (r *renderer) appendBlock(value string, range_ parser.Range) error {
@@ -664,6 +696,60 @@ func (r *renderer) pop(kind parser.SemanticKind) (frame, error) {
 	}
 	r.stack = r.stack[:last]
 	return current, nil
+}
+
+func (r *renderer) preserveAdjacentEmphasisDelimiters(current *frame) {
+	if current == nil || len(r.stack) == 0 {
+		return
+	}
+	parent := &r.stack[len(r.stack)-1]
+	previous := parent.lastDelimiterSibling
+	if !previous.valid || previous.sourceRange.End != current.event.Range.Start || previous.outputEnd != len(parent.inline) {
+		return
+	}
+	previousDelimiter, ok := r.sourceEmphasisDelimiter(previous.kind, previous.sourceRange)
+	if !ok {
+		return
+	}
+	currentDelimiter, ok := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	if !ok || len(previousDelimiter) != delimiterWidth(previous.kind) || len(currentDelimiter) != delimiterWidth(current.event.Kind) {
+		return
+	}
+	if previous.outputStart < 0 || previous.outputEnd > len(parent.inline) ||
+		previous.outputEnd-previous.outputStart < 2*len(previousDelimiter) {
+		return
+	}
+	copy(parent.inline[previous.outputStart:previous.outputStart+len(previousDelimiter)], previousDelimiter)
+	copy(parent.inline[previous.outputEnd-len(previousDelimiter):previous.outputEnd], previousDelimiter)
+	current.delimiter = currentDelimiter
+}
+
+func (r *renderer) sourceEmphasisDelimiter(kind parser.SemanticKind, range_ parser.Range) (string, bool) {
+	width := delimiterWidth(kind)
+	if width == 0 || !range_.Valid(len(r.source)) || range_.End-range_.Start < 2*width {
+		return "", false
+	}
+	marker := r.source[range_.Start]
+	if marker != '*' && marker != '_' {
+		return "", false
+	}
+	for index := 0; index < width; index++ {
+		if r.source[range_.Start+index] != marker || r.source[range_.End-width+index] != marker {
+			return "", false
+		}
+	}
+	return strings.Repeat(string(marker), width), true
+}
+
+func delimiterWidth(kind parser.SemanticKind) int {
+	switch kind {
+	case parser.SemanticEmphasis:
+		return 1
+	case parser.SemanticStrong:
+		return 2
+	default:
+		return 0
+	}
 }
 
 func (r *renderer) emphasisDelimiter(kind parser.SemanticKind) string {

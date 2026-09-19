@@ -48,6 +48,37 @@ func TestCanonicalMarkdownBasicPolicyAndIdempotence(t *testing.T) {
 	}
 }
 
+func TestCanonicalMarkdownKeepsAdjacentEmphasisSiblingsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	for _, source := range []string{
+		"_a_*b*",
+		"x*a*_b_",
+		"_a_**b**c",
+		"x**a**__b__",
+	} {
+		document, err := marksplice.Parse([]byte(source))
+		if err != nil {
+			t.Fatalf("Parse(%q) error = %v", source, err)
+		}
+		first, err := document.CanonicalMarkdown()
+		if err != nil {
+			t.Fatalf("CanonicalMarkdown(%q) error = %v", source, err)
+		}
+		reparsed, err := marksplice.Parse(first)
+		if err != nil {
+			t.Fatalf("Parse(first canonical %q) error = %v", source, err)
+		}
+		second, err := reparsed.CanonicalMarkdown()
+		if err != nil {
+			t.Fatalf("second CanonicalMarkdown(%q) error = %v", source, err)
+		}
+		if !bytes.Equal(second, first) {
+			t.Fatalf("canonical rendering for %q is not idempotent\nfirst:  %q\nsecond: %q", source, first, second)
+		}
+	}
+}
+
 func TestCanonicalMarkdownRejectsInvalidInputsAndWriterFailures(t *testing.T) {
 	t.Parallel()
 
