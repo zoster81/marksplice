@@ -127,7 +127,7 @@ func TestValidateWorkspaceReportsBrokenRelationshipsOrphansAndStaleTOC(t *testin
 			t.Fatalf("unresolved diagnostic[%d] SourceDocument() = %q/%v, want a/true", offset, source, ok)
 		}
 		if _, ok := diagnostic.Relationship(); ok {
-			t.Fatalf("unresolved diagnostic[%d] unexpectedly has M99 relationship", offset)
+			t.Fatalf("unresolved diagnostic[%d] unexpectedly has link relationship", offset)
 		}
 	}
 	if orphan, ok := diagnostics[9].TargetDocument(); !ok || orphan != "c" {

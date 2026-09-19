@@ -80,7 +80,7 @@ func TestCanonicalMarkdownRealWorldCorpus(t *testing.T) {
 		})
 	}
 
-	t.Logf("M123 real-world canonical corpus: files=%d source_bytes=%d canonical_bytes=%d", len(files), totalSourceBytes, totalCanonicalBytes)
+	t.Logf("real-world canonical corpus: files=%d source_bytes=%d canonical_bytes=%d", len(files), totalSourceBytes, totalCanonicalBytes)
 }
 
 func BenchmarkCanonicalMarkdownRealWorldCorpus(b *testing.B) {

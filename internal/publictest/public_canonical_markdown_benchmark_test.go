@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	m123CanonicalMarkdownBytesSink []byte
-	m123SemanticEventSink          int
+	canonicalMarkdownBytesSink         []byte
+	canonicalMarkdownSemanticEventSink int
 )
 
 func BenchmarkCanonicalMarkdownRealisticScaling(b *testing.B) {
@@ -49,7 +49,7 @@ func BenchmarkSemanticWalkRealisticScaling(b *testing.B) {
 				}); err != nil {
 					b.Fatal(err)
 				}
-				m123SemanticEventSink = count
+				canonicalMarkdownSemanticEventSink = count
 			}
 		})
 	}
@@ -79,7 +79,7 @@ func BenchmarkCanonicalMarkdown256KiB(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			m123CanonicalMarkdownBytesSink = output
+			canonicalMarkdownBytesSink = output
 		}
 	})
 }

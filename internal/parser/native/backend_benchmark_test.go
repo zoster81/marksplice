@@ -73,7 +73,7 @@ func BenchmarkNativeBackendRealisticScaling(b *testing.B) {
 func realisticSource(minBytes int) []byte {
 	var source strings.Builder
 	source.Grow(minBytes + 4096)
-	source.WriteString("---\ntitle: \"M108 benchmark\"\nowner: \"marksplice\"\n---\n\n")
+	source.WriteString("---\ntitle: \"parse benchmark\"\nowner: \"marksplice\"\n---\n\n")
 	for index := 0; source.Len() < minBytes; index++ {
 		fmt.Fprintf(&source, "# Section %d\n\n", index)
 		fmt.Fprintf(&source, "Paragraph %d with *emphasis*, **strong**, ~~strike~~, `code`, [local](#section-%d), [external](doc-%d.md), and $x_%d+y$.\n\n", index, index, index+1, index)

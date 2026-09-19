@@ -440,7 +440,7 @@ func TestFootnoteCaretPrecedence(t *testing.T) {
 		source           []byte
 		wantFootnoteRefs int
 	}{
-		{name: "original M104 caret conflict", source: []byte("foot[^n] [normal][^n]\n\n[^n]: note\n"), wantFootnoteRefs: 2},
+		{name: "footnote caret conflict", source: []byte("foot[^n] [normal][^n]\n\n[^n]: note\n"), wantFootnoteRefs: 2},
 		{name: "round 59 multiline conflict", source: []byte("[^n]\n\n[^n]:\n0"), wantFootnoteRefs: 1},
 	}
 	for _, tt := range tests {

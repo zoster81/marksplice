@@ -79,10 +79,10 @@ func TestKnowledgeIndexAddsSyntaxIndependentAliasesTagsAndLogicalReferences(t *t
 		t.Fatalf("ReferencedBy(b) = %#v/%v", got, ok)
 	}
 	if edges := graph.Edges(); len(edges) != 1 {
-		t.Fatalf("BuildKnowledgeIndex changed M100 graph edges: %#v", edges)
+		t.Fatalf("BuildKnowledgeIndex changed existing graph edges: %#v", edges)
 	}
 
-	// Combined reachability visits M100 Markdown edges before M107 logical references.
+	// Combined reachability visits Markdown edges before logical references.
 	// The logical a->b duplicates an existing Markdown target but must not duplicate b.
 	if got, ok := index.ReachableFrom("a"); !ok || !reflect.DeepEqual(got, []marksplice.DocumentKey{"b", "c"}) {
 		t.Fatalf("ReachableFrom(a) = %#v/%v", got, ok)

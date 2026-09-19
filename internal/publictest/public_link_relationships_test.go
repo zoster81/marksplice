@@ -208,9 +208,9 @@ func TestLinkRelationshipFragmentStatusReusesResolution(t *testing.T) {
 		}
 	}
 	if target, ok := doc.ResolveFragment("#caf%C3%A9"); !ok {
-		t.Fatal("M98 ResolveFragment(#café) failed")
+		t.Fatal("ResolveFragment(#café) failed")
 	} else if relationTarget, ok := relationships[0].FragmentTarget(); !ok || relationTarget != target {
-		t.Fatalf("relationship target = %+v/%v, M98 target = %+v", relationTarget, ok, target)
+		t.Fatalf("relationship target = %+v/%v, fragment target = %+v", relationTarget, ok, target)
 	}
 
 	var nilDoc *marksplice.Document

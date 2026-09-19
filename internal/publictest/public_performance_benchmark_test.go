@@ -10,17 +10,17 @@ import (
 )
 
 var (
-	m108DocumentSink  *marksplice.Document
-	m108GraphSink     *marksplice.DocumentGraph
-	m108WorkspaceSink *marksplice.WorkspaceReport
-	m108KnowledgeSink *marksplice.KnowledgeIndex
-	m108NodeSink      []marksplice.NodeMatch
-	m108SectionSink   []marksplice.Section
-	m108AnchorSink    []marksplice.HeadingAnchor
-	m108BytesSink     []byte
-	m108LinksSink     []marksplice.LinkRelationship
-	m108KeysSink      []marksplice.DocumentKey
-	m108ChangeSink    marksplice.ChangeSet
+	benchmarkDocumentSink  *marksplice.Document
+	benchmarkGraphSink     *marksplice.DocumentGraph
+	benchmarkWorkspaceSink *marksplice.WorkspaceReport
+	benchmarkKnowledgeSink *marksplice.KnowledgeIndex
+	benchmarkNodeSink      []marksplice.NodeMatch
+	benchmarkSectionSink   []marksplice.Section
+	benchmarkAnchorSink    []marksplice.HeadingAnchor
+	benchmarkBytesSink     []byte
+	benchmarkLinksSink     []marksplice.LinkRelationship
+	benchmarkKeysSink      []marksplice.DocumentKey
+	benchmarkChangeSink    marksplice.ChangeSet
 )
 
 func BenchmarkParseRealistic(b *testing.B) {
@@ -35,7 +35,7 @@ func BenchmarkParseRealistic(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m108DocumentSink = document
+				benchmarkDocumentSink = document
 			}
 		})
 	}
@@ -48,70 +48,70 @@ func BenchmarkDocumentIntelligence(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	b.Run("M97QueryNodes", func(b *testing.B) {
+	b.Run("QueryNodes", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			matches, err := document.QueryNodes(marksplice.NodeQuery{Limit: 256})
 			if err != nil {
 				b.Fatal(err)
 			}
-			m108NodeSink = matches
+			benchmarkNodeSink = matches
 		}
 	})
-	b.Run("M97QuerySections", func(b *testing.B) {
+	b.Run("QuerySections", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			sections, err := document.QuerySections(marksplice.SectionQuery{Limit: 256})
 			if err != nil {
 				b.Fatal(err)
 			}
-			m108SectionSink = sections
+			benchmarkSectionSink = sections
 		}
 	})
-	b.Run("M98HeadingAnchors", func(b *testing.B) {
+	b.Run("HeadingAnchors", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			m108AnchorSink = document.HeadingAnchors()
+			benchmarkAnchorSink = document.HeadingAnchors()
 		}
 	})
-	b.Run("M98GenerateTOC", func(b *testing.B) {
+	b.Run("GenerateTOC", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			m108BytesSink = document.GenerateTOC()
+			benchmarkBytesSink = document.GenerateTOC()
 		}
 	})
-	b.Run("M99LinkRelationships", func(b *testing.B) {
+	b.Run("LinkRelationships", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			m108LinksSink = document.LinkRelationships()
+			benchmarkLinksSink = document.LinkRelationships()
 		}
 	})
-	b.Run("M102Alerts", func(b *testing.B) {
+	b.Run("Alerts", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			_ = document.Alerts()
 		}
 	})
-	b.Run("M103FencedBlocks", func(b *testing.B) {
+	b.Run("FencedBlocks", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			_ = document.FencedBlocks()
 		}
 	})
-	b.Run("M104Footnotes", func(b *testing.B) {
+	b.Run("Footnotes", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			_ = document.FootnoteDefinitions()
 			_ = document.FootnoteReferences()
 		}
 	})
-	b.Run("M105Math", func(b *testing.B) {
+	b.Run("Math", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			_ = document.MathExpressions()
 		}
 	})
-	b.Run("M106FrontMatter", func(b *testing.B) {
+	b.Run("FrontMatter", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			_, _ = document.FrontMatter()
@@ -144,7 +144,7 @@ func BenchmarkGeneralMutationPlanning(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m108ChangeSink = change
+				benchmarkChangeSink = change
 			}
 		})
 	}
@@ -169,7 +169,7 @@ func BenchmarkStructuralMutationPlanning(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			m108ChangeSink = change
+			benchmarkChangeSink = change
 		}
 	})
 
@@ -191,7 +191,7 @@ func BenchmarkStructuralMutationPlanning(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			m108ChangeSink = change
+			benchmarkChangeSink = change
 		}
 	})
 
@@ -213,7 +213,7 @@ func BenchmarkStructuralMutationPlanning(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			m108ChangeSink = change
+			benchmarkChangeSink = change
 		}
 	})
 }
@@ -244,7 +244,7 @@ func BenchmarkChangeCompositionScaling(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m108ChangeSink = combined
+				benchmarkChangeSink = combined
 			}
 		})
 	}
@@ -268,7 +268,7 @@ func BenchmarkWorkspaceGraphKnowledgeScaling(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m108GraphSink = got
+				benchmarkGraphSink = got
 			}
 		})
 		b.Run(fmt.Sprintf("ValidateWorkspace/%d", count), func(b *testing.B) {
@@ -279,7 +279,7 @@ func BenchmarkWorkspaceGraphKnowledgeScaling(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m108WorkspaceSink = report
+				benchmarkWorkspaceSink = report
 			}
 		})
 		b.Run(fmt.Sprintf("BuildKnowledge/%d", count), func(b *testing.B) {
@@ -289,7 +289,7 @@ func BenchmarkWorkspaceGraphKnowledgeScaling(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m108KnowledgeSink = index
+				benchmarkKnowledgeSink = index
 			}
 		})
 		index, err := marksplice.BuildKnowledgeIndex(graph, metadata)
@@ -303,13 +303,13 @@ func BenchmarkWorkspaceGraphKnowledgeScaling(b *testing.B) {
 				if !ok {
 					b.Fatal("root unavailable")
 				}
-				m108KeysSink = keys
+				benchmarkKeysSink = keys
 			}
 		})
 		b.Run(fmt.Sprintf("KnowledgeTagLookup/%d", count), func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				m108KeysSink = index.DocumentsWithTag("benchmark")
+				benchmarkKeysSink = index.DocumentsWithTag("benchmark")
 			}
 		})
 		alias := marksplice.KnowledgeAlias(fmt.Sprintf("alias-%d", count-1))
@@ -333,7 +333,7 @@ func BenchmarkPathologicalParseScaling(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m108DocumentSink = document
+				benchmarkDocumentSink = document
 			}
 		})
 	}
@@ -347,7 +347,7 @@ func BenchmarkPathologicalParseScaling(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				m108DocumentSink = document
+				benchmarkDocumentSink = document
 			}
 		})
 	}
@@ -365,7 +365,7 @@ func BenchmarkDenseReadProjectionScaling(b *testing.B) {
 		b.Run(fmt.Sprintf("Relationships/%d", count), func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				m108LinksSink = document.LinkRelationships()
+				benchmarkLinksSink = document.LinkRelationships()
 			}
 		})
 	}
@@ -381,7 +381,7 @@ func BenchmarkDuplicateHeadingAnchorScaling(b *testing.B) {
 		b.Run(fmt.Sprintf("Anchors/%d", count), func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				m108AnchorSink = document.HeadingAnchors()
+				benchmarkAnchorSink = document.HeadingAnchors()
 			}
 		})
 	}
@@ -390,7 +390,7 @@ func BenchmarkDuplicateHeadingAnchorScaling(b *testing.B) {
 func realisticSource(minBytes int) []byte {
 	var builder strings.Builder
 	builder.Grow(minBytes + 4096)
-	builder.WriteString("---\ntitle: \"M108 benchmark\"\nowner: \"marksplice\"\n---\n\n")
+	builder.WriteString("---\ntitle: \"parse benchmark\"\nowner: \"marksplice\"\n---\n\n")
 	for i := 0; builder.Len() < minBytes; i++ {
 		fmt.Fprintf(&builder, "# Section %d\n\n", i)
 		fmt.Fprintf(&builder, "Paragraph %d with *emphasis*, **strong**, ~~strike~~, `code`, [local](#section-%d), [external](doc-%d.md), and $x_%d+y$.\n\n", i, i, i+1, i)

@@ -100,7 +100,7 @@ func TestPublicAppendListItemChildResultKeepsParentPublic(t *testing.T) {
 	}
 	updatedParent := publicListItemByContent(t, updated, got, "parent")
 	if !updatedParent.HasChildren() {
-		t.Fatal("parent HasChildren() = false after M21 child append")
+		t.Fatal("parent HasChildren() = false after child append")
 	}
 	if publicListItemByContent(t, updated, got, "child").HasChildren() {
 		t.Fatal("new child HasChildren() = true, want false")

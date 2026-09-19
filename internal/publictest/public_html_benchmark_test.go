@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	m120SemanticEventSink int
-	m120HTMLBytesSink     []byte
+	htmlSemanticEventSink int
+	htmlBytesSink         []byte
 )
 
 func BenchmarkHTMLRendering256KiB(b *testing.B) {
@@ -26,7 +26,7 @@ func BenchmarkHTMLRendering256KiB(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			m108DocumentSink = document
+			benchmarkDocumentSink = document
 		}
 	})
 
@@ -43,7 +43,7 @@ func BenchmarkHTMLRendering256KiB(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			m120SemanticEventSink = count
+			htmlSemanticEventSink = count
 		}
 	})
 
@@ -68,7 +68,7 @@ func BenchmarkHTMLRendering256KiB(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			m120HTMLBytesSink = output
+			htmlBytesSink = output
 		}
 	})
 }
