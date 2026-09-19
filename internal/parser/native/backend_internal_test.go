@@ -120,6 +120,62 @@ func TestReconcileNativeFootnotesReusesUnresolvedBackingStorage(t *testing.T) {
 	}
 }
 
+func TestNativeFootnoteInPlaceFiltersClearDiscardedTails(t *testing.T) {
+	t.Parallel()
+
+	t.Run("suppressed reference nodes", func(t *testing.T) {
+		nodes := []parser.Node{
+			{Kind: parser.KindParagraph, Anchor: 0, Label: "keep-first"},
+			{Kind: parser.KindInlineLink, Anchor: 10, Label: "remove"},
+			{Kind: parser.KindHeading, Anchor: 20, Label: "keep-last"},
+		}
+		got := removeNativeSuppressedReferenceNodes(nodes, map[constructionSemanticKey]struct{}{
+			{kind: parser.KindInlineLink, syntax: parser.Range{Start: 10, End: 10}}: {},
+		})
+		if len(got) != 2 || got[0].Label != "keep-first" || got[1].Label != "keep-last" {
+			t.Fatalf("filtered nodes = %#v", got)
+		}
+		if !reflect.DeepEqual(nodes[2], parser.Node{}) {
+			t.Fatalf("discarded node tail = %#v, want zero value", nodes[2])
+		}
+	})
+
+	t.Run("deduplicated link usages", func(t *testing.T) {
+		duplicate := parser.LinkUsage{Kind: parser.KindInlineLink, Form: parser.LinkUsageFull, Anchor: 1, Reference: "duplicate"}
+		usages := []parser.LinkUsage{
+			duplicate,
+			duplicate,
+			{Kind: parser.KindInlineLink, Form: parser.LinkUsageFull, Anchor: 2, Reference: "keep"},
+		}
+		got := deduplicateNativeLinkUsages(usages)
+		if len(got) != 2 || got[1].Reference != "keep" {
+			t.Fatalf("deduplicated usages = %#v", got)
+		}
+		if !reflect.DeepEqual(usages[2], parser.LinkUsage{}) {
+			t.Fatalf("discarded usage tail = %#v, want zero value", usages[2])
+		}
+	})
+
+	t.Run("deduplicated footnote references", func(t *testing.T) {
+		duplicate := parser.FootnoteReferenceObservation{
+			Range: parser.Range{Start: 1, End: 4}, LabelRange: parser.Range{Start: 2, End: 3},
+			Label: "duplicate", DefinitionAnchor: 10,
+		}
+		references := []parser.FootnoteReferenceObservation{
+			duplicate,
+			duplicate,
+			{Range: parser.Range{Start: 5, End: 8}, LabelRange: parser.Range{Start: 6, End: 7}, Label: "keep", DefinitionAnchor: 20},
+		}
+		got := deduplicateNativeFootnoteReferences(references)
+		if len(got) != 2 || got[1].Label != "keep" {
+			t.Fatalf("deduplicated footnote references = %#v", got)
+		}
+		if !reflect.DeepEqual(references[2], parser.FootnoteReferenceObservation{}) {
+			t.Fatalf("discarded footnote-reference tail = %#v, want zero value", references[2])
+		}
+	})
+}
+
 func TestAttachNodeDetailsCompactsRemovedSparseFacts(t *testing.T) {
 	t.Parallel()
 

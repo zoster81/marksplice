@@ -373,6 +373,7 @@ func deduplicateNativeFootnoteReferences(references []parser.FootnoteReferenceOb
 		}
 		result = append(result, reference)
 	}
+	clear(references[len(result):])
 	return result
 }
 
@@ -467,6 +468,7 @@ func removeNativeSuppressedReferenceNodes(nodes []parser.Node, suppressed map[co
 			filtered = append(filtered, node)
 		}
 	}
+	clear(nodes[len(filtered):])
 	return filtered
 }
 
@@ -481,6 +483,7 @@ func deduplicateNativeLinkUsages(usages []parser.LinkUsage) []parser.LinkUsage {
 		}
 		result = append(result, usage)
 	}
+	clear(usages[len(result):])
 	return result
 }
 
