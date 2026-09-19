@@ -18,15 +18,15 @@ const (
 )
 
 type rootBlock struct {
-	kind                   rootBlockKind
 	range_                 parser.Range
 	lineCount              int
 	itemCount              int
 	nodeIndex              int
-	hasLineAnchor          bool
 	lineAnchor             int
-	hasListContainerAnchor bool
 	listContainerAnchor    int
+	kind                   rootBlockKind
+	hasLineAnchor          bool
+	hasListContainerAnchor bool
 }
 
 type blockParseResult struct {
