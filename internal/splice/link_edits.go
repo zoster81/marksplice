@@ -330,11 +330,8 @@ func validateImageDestinationReplacement(candidate []byte, target Node, original
 	}
 	delta := len(replacement) - (original.DestinationRange.End - original.DestinationRange.Start)
 	for _, observation := range observations {
-		if observation.Kind != parser.KindImage || observation.Anchor != target.Anchor {
-			continue
-		}
-		mapping, err := source.MapSimpleImage(candidate, observation.Anchor, Range{Start: observation.Range.Start, End: observation.Range.End})
-		if err != nil {
+		mapping, ok := matchingImageMapping(candidate, observation, target)
+		if !ok {
 			continue
 		}
 		titleMatches := !original.HasTitle || mapping.TitleRange == (Range{Start: original.TitleRange.Start + delta, End: original.TitleRange.End + delta})
