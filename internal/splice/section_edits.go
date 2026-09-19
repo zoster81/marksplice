@@ -101,22 +101,8 @@ func (d *Document) prepareInsertSection(id NodeID, fragment []byte, after bool) 
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	candidateDocument, err := parseSectionMutationCandidate(candidate)
+	candidateDocument, err := d.validateSectionInsertionCandidate(candidate, fragment, fragmentDocument, insertionIndex, insertAt)
 	if err != nil {
-		return ChangeSet{}, err
-	}
-
-	fragmentCount := fragmentDocument.SectionCount()
-	if candidateDocument.SectionCount() != len(d.sections)+fragmentCount {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	if err := d.validateOriginalSectionHeadings(candidate, candidateDocument, 0, d.sections[:insertionIndex], patch, len(fragment)); err != nil {
-		return ChangeSet{}, err
-	}
-	if err := validateInsertedSectionFragment(candidate, candidateDocument, fragment, fragmentDocument, insertionIndex, insertAt); err != nil {
-		return ChangeSet{}, err
-	}
-	if err := d.validateOriginalSectionHeadings(candidate, candidateDocument, insertionIndex+fragmentCount, d.sections[insertionIndex:], patch, len(fragment)); err != nil {
 		return ChangeSet{}, err
 	}
 
@@ -148,21 +134,8 @@ func (d *Document) PrepareAppendSectionChild(id NodeID, fragment []byte) (Change
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	candidateDocument, err := parseSectionMutationCandidate(candidate)
+	candidateDocument, err := d.validateSectionInsertionCandidate(candidate, fragment, fragmentDocument, insertionIndex, insertAt)
 	if err != nil {
-		return ChangeSet{}, err
-	}
-	fragmentCount := fragmentDocument.SectionCount()
-	if candidateDocument.SectionCount() != len(d.sections)+fragmentCount {
-		return ChangeSet{}, ErrInvalidReplacement
-	}
-	if err := d.validateOriginalSectionHeadings(candidate, candidateDocument, 0, d.sections[:insertionIndex], patch, len(fragment)); err != nil {
-		return ChangeSet{}, err
-	}
-	if err := validateInsertedSectionFragment(candidate, candidateDocument, fragment, fragmentDocument, insertionIndex, insertAt); err != nil {
-		return ChangeSet{}, err
-	}
-	if err := d.validateOriginalSectionHeadings(candidate, candidateDocument, insertionIndex+fragmentCount, d.sections[insertionIndex:], patch, len(fragment)); err != nil {
 		return ChangeSet{}, err
 	}
 

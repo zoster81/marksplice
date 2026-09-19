@@ -27,53 +27,84 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 		return combined, nil
 	}
 
+	expected, err := d.expectedCompositionModel(changes)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if err := d.validateCombinedComposition(combined, expected); err != nil {
+		return ChangeSet{}, err
+	}
+	return combined, nil
+}
+
+type compositionModelView struct {
+	nodes     []compositionNodeView
+	links     []compositionLinkView
+	footnotes []compositionFootnoteReferenceView
+}
+
+func compositionModelViews(document *Document) compositionModelView {
+	return compositionModelView{
+		nodes:     compositionNodeViews(document),
+		links:     compositionLinkViews(document.linkUsages),
+		footnotes: compositionFootnoteReferenceViews(document),
+	}
+}
+
+func (d *Document) expectedCompositionModel(changes []ChangeSet) (compositionModelView, error) {
+	original := compositionModelViews(d)
 	nodeDeltas := make([]compositionDelta[compositionNodeView], 0, len(changes))
 	linkDeltas := make([]compositionDelta[compositionLinkView], 0, len(changes))
 	footnoteDeltas := make([]compositionDelta[compositionFootnoteReferenceView], 0, len(changes))
-	originalNodes := compositionNodeViews(d)
-	originalLinks := compositionLinkViews(d.linkUsages)
-	originalFootnotes := compositionFootnoteReferenceViews(d)
 	for _, change := range changes {
 		candidate, err := change.Apply(d.source)
 		if err != nil {
-			return ChangeSet{}, compositionSourceError(err)
+			return compositionModelView{}, compositionSourceError(err)
 		}
 		candidateDocument, err := Parse(candidate)
 		if err != nil {
-			return ChangeSet{}, fmt.Errorf("%w: parse independently prepared composition candidate: %v", ErrInvalidReplacement, err)
+			return compositionModelView{}, fmt.Errorf("%w: parse independently prepared composition candidate: %v", ErrInvalidReplacement, err)
 		}
 		sourceStart := compositionPatchStart(change.Patches())
-		nodeDeltas = append(nodeDeltas, newCompositionDeltas(originalNodes, compositionNodeViews(candidateDocument), sourceStart)...)
-		linkDeltas = append(linkDeltas, newCompositionDeltas(originalLinks, compositionLinkViews(candidateDocument.linkUsages), sourceStart)...)
-		footnoteDeltas = append(footnoteDeltas, newCompositionDeltas(originalFootnotes, compositionFootnoteReferenceViews(candidateDocument), sourceStart)...)
+		nodeDeltas = append(nodeDeltas, newCompositionDeltas(original.nodes, compositionNodeViews(candidateDocument), sourceStart)...)
+		linkDeltas = append(linkDeltas, newCompositionDeltas(original.links, compositionLinkViews(candidateDocument.linkUsages), sourceStart)...)
+		footnoteDeltas = append(footnoteDeltas, newCompositionDeltas(original.footnotes, compositionFootnoteReferenceViews(candidateDocument), sourceStart)...)
 	}
+	return applyCompositionModelDeltas(original, nodeDeltas, linkDeltas, footnoteDeltas)
+}
 
-	expectedNodes, ok := applyCompositionDeltas(originalNodes, nodeDeltas)
+func applyCompositionModelDeltas(original compositionModelView, nodeDeltas []compositionDelta[compositionNodeView], linkDeltas []compositionDelta[compositionLinkView], footnoteDeltas []compositionDelta[compositionFootnoteReferenceView]) (compositionModelView, error) {
+	nodes, ok := applyCompositionDeltas(original.nodes, nodeDeltas)
 	if !ok {
-		return ChangeSet{}, fmt.Errorf("%w: prepared mutations affect overlapping structural model regions", ErrInvalidReplacement)
+		return compositionModelView{}, fmt.Errorf("%w: prepared mutations affect overlapping structural model regions", ErrInvalidReplacement)
 	}
-	expectedLinks, ok := applyCompositionDeltas(originalLinks, linkDeltas)
+	links, ok := applyCompositionDeltas(original.links, linkDeltas)
 	if !ok {
-		return ChangeSet{}, fmt.Errorf("%w: prepared mutations affect overlapping link relationships", ErrInvalidReplacement)
+		return compositionModelView{}, fmt.Errorf("%w: prepared mutations affect overlapping link relationships", ErrInvalidReplacement)
 	}
-	expectedFootnotes, ok := applyCompositionDeltas(originalFootnotes, footnoteDeltas)
+	footnotes, ok := applyCompositionDeltas(original.footnotes, footnoteDeltas)
 	if !ok {
-		return ChangeSet{}, fmt.Errorf("%w: prepared mutations affect overlapping footnote relationships", ErrInvalidReplacement)
+		return compositionModelView{}, fmt.Errorf("%w: prepared mutations affect overlapping footnote relationships", ErrInvalidReplacement)
 	}
+	return compositionModelView{nodes: nodes, links: links, footnotes: footnotes}, nil
+}
+
+func (d *Document) validateCombinedComposition(combined ChangeSet, expected compositionModelView) error {
 	candidate, err := combined.Apply(d.source)
 	if err != nil {
-		return ChangeSet{}, compositionSourceError(err)
+		return compositionSourceError(err)
 	}
 	candidateDocument, err := Parse(candidate)
 	if err != nil {
-		return ChangeSet{}, fmt.Errorf("%w: parse combined composition candidate: %v", ErrInvalidReplacement, err)
+		return fmt.Errorf("%w: parse combined composition candidate: %v", ErrInvalidReplacement, err)
 	}
-	if !slices.Equal(compositionNodeViews(candidateDocument), expectedNodes) ||
-		!slices.Equal(compositionLinkViews(candidateDocument.linkUsages), expectedLinks) ||
-		!slices.Equal(compositionFootnoteReferenceViews(candidateDocument), expectedFootnotes) {
-		return ChangeSet{}, fmt.Errorf("%w: combined candidate does not match independently validated model deltas", ErrInvalidReplacement)
+	actual := compositionModelViews(candidateDocument)
+	if !slices.Equal(actual.nodes, expected.nodes) ||
+		!slices.Equal(actual.links, expected.links) ||
+		!slices.Equal(actual.footnotes, expected.footnotes) {
+		return fmt.Errorf("%w: combined candidate does not match independently validated model deltas", ErrInvalidReplacement)
 	}
-	return combined, nil
+	return nil
 }
 
 func (d *Document) composeSourceChanges(changes []ChangeSet) (ChangeSet, error) {

@@ -153,6 +153,28 @@ func (d *Document) validateOriginalSectionHeadings(candidate []byte, candidateDo
 	return nil
 }
 
+func (d *Document) validateSectionInsertionCandidate(candidate, fragment []byte, fragmentDocument *Document, insertionIndex, insertAt int) (*Document, error) {
+	candidateDocument, err := parseSectionMutationCandidate(candidate)
+	if err != nil {
+		return nil, err
+	}
+	fragmentCount := fragmentDocument.SectionCount()
+	if candidateDocument.SectionCount() != len(d.sections)+fragmentCount {
+		return nil, ErrInvalidReplacement
+	}
+	patch := Range{Start: insertAt, End: insertAt}
+	if err := d.validateOriginalSectionHeadings(candidate, candidateDocument, 0, d.sections[:insertionIndex], patch, len(fragment)); err != nil {
+		return nil, err
+	}
+	if err := validateInsertedSectionFragment(candidate, candidateDocument, fragment, fragmentDocument, insertionIndex, insertAt); err != nil {
+		return nil, err
+	}
+	if err := d.validateOriginalSectionHeadings(candidate, candidateDocument, insertionIndex+fragmentCount, d.sections[insertionIndex:], patch, len(fragment)); err != nil {
+		return nil, err
+	}
+	return candidateDocument, nil
+}
+
 func validateInsertedSectionFragment(candidate []byte, candidateDocument *Document, fragment []byte, fragmentDocument *Document, candidateStart, sourceOffset int) error {
 	for i := 0; i < fragmentDocument.SectionCount(); i++ {
 		fragmentSection, ok := fragmentDocument.SectionAt(i)
