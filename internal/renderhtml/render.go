@@ -186,22 +186,7 @@ func (r *renderer) visitMapped(event parser.SemanticEvent) error {
 	}
 	switch event.Phase {
 	case parser.SemanticEnter:
-		target, start := r.currentMappingPosition()
-		if err := r.enter(event); err != nil {
-			return err
-		}
-		if event.Kind == parser.SemanticDocument || event.Kind == parser.SemanticFootnoteDefinition {
-			return nil
-		}
-		if len(r.stack) == 0 || r.stack[len(r.stack)-1].kind != event.Kind {
-			return fmt.Errorf("%w: mapped enter kind %d missing frame", ErrInvalidInput, event.Kind)
-		}
-		current := &r.stack[len(r.stack)-1]
-		current.sourceRange = event.Range
-		current.mappingStart = start
-		current.mappingTarget = target
-		current.mappingEnabled = event.Range.Valid(r.sourceLength) && event.Range.Start < event.Range.End
-		return nil
+		return r.enterMapped(event)
 	case parser.SemanticLeaf:
 		target, start := r.currentMappingPosition()
 		if err := r.leaf(event); err != nil {
@@ -214,6 +199,25 @@ func (r *renderer) visitMapped(event parser.SemanticEvent) error {
 	default:
 		return fmt.Errorf("%w: unknown semantic phase %d", ErrInvalidInput, event.Phase)
 	}
+}
+
+func (r *renderer) enterMapped(event parser.SemanticEvent) error {
+	target, start := r.currentMappingPosition()
+	if err := r.enter(event); err != nil {
+		return err
+	}
+	if event.Kind == parser.SemanticDocument || event.Kind == parser.SemanticFootnoteDefinition {
+		return nil
+	}
+	if len(r.stack) == 0 || r.stack[len(r.stack)-1].kind != event.Kind {
+		return fmt.Errorf("%w: mapped enter kind %d missing frame", ErrInvalidInput, event.Kind)
+	}
+	current := &r.stack[len(r.stack)-1]
+	current.sourceRange = event.Range
+	current.mappingStart = start
+	current.mappingTarget = target
+	current.mappingEnabled = event.Range.Valid(r.sourceLength) && event.Range.Start < event.Range.End
+	return nil
 }
 
 func (r *renderer) visitImage(event parser.SemanticEvent) error {
