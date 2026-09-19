@@ -739,11 +739,27 @@ func (r *renderer) preserveNestedEmphasisDelimiters(current *frame) {
 		return
 	}
 	currentDelimiter, ok := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
-	if !ok {
+	if !ok || r.sourceEmphasisDelimiterUsable(current.event, current.delimiter) {
 		return
 	}
 	parent.delimiter = parentDelimiter
 	current.delimiter = currentDelimiter
+}
+
+func (r *renderer) sourceEmphasisDelimiterUsable(event parser.SemanticEvent, delimiter string) bool {
+	width := delimiterWidth(event.Kind)
+	if width == 0 || len(delimiter) != width || !event.Range.Valid(len(r.source)) ||
+		event.Range.End-event.Range.Start < 2*width {
+		return false
+	}
+	marker := delimiter[0]
+	if marker != '*' && marker != '_' {
+		return false
+	}
+	segment := parser.Range{Start: 0, End: len(r.source)}
+	openCan, _ := parser.DelimiterFlanking(r.source, segment, event.Range.Start, event.Range.Start+width, marker)
+	_, closeCan := parser.DelimiterFlanking(r.source, segment, event.Range.End-width, event.Range.End, marker)
+	return openCan && closeCan
 }
 
 func (r *renderer) sourceEmphasisDelimiter(kind parser.SemanticKind, range_ parser.Range) (string, bool) {

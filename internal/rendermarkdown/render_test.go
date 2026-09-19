@@ -172,6 +172,10 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "~~outer ~inner~ end~~\n",
 		},
 		{
+			name:   "nested emphasis survives canonical text escaping",
+			source: "*>\t*|**\n",
+		},
+		{
 			name:   "empty heading and thematic break",
 			source: "#\n\n***\n",
 		},

@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"slices"
 	"sort"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/zoster81/marksplice/internal/parser"
@@ -219,7 +218,7 @@ func collectDelimiterRuns(source []byte, block inlineBlock, exclusions [][]parse
 			if marker == '~' && !strikethroughRunEligible(source, segment, start, length) {
 				continue
 			}
-			canOpen, canClose := delimiterFlanking(source, segment, start, position, marker)
+			canOpen, canClose := parser.DelimiterFlanking(source, segment, start, position, marker)
 			runs = append(runs, delimiterRun{
 				segment:   segmentIndex,
 				start:     start,
@@ -252,25 +251,6 @@ func strikethroughRunEligible(source []byte, segment parser.Range, start, length
 	return !ok || before != '~'
 }
 
-func delimiterFlanking(source []byte, segment parser.Range, start, end int, marker byte) (bool, bool) {
-	beforeWhitespace, beforePunctuation := delimiterPrecedingClass(source, segment, start)
-	afterWhitespace, afterPunctuation := delimiterFollowingClass(source, start, end, segment.End)
-	leftFlanking := !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation)
-	rightFlanking := !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation)
-	if marker == '_' {
-		return leftFlanking && (!rightFlanking || beforePunctuation), rightFlanking && (!leftFlanking || afterPunctuation)
-	}
-	return leftFlanking, rightFlanking
-}
-
-func delimiterPrecedingClass(source []byte, segment parser.Range, position int) (bool, bool) {
-	rune_, ok := delimiterPrecedingRune(source, segment, position)
-	if !ok {
-		return true, false
-	}
-	return delimiterRuneClass(rune_)
-}
-
 func delimiterPrecedingRune(source []byte, segment parser.Range, position int) (rune, bool) {
 	if position <= segment.Start {
 		return 0, false
@@ -284,22 +264,6 @@ func delimiterPrecedingRune(source []byte, segment parser.Range, position int) (
 	}
 	rune_, _ := utf8.DecodeRune(source[index:position])
 	return rune_, true
-}
-
-func delimiterFollowingClass(source []byte, runStart, position, segmentEnd int) (bool, bool) {
-	if position >= segmentEnd {
-		return true, false
-	}
-	index := position
-	for index > runStart && !utf8.RuneStart(source[index]) {
-		index--
-	}
-	rune_, _ := utf8.DecodeRune(source[index:segmentEnd])
-	return delimiterRuneClass(rune_)
-}
-
-func delimiterRuneClass(rune_ rune) (bool, bool) {
-	return unicode.IsSpace(rune_), unicode.IsPunct(rune_) || unicode.IsSymbol(rune_)
 }
 
 func processDelimiters(runs []delimiterRun) []delimiterMatch {

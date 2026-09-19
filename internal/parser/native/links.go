@@ -1045,7 +1045,7 @@ func labelHasUnresolvedOpener(source []byte, segment, label parser.Range) bool {
 		if marker == '~' && position-start > 2 {
 			continue
 		}
-		canOpen, _ := delimiterFlanking(source, segment, start, position, marker)
+		canOpen, _ := parser.DelimiterFlanking(source, segment, start, position, marker)
 		if canOpen {
 			return true
 		}
