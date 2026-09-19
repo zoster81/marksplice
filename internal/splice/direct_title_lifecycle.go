@@ -3,7 +3,6 @@ package splice
 import (
 	"bytes"
 
-	"github.com/zoster81/marksplice/internal/parser"
 	"github.com/zoster81/marksplice/internal/source"
 )
 
@@ -135,15 +134,10 @@ func validateAddedInlineLinkTitle(candidate []byte, target Node, original source
 	if err != nil {
 		return err
 	}
+	expectedTitle := string(title)
 	for _, observation := range observations {
-		if observation.Kind != parser.KindInlineLink || observation.Anchor != target.Anchor || observation.Destination != target.Destination || observation.Title != string(title) || !observation.HasTitle {
-			continue
-		}
-		mapping, err := source.MapSimpleInlineLink(candidate, observation.Anchor, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Destination, observation.Title, observation.HasTitle)
-		if err != nil {
-			continue
-		}
-		if addedInlineTitleMappingMatches(mapping, original, title, insertAt, delta, candidate) {
+		mapping, ok := matchingInlineLinkMapping(candidate, observation, target.Anchor, target.Destination, expectedTitle, true)
+		if ok && addedInlineTitleMappingMatches(mapping, original, title, insertAt, delta, candidate) {
 			return nil
 		}
 	}
@@ -165,11 +159,8 @@ func validateRemovedInlineLinkTitle(candidate []byte, target Node, original sour
 	}
 	delta := -(removed.End - removed.Start)
 	for _, observation := range observations {
-		if observation.Kind != parser.KindInlineLink || observation.Anchor != target.Anchor || observation.Destination != target.Destination || observation.HasTitle {
-			continue
-		}
-		mapping, err := source.MapSimpleInlineLink(candidate, observation.Anchor, Range{Start: observation.Range.Start, End: observation.Range.End}, observation.Destination, "", false)
-		if err == nil && mapping.Range == shiftedEnd(original.Range, delta) && mapping.LabelRange == original.LabelRange &&
+		mapping, ok := matchingInlineLinkMapping(candidate, observation, target.Anchor, target.Destination, "", false)
+		if ok && mapping.Range == shiftedEnd(original.Range, delta) && mapping.LabelRange == original.LabelRange &&
 			mapping.DestinationRange == original.DestinationRange && mapping.AngleDestination == original.AngleDestination && !mapping.HasTitle {
 			return nil
 		}
@@ -183,11 +174,8 @@ func validateAddedImageTitle(candidate []byte, target Node, original source.Imag
 		return err
 	}
 	for _, observation := range observations {
-		if observation.Kind != parser.KindImage || observation.Anchor != target.Anchor {
-			continue
-		}
-		mapping, err := source.MapSimpleImage(candidate, observation.Anchor, Range{Start: observation.Range.Start, End: observation.Range.End})
-		if err != nil {
+		mapping, ok := matchingImageMapping(candidate, observation, target)
+		if !ok {
 			continue
 		}
 		expectedTitle := Range{Start: insertAt + 2, End: insertAt + 2 + len(title)}
@@ -207,11 +195,8 @@ func validateRemovedImageTitle(candidate []byte, target Node, original source.Im
 	}
 	delta := -(removed.End - removed.Start)
 	for _, observation := range observations {
-		if observation.Kind != parser.KindImage || observation.Anchor != target.Anchor {
-			continue
-		}
-		mapping, err := source.MapSimpleImage(candidate, observation.Anchor, Range{Start: observation.Range.Start, End: observation.Range.End})
-		if err == nil && mapping.Range == shiftedEnd(original.Range, delta) && mapping.AltRange == original.AltRange &&
+		mapping, ok := matchingImageMapping(candidate, observation, target)
+		if ok && mapping.Range == shiftedEnd(original.Range, delta) && mapping.AltRange == original.AltRange &&
 			mapping.DestinationRange == original.DestinationRange && mapping.AngleDestination == original.AngleDestination && !mapping.HasTitle {
 			return nil
 		}
