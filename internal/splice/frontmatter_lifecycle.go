@@ -235,17 +235,25 @@ func (d *Document) validateFrontMatterFieldAppend(candidate []byte, original sou
 		}
 	}
 	added := candidateMapping.Fields[len(candidateMapping.Fields)-1]
-	lineLength := len(fragment) - len(eol)
-	if added.Format != original.Format || added.Key != string(key) || added.Style != source.FrontMatterValueDoubleQuoted || added.Quote != '"' ||
-		added.Range != (Range{Start: original.ClosingRange.Start, End: original.ClosingRange.Start + lineLength}) ||
-		!added.KeyRange.Valid(len(candidate)) || !added.ValueRange.Valid(len(candidate)) ||
-		!bytes.Equal(candidate[added.KeyRange.Start:added.KeyRange.End], key) || !bytes.Equal(candidate[added.ValueRange.Start:added.ValueRange.End], value) {
+	if !appendedFrontMatterFieldMatches(candidate, original, added, key, value, len(fragment)-len(eol)) {
 		return ErrInvalidReplacement
 	}
 	if !d.frontMatterBodySurvives(candidateDocument, patches) {
 		return ErrInvalidReplacement
 	}
 	return nil
+}
+
+func appendedFrontMatterFieldMatches(candidate []byte, original source.FrontMatterMapping, added source.FrontMatterFieldMapping, key, value []byte, lineLength int) bool {
+	if added.Format != original.Format || added.Key != string(key) || added.Style != source.FrontMatterValueDoubleQuoted || added.Quote != '"' {
+		return false
+	}
+	if added.Range != (Range{Start: original.ClosingRange.Start, End: original.ClosingRange.Start + lineLength}) ||
+		!added.KeyRange.Valid(len(candidate)) || !added.ValueRange.Valid(len(candidate)) {
+		return false
+	}
+	return bytes.Equal(candidate[added.KeyRange.Start:added.KeyRange.End], key) &&
+		bytes.Equal(candidate[added.ValueRange.Start:added.ValueRange.End], value)
 }
 
 func frontMatterCandidate(candidate []byte, format source.FrontMatterFormat, fieldCount int) (source.FrontMatterMapping, *Document, bool) {
