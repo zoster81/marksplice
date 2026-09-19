@@ -19,13 +19,20 @@ type tableRowModelBuilder struct {
 	bodyCellStarts       []int
 	headerCellCounts     map[int]int
 	headerCellStarts     map[int]int
+	tableCapacity        int
 }
 
 func resolveTableRowCells(nodes []Node) (tableRowModel, error) {
+	return resolveTableRowCellsWithCapacity(nodes, 0, 0)
+}
+
+func resolveTableRowCellsWithCapacity(nodes []Node, rowCapacity, tableCapacity int) (tableRowModel, error) {
 	builder := tableRowModelBuilder{
 		nodes:                nodes,
-		rowOrdinalByAnchor:   make(map[int]int),
-		firstRowIndexByTable: make(map[int]int),
+		rowIndexes:           make([]int, 0, rowCapacity),
+		rowOrdinalByAnchor:   make(map[int]int, rowCapacity),
+		firstRowIndexByTable: make(map[int]int, tableCapacity),
+		tableCapacity:        tableCapacity,
 	}
 	if err := builder.collectRows(); err != nil {
 		return tableRowModel{}, err
@@ -46,7 +53,7 @@ func resolveTableRowCells(nodes []Node) (tableRowModel, error) {
 }
 
 func (b *tableRowModelBuilder) collectRows() error {
-	lastRowIndexByTable := make(map[int]int)
+	lastRowIndexByTable := make(map[int]int, b.tableCapacity)
 	lastRowStart := -1
 	lastTableAnchor := -1
 	for index := range b.nodes {

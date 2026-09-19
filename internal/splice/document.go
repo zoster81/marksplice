@@ -330,7 +330,7 @@ func documentFromObservations(snapshot []byte, observed parser.DocumentObservati
 	if err != nil {
 		return nil, fmt.Errorf("resolve list item model: %w", err)
 	}
-	tableModel, err := resolveTableRowCells(nodes)
+	tableModel, err := resolveTableRowCellsWithCapacity(nodes, len(tableRows), len(tableSources))
 	if err != nil {
 		return nil, fmt.Errorf("resolve table row cells: %w", err)
 	}

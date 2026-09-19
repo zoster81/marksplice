@@ -25,7 +25,8 @@ type tableOwnerModelBuilder struct {
 func resolveTables(nodes []Node, tableSources map[int]source.TableMapping) (tableOwnerModel, error) {
 	builder := tableOwnerModelBuilder{
 		nodes:                nodes,
-		tableOrdinalByAnchor: make(map[int]int),
+		tableIndexes:         make([]int, 0, len(tableSources)),
+		tableOrdinalByAnchor: make(map[int]int, len(tableSources)),
 		tableSources:         tableSources,
 	}
 	if err := builder.collectTables(); err != nil {
