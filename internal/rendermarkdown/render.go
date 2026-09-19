@@ -152,8 +152,10 @@ func (r *renderer) enter(event parser.SemanticEvent) error {
 	case parser.SemanticEmphasis, parser.SemanticStrong:
 		current.delimiter = r.emphasisDelimiter(event.Kind)
 		r.preserveAdjacentEmphasisDelimiters(&current)
+		r.preserveNestedEmphasisDelimiters(&current)
 	case parser.SemanticStrikethrough:
 		current.delimiter = r.strikethroughDelimiter()
+		r.preserveNestedStrikethroughDelimiters(&current)
 	default:
 		return fmt.Errorf("%w: unsupported enter kind %d", ErrInvalidInput, event.Kind)
 	}
@@ -724,6 +726,26 @@ func (r *renderer) preserveAdjacentEmphasisDelimiters(current *frame) {
 	current.delimiter = currentDelimiter
 }
 
+func (r *renderer) preserveNestedEmphasisDelimiters(current *frame) {
+	if current == nil || len(r.stack) == 0 {
+		return
+	}
+	parent := &r.stack[len(r.stack)-1]
+	if delimiterWidth(parent.event.Kind) == 0 || delimiterWidth(current.event.Kind) == 0 {
+		return
+	}
+	parentDelimiter, ok := r.sourceEmphasisDelimiter(parent.event.Kind, parent.event.Range)
+	if !ok {
+		return
+	}
+	currentDelimiter, ok := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	if !ok {
+		return
+	}
+	parent.delimiter = parentDelimiter
+	current.delimiter = currentDelimiter
+}
+
 func (r *renderer) sourceEmphasisDelimiter(kind parser.SemanticKind, range_ parser.Range) (string, bool) {
 	width := delimiterWidth(kind)
 	if width == 0 || !range_.Valid(len(r.source)) || range_.End-range_.Start < 2*width {
@@ -773,6 +795,44 @@ func (r *renderer) emphasisDelimiter(kind parser.SemanticKind) string {
 		}
 	}
 	return "*"
+}
+
+func (r *renderer) preserveNestedStrikethroughDelimiters(current *frame) {
+	if current == nil || len(r.stack) == 0 {
+		return
+	}
+	parent := &r.stack[len(r.stack)-1]
+	if parent.event.Kind != parser.SemanticStrikethrough {
+		return
+	}
+	parentDelimiter, ok := r.sourceStrikethroughDelimiter(parent.event)
+	if !ok {
+		return
+	}
+	currentDelimiter, ok := r.sourceStrikethroughDelimiter(current.event)
+	if !ok {
+		return
+	}
+	parent.delimiter = parentDelimiter
+	current.delimiter = currentDelimiter
+}
+
+func (r *renderer) sourceStrikethroughDelimiter(event parser.SemanticEvent) (string, bool) {
+	if !event.Range.Valid(len(r.source)) || !event.ContentRange.Valid(len(r.source)) ||
+		event.ContentRange.Start < event.Range.Start || event.ContentRange.End > event.Range.End {
+		return "", false
+	}
+	openingWidth := event.ContentRange.Start - event.Range.Start
+	closingWidth := event.Range.End - event.ContentRange.End
+	if openingWidth != closingWidth || openingWidth < 1 || openingWidth > 2 {
+		return "", false
+	}
+	for index := 0; index < openingWidth; index++ {
+		if r.source[event.Range.Start+index] != '~' || r.source[event.Range.End-openingWidth+index] != '~' {
+			return "", false
+		}
+	}
+	return strings.Repeat("~", openingWidth), true
 }
 
 func (r *renderer) strikethroughDelimiter() string {

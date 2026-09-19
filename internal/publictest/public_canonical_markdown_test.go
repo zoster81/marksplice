@@ -79,6 +79,39 @@ func TestCanonicalMarkdownKeepsAdjacentEmphasisSiblingsIdempotent(t *testing.T) 
 	}
 }
 
+func TestCanonicalMarkdownKeepsSourceProvenNestedDelimitersIdempotent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source []byte
+	}{
+		{name: "single-tilde strikethrough around malformed byte", source: []byte{'~', 0xfe, '~', '3', '~', '~'}},
+		{name: "same-marker emphasis around NUL", source: []byte{'*', '#', '*', 0x00, '*', 'X', '*'}},
+	}
+	for _, tt := range tests {
+		document, err := marksplice.Parse(tt.source)
+		if err != nil {
+			t.Fatalf("%s Parse() error = %v", tt.name, err)
+		}
+		first, err := document.CanonicalMarkdown()
+		if err != nil {
+			t.Fatalf("%s CanonicalMarkdown() error = %v", tt.name, err)
+		}
+		reparsed, err := marksplice.Parse(first)
+		if err != nil {
+			t.Fatalf("%s Parse(first canonical) error = %v", tt.name, err)
+		}
+		second, err := reparsed.CanonicalMarkdown()
+		if err != nil {
+			t.Fatalf("%s second CanonicalMarkdown() error = %v", tt.name, err)
+		}
+		if !bytes.Equal(second, first) {
+			t.Fatalf("%s canonical output is not idempotent\nfirst:  %q\nsecond: %q", tt.name, first, second)
+		}
+	}
+}
+
 func TestCanonicalMarkdownRejectsInvalidInputsAndWriterFailures(t *testing.T) {
 	t.Parallel()
 
