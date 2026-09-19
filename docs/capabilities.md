@@ -89,6 +89,7 @@ Front matter and reference-definition declarations are source/semantic metadata 
 | Fragment resolution | `ResolveFragment`, `ValidateFragment` | Heading-derived and supported explicit HTML anchors |
 | TOC generation | `GenerateTOC` | Deterministic from current section hierarchy |
 | Existing TOC synchronization | `TOCStale`, `PrepareSyncTOC` | Only caller-designated conservative managed-TOC bodies |
+| Final-state TOC composition | `ComposeChangesAndSyncTOC` | Derives the managed TOC from the final candidate produced by same-snapshot changes, returns one original-snapshot-bound `ChangeSet`, and fails closed when the managed body is directly changed or the target cannot be correlated uniquely |
 | Link intelligence | `LinkRelationships` | Read-only semantic relationships; destinations outside the current document remain caller-interpreted data unless an explicit adapter such as `workspacefs` is used |
 | Prepared-change fragment continuity | `LocalFragmentContinuity` | Correlates previously resolved local-fragment relationships across one snapshot-bound `ChangeSet`, distinguishing preserved targets, explicit retargets, silent target changes, missing/ambiguous/invalid results, and authoritative moves without treating `NodeID` as a cross-snapshot identity |
 
@@ -135,6 +136,7 @@ For ordinary existing-document edits:
 - bytes outside operation-owned patches are not regenerated;
 - candidate reparsing/proof rejects edits that would create unsupported surrounding structural changes;
 - `ComposeChanges` combines only independently compatible changes from the same snapshot.
+- `ComposeChangesAndSyncTOC` is the explicit exception for a derived managed-TOC transform: supplied changes are composed first, the TOC is derived and proven against that final candidate, and the returned atomic change is still bound to the original snapshot.
 
 New-document construction is intentionally different: `DocumentBuilder` emits canonical LF GFM because there is no existing author formatting to preserve. Canonical Markdown rendering is also intentionally separate: it normalizes only an explicitly requested export and never becomes the implementation path for a source-preserving edit.
 

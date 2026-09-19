@@ -29,6 +29,8 @@ Use `ValidateFragment` when you only need a boolean result.
 
 `TOCStale` and `PrepareSyncTOC` are deliberately narrower: the caller must identify a managed section body, and Marksplice only synchronizes content that matches the conservative managed-TOC contract. Arbitrary lists or prose are never overwritten because they merely look like a TOC.
 
+When the same atomic edit also renames, inserts, removes, or otherwise changes headings outside the managed TOC body, use `ComposeChangesAndSyncTOC`. It composes the supplied same-snapshot changes first, derives the TOC from that final candidate, and returns one `ChangeSet` still bound to the original source. Direct edits of the managed body and ambiguous target correspondence fail closed.
+
 ### Link relationships
 
 ```go

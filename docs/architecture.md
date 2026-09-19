@@ -70,7 +70,7 @@ Application follows this contract:
 4. apply patches in original source coordinates;
 5. preserve every byte outside the changed ranges.
 
-A structural operation may own several coordinated patches when that is the semantic operation, for example a move or a reference rename. `Document.ComposeChanges` combines independently prepared changes only when their source and semantic deltas are proven compatible; it is not a generic patch API.
+A structural operation may own several coordinated patches when that is the semantic operation, for example a move or a reference rename. `Document.ComposeChanges` combines independently prepared changes only when their source and semantic deltas are proven compatible; it is not a generic patch API. `ComposeChangesAndSyncTOC` handles the narrower case where a managed TOC must be derived from the final candidate rather than the original snapshot: it composes and proves the supplied changes, parses that candidate once, prepares the TOC against the candidate, maps the proven TOC body replacement back to the untouched original owned range, and verifies byte-equivalence before returning one original-snapshot-bound change.
 
 When a local byte edit could reinterpret surrounding Markdown, preparation reparses the candidate and verifies the expected semantic/source model. Candidate reparsing is a safety oracle, not permission to regenerate unrelated source. Unsafe joins, changed container ownership, ambiguous relationships, malformed output, or stale source fail closed.
 

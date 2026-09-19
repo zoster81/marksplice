@@ -333,6 +333,137 @@ func (d *Document) PrepareSyncTOC(id NodeID) (ChangeSet, error) {
 	return d.PrepareReplaceSectionBody(id, replacement)
 }
 
+// ComposeChangesAndSyncTOC combines source-bound changes and regenerates one managed
+// TOC from the final candidate state while returning a change bound to this snapshot.
+func (d *Document) ComposeChangesAndSyncTOC(id NodeID, changes ...ChangeSet) (ChangeSet, error) {
+	if d == nil {
+		return ChangeSet{}, ErrSourceConflict
+	}
+	section, heading, err := d.tocCompositionTarget(id)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if len(changes) == 0 {
+		return d.PrepareSyncTOC(id)
+	}
+	base, candidate, candidateDocument, err := d.composeChangesWithCandidate(changes)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	candidateHeading, candidateBody, err := d.mapTOCCompositionTarget(base, candidateDocument, section, heading)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	sync, err := candidateDocument.PrepareSyncTOC(candidateHeading.ID)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	syncPatches := sync.Patches()
+	if len(syncPatches) != 1 || syncPatches[0].Range != candidateBody {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return d.finalizeTOCComposition(base, candidate, sync, section.BodyRange, syncPatches[0].Replacement)
+}
+
+func (d *Document) tocCompositionTarget(id NodeID) (Section, Node, error) {
+	section, _, err := d.sectionTarget(id)
+	if err != nil {
+		return Section{}, Node{}, err
+	}
+	if _, ok := d.tocBodyProfile(section.BodyRange); !ok {
+		return Section{}, Node{}, ErrInvalidTargetKind
+	}
+	heading, ok := d.nodeByID(id)
+	if !ok || heading.Kind != KindHeading {
+		return Section{}, Node{}, ErrInvalidTargetKind
+	}
+	return section, heading, nil
+}
+
+func (d *Document) mapTOCCompositionTarget(base ChangeSet, candidateDocument *Document, section Section, heading Node) (Node, Range, error) {
+	index, ok := newContinuityChangeIndex(base)
+	if !ok || changeTouchesRange(base, section.BodyRange) {
+		return Node{}, Range{}, ErrInvalidReplacement
+	}
+	candidateHeadingRange, ok := index.mapTargetRange(heading.ID, heading.Range)
+	if !ok {
+		return Node{}, Range{}, ErrInvalidReplacement
+	}
+	candidateHeading, ok := headingAtRange(candidateDocument, candidateHeadingRange)
+	if !ok {
+		return Node{}, Range{}, ErrInvalidReplacement
+	}
+	candidateSection, ok := candidateDocument.SectionByHeadingID(candidateHeading.ID)
+	if !ok {
+		return Node{}, Range{}, ErrInvalidReplacement
+	}
+	candidateBody, ok := mappedUnmovedRange(index, section.BodyRange)
+	if !ok || candidateSection.BodyRange != candidateBody {
+		return Node{}, Range{}, ErrInvalidReplacement
+	}
+	return candidateHeading, candidateBody, nil
+}
+
+func changeTouchesRange(change ChangeSet, range_ Range) bool {
+	for _, patch := range change.Patches() {
+		if patchTouchesRange(patch, range_) {
+			return true
+		}
+	}
+	return false
+}
+
+func headingAtRange(document *Document, range_ Range) (Node, bool) {
+	if document == nil {
+		return Node{}, false
+	}
+	var result Node
+	found := false
+	for _, node := range document.nodes {
+		if node.Kind != KindHeading || node.Range != range_ {
+			continue
+		}
+		if found {
+			return Node{}, false
+		}
+		result, found = node, true
+	}
+	return result, found
+}
+
+func mappedUnmovedRange(index continuityChangeIndex, range_ Range) (Range, bool) {
+	start, ok := index.mapUnmovedOffset(range_.Start)
+	if !ok {
+		return Range{}, false
+	}
+	end, ok := index.mapUnmovedOffset(range_.End)
+	if !ok || end < start {
+		return Range{}, false
+	}
+	return Range{Start: start, End: end}, true
+}
+
+func (d *Document) finalizeTOCComposition(base ChangeSet, candidate []byte, sync ChangeSet, body Range, replacement []byte) (ChangeSet, error) {
+	syncedCandidate, err := sync.Apply(candidate)
+	if err != nil {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	patches := base.Patches()
+	patches = append(patches, source.Patch{Range: body, Replacement: append([]byte(nil), replacement...)})
+	sourceChange, err := source.NewChangeSet(d.source, patches)
+	if err != nil {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	final := newSpliceChangeSet(sourceChange)
+	final.relocations = base.relocationCopy()
+	final.correspondences = base.correspondenceCopy()
+	applied, err := final.Apply(d.source)
+	if err != nil || !bytes.Equal(applied, syncedCandidate) {
+		return ChangeSet{}, ErrInvalidReplacement
+	}
+	return final, nil
+}
+
 type tocSyncPlan struct {
 	section      Section
 	sectionIndex int

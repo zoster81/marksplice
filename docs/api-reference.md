@@ -651,6 +651,17 @@ func (d *Document) CodeSpan(id NodeID) (CodeSpan, bool)
 
 CodeSpan returns typed detail for one promoted simple single-line code span.
 
+#### `ComposeChangesAndSyncTOC`
+
+```go
+func (d *Document) ComposeChangesAndSyncTOC(headingID NodeID, changes ...ChangeSet) (ChangeSet, error)
+```
+
+ComposeChangesAndSyncTOC combines changes prepared from this exact snapshot and
+synchronizes one managed TOC from the resulting final document state. Changes
+that directly modify or make the managed TOC target ambiguous fail closed. The
+returned change remains bound to the original source snapshot.
+
 #### `ComposeChanges`
 
 ```go

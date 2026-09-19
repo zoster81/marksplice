@@ -145,6 +145,20 @@ func (d *Document) PrepareSyncTOC(headingID NodeID) (ChangeSet, error) {
 	return publicChangeSet(d.document.PrepareSyncTOC(internalNodeID(headingID)))
 }
 
+// ComposeChangesAndSyncTOC combines changes prepared from this exact snapshot and
+// synchronizes one managed TOC from the resulting final document state. Changes
+// that directly modify or make the managed TOC target ambiguous fail closed.
+func (d *Document) ComposeChangesAndSyncTOC(headingID NodeID, changes ...ChangeSet) (ChangeSet, error) {
+	if _, err := d.promotedNode(headingID, splice.KindHeading, true); err != nil {
+		return ChangeSet{}, err
+	}
+	internal := make([]splice.ChangeSet, len(changes))
+	for index, change := range changes {
+		internal[index] = change.change
+	}
+	return publicChangeSet(d.document.ComposeChangesAndSyncTOC(internalNodeID(headingID), internal...))
+}
+
 func (d *Document) prepareSyncTOCs(headingIDs []NodeID) (ChangeSet, error) {
 	if d == nil || d.document == nil {
 		return ChangeSet{}, ErrSourceConflict

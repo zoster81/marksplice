@@ -19,22 +19,42 @@ func (d *Document) ComposeChanges(changes ...ChangeSet) (ChangeSet, error) {
 	if d == nil {
 		return ChangeSet{}, ErrSourceConflict
 	}
+	if len(changes) <= 1 {
+		return d.composeSourceChanges(changes)
+	}
+	combined, _, _, err := d.composeChangesWithCandidate(changes)
+	return combined, err
+}
+
+func (d *Document) composeChangesWithCandidate(changes []ChangeSet) (ChangeSet, []byte, *Document, error) {
 	combined, err := d.composeSourceChanges(changes)
 	if err != nil {
-		return ChangeSet{}, err
+		return ChangeSet{}, nil, nil, err
 	}
-	if len(changes) <= 1 {
-		return combined, nil
+	var expected compositionModelView
+	if len(changes) > 1 {
+		expected, err = d.expectedCompositionModel(changes)
+		if err != nil {
+			return ChangeSet{}, nil, nil, err
+		}
 	}
-
-	expected, err := d.expectedCompositionModel(changes)
+	candidate, err := combined.Apply(d.source)
 	if err != nil {
-		return ChangeSet{}, err
+		return ChangeSet{}, nil, nil, compositionSourceError(err)
 	}
-	if err := d.validateCombinedComposition(combined, expected); err != nil {
-		return ChangeSet{}, err
+	candidateDocument, err := Parse(candidate)
+	if err != nil {
+		return ChangeSet{}, nil, nil, fmt.Errorf("%w: parse combined composition candidate: %v", ErrInvalidReplacement, err)
 	}
-	return combined, nil
+	if len(changes) > 1 {
+		actual := compositionModelViews(candidateDocument)
+		if !slices.Equal(actual.nodes, expected.nodes) ||
+			!slices.Equal(actual.links, expected.links) ||
+			!slices.Equal(actual.footnotes, expected.footnotes) {
+			return ChangeSet{}, nil, nil, fmt.Errorf("%w: combined candidate does not match independently validated model deltas", ErrInvalidReplacement)
+		}
+	}
+	return combined, candidate, candidateDocument, nil
 }
 
 type compositionModelView struct {
@@ -87,24 +107,6 @@ func applyCompositionModelDeltas(original compositionModelView, nodeDeltas []com
 		return compositionModelView{}, fmt.Errorf("%w: prepared mutations affect overlapping footnote relationships", ErrInvalidReplacement)
 	}
 	return compositionModelView{nodes: nodes, links: links, footnotes: footnotes}, nil
-}
-
-func (d *Document) validateCombinedComposition(combined ChangeSet, expected compositionModelView) error {
-	candidate, err := combined.Apply(d.source)
-	if err != nil {
-		return compositionSourceError(err)
-	}
-	candidateDocument, err := Parse(candidate)
-	if err != nil {
-		return fmt.Errorf("%w: parse combined composition candidate: %v", ErrInvalidReplacement, err)
-	}
-	actual := compositionModelViews(candidateDocument)
-	if !slices.Equal(actual.nodes, expected.nodes) ||
-		!slices.Equal(actual.links, expected.links) ||
-		!slices.Equal(actual.footnotes, expected.footnotes) {
-		return fmt.Errorf("%w: combined candidate does not match independently validated model deltas", ErrInvalidReplacement)
-	}
-	return nil
 }
 
 func (d *Document) composeSourceChanges(changes []ChangeSet) (ChangeSet, error) {

@@ -55,7 +55,7 @@ Most mutation APIs are named `Prepare...`. Typical families include:
 - list-item content/subtree replacement, removal, sibling insertion/movement, and child append;
 - table row, alignment, and complete-column operations;
 - thematic-break and complete-blockquote removal;
-- managed TOC synchronization;
+- managed TOC synchronization, including `ComposeChangesAndSyncTOC` when heading/section changes and the derived TOC must agree in one final atomic result;
 - `ComposeChanges` for independent operations prepared from the same snapshot.
 
 The exact supported shapes are deliberately conservative. If Marksplice cannot prove the source ownership or surviving structure required by an operation, it returns an error instead of rewriting a wider region.
