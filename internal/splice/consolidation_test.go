@@ -61,6 +61,54 @@ func TestMergeSourceOrderedNodesReusesCapacityAndPreservesTieOrder(t *testing.T)
 	}
 }
 
+func TestMergeSourceOrderedNodeSetsReusesCapacityAndPreservesSetOrder(t *testing.T) {
+	t.Parallel()
+
+	nodes := make([]Node, 2, 6)
+	nodes[0] = Node{ID: "base-10", Range: Range{Start: 10, End: 11}}
+	nodes[1] = Node{ID: "base-30", Range: Range{Start: 30, End: 31}}
+	first := &nodes[0]
+	firstAdditions := []Node{
+		{ID: "first-10", Range: Range{Start: 10, End: 12}},
+		{ID: "first-20", Range: Range{Start: 20, End: 21}},
+	}
+	secondAdditions := []Node{
+		{ID: "second-10", Range: Range{Start: 10, End: 13}},
+		{ID: "second-40", Range: Range{Start: 40, End: 41}},
+	}
+
+	got := mergeSourceOrderedNodeSets(nodes, firstAdditions, secondAdditions)
+	if &got[0] != first {
+		t.Fatal("mergeSourceOrderedNodeSets() replaced reusable backing storage")
+	}
+	want := []NodeID{"base-10", "first-10", "second-10", "first-20", "base-30", "second-40"}
+	if len(got) != len(want) {
+		t.Fatalf("merged node count = %d, want %d", len(got), len(want))
+	}
+	for index, id := range want {
+		if got[index].ID != id {
+			t.Fatalf("merged node %d ID = %q, want %q", index, got[index].ID, id)
+		}
+	}
+}
+
+func TestMergeSourceOrderedNodeSetsGrowsWhenCapacityIsInsufficient(t *testing.T) {
+	t.Parallel()
+
+	nodes := []Node{{ID: "base-20", Range: Range{Start: 20, End: 21}}}
+	got := mergeSourceOrderedNodeSets(
+		nodes,
+		[]Node{{ID: "first-10", Range: Range{Start: 10, End: 11}}},
+		[]Node{{ID: "second-30", Range: Range{Start: 30, End: 31}}},
+	)
+	want := []NodeID{"first-10", "base-20", "second-30"}
+	for index, id := range want {
+		if got[index].ID != id {
+			t.Fatalf("merged node %d ID = %q, want %q", index, got[index].ID, id)
+		}
+	}
+}
+
 func TestMergeSourceOrderedNodesGrowsWhenCapacityIsInsufficient(t *testing.T) {
 	t.Parallel()
 

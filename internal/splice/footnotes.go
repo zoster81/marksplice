@@ -106,6 +106,38 @@ func mergeSourceOrderedNodes(nodes, additions []Node) []Node {
 	return nodes
 }
 
+func mergeSourceOrderedNodeSets(nodes, firstAdditions, secondAdditions []Node) []Node {
+	if len(firstAdditions) == 0 {
+		return mergeSourceOrderedNodes(nodes, secondAdditions)
+	}
+	if len(secondAdditions) == 0 {
+		return mergeSourceOrderedNodes(nodes, firstAdditions)
+	}
+	originalLen := len(nodes)
+	nodes = slices.Grow(nodes, len(firstAdditions)+len(secondAdditions))
+	nodes = nodes[:originalLen+len(firstAdditions)+len(secondAdditions)]
+	nodeIndex := originalLen - 1
+	firstIndex := len(firstAdditions) - 1
+	secondIndex := len(secondAdditions) - 1
+	for writeIndex := len(nodes) - 1; writeIndex >= 0 && (firstIndex >= 0 || secondIndex >= 0); writeIndex-- {
+		if secondIndex >= 0 &&
+			(firstIndex < 0 || secondAdditions[secondIndex].Range.Start >= firstAdditions[firstIndex].Range.Start) &&
+			(nodeIndex < 0 || secondAdditions[secondIndex].Range.Start >= nodes[nodeIndex].Range.Start) {
+			nodes[writeIndex] = secondAdditions[secondIndex]
+			secondIndex--
+			continue
+		}
+		if firstIndex >= 0 && (nodeIndex < 0 || firstAdditions[firstIndex].Range.Start >= nodes[nodeIndex].Range.Start) {
+			nodes[writeIndex] = firstAdditions[firstIndex]
+			firstIndex--
+			continue
+		}
+		nodes[writeIndex] = nodes[nodeIndex]
+		nodeIndex--
+	}
+	return nodes
+}
+
 func resolveFootnoteReferences(nodes []Node, observed []parser.FootnoteReferenceObservation) []FootnoteReference {
 	definitionIDs := make(map[int]NodeID)
 	for _, node := range nodes {

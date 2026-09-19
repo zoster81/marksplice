@@ -385,12 +385,11 @@ func promoteSupplementalNodes(snapshot []byte, fingerprint source.Fingerprint, n
 	if err != nil {
 		return nil, err
 	}
-	nodes = mergeSourceOrderedNodes(nodes, mathNodes)
 	footnoteNodes, err := promoteFootnoteDefinitionNodes(snapshot, fingerprint, footnotes, footnoteSources)
 	if err != nil {
 		return nil, err
 	}
-	return mergeSourceOrderedNodes(nodes, footnoteNodes), nil
+	return mergeSourceOrderedNodeSets(nodes, mathNodes, footnoteNodes), nil
 }
 
 // FrontMatter returns the recognized document-leading metadata envelope, if present.
