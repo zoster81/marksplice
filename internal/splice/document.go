@@ -275,6 +275,10 @@ func parseWithValidatedBackend(input []byte, semanticParser parser.Backend) (*Do
 	if err != nil {
 		return nil, fmt.Errorf("parse markdown: %w", err)
 	}
+	return documentFromObservations(snapshot, observed, frontMatter, hasFrontMatter)
+}
+
+func documentFromObservations(snapshot []byte, observed parser.DocumentObservations, frontMatter source.FrontMatterMapping, hasFrontMatter bool) (*Document, error) {
 	observations := observed.Nodes
 	parserDetails := parserNodeDetails{
 		blockquotes: observed.BlockquoteDetails,
@@ -318,7 +322,7 @@ func parseWithValidatedBackend(input []byte, semanticParser parser.Backend) (*Do
 		}
 		nodes = append(nodes, node)
 	}
-	nodes, err = promoteSupplementalNodes(snapshot, fingerprint, nodes, mathExpressions, footnoteDefinitions, &footnoteSources)
+	nodes, err := promoteSupplementalNodes(snapshot, fingerprint, nodes, mathExpressions, footnoteDefinitions, &footnoteSources)
 	if err != nil {
 		return nil, err
 	}
