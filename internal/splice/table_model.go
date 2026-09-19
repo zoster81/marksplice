@@ -58,23 +58,35 @@ func (b *tableOwnerModelBuilder) collectTables() error {
 		}
 		anchor := table.TableAnchor
 		mapping, mapped := b.tableSources[anchor]
-		if table.ID == "" || anchor < 0 || !mapped || anchor != table.Range.Start || mapping.Range != table.Range ||
-			anchor <= lastAnchor || table.TableColumnCount <= 0 || len(table.TableAlignments) != table.TableColumnCount || table.TableBodyRowCount < 0 ||
-			len(mapping.Delimiter.Cells) != table.TableColumnCount {
-			return fmt.Errorf("invalid promoted table at anchor %d", anchor)
+		if err := validatePromotedTable(table, mapping, mapped, lastAnchor); err != nil {
+			return err
 		}
 		if _, exists := b.tableOrdinalByAnchor[anchor]; exists {
 			return fmt.Errorf("duplicate promoted table anchor %d", anchor)
 		}
-		table.TablePromotedRowStart = 0
-		table.TablePromotedRowCount = 0
-		table.TableOwnedHeaderCellStart = 0
-		table.TableOwnedHeaderCellCount = 0
+		resetTableAdjacency(table)
 		b.tableOrdinalByAnchor[anchor] = len(b.tableIndexes)
 		b.tableIndexes = append(b.tableIndexes, index)
 		lastAnchor = anchor
 	}
 	return nil
+}
+
+func validatePromotedTable(table *Node, mapping source.TableMapping, mapped bool, lastAnchor int) error {
+	anchor := table.TableAnchor
+	if table.ID == "" || anchor < 0 || !mapped || anchor != table.Range.Start || mapping.Range != table.Range ||
+		anchor <= lastAnchor || table.TableColumnCount <= 0 || len(table.TableAlignments) != table.TableColumnCount || table.TableBodyRowCount < 0 ||
+		len(mapping.Delimiter.Cells) != table.TableColumnCount {
+		return fmt.Errorf("invalid promoted table at anchor %d", anchor)
+	}
+	return nil
+}
+
+func resetTableAdjacency(table *Node) {
+	table.TablePromotedRowStart = 0
+	table.TablePromotedRowCount = 0
+	table.TableOwnedHeaderCellStart = 0
+	table.TableOwnedHeaderCellCount = 0
 }
 
 func (b *tableOwnerModelBuilder) resolveOwnership() error {
