@@ -72,7 +72,7 @@ See [Edit an existing document](recipes/edit-existing-document.md).
 - tables and alignments;
 - fenced code;
 - blockquotes and GitHub alerts;
-- reference and footnote definitions;
+- reference definitions plus immediate/deferred single-line and reviewed canonical multiline footnote definitions;
 - YAML/TOML front-matter envelopes;
 - thematic breaks and mathematical blocks.
 

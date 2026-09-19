@@ -68,6 +68,7 @@ type constructionFootnoteProof struct {
 	label      string
 	labelRange splice.Range
 	bodyRange  splice.Range
+	bodyRanges []splice.Range
 }
 
 type constructionTableProof struct {
@@ -457,7 +458,7 @@ func validateConstructionFootnoteDefinitionExpectation(document *splice.Document
 	}
 	if !node.TopLevel || !node.Editable || node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
 		node.Label != want.footnote.label || mapping.Range != want.sourceRange || mapping.LabelRange != want.footnote.labelRange ||
-		mapping.BodyRange != want.footnote.bodyRange || len(mapping.BodyRanges) != 1 || mapping.BodyRanges[0] != want.footnote.bodyRange {
+		mapping.BodyRange != want.footnote.bodyRange || !slices.Equal(mapping.BodyRanges, want.footnote.bodyRanges) {
 		return fmt.Errorf("%w: generated footnote-definition mapping changed", ErrInvalidConstruction)
 	}
 	return nil

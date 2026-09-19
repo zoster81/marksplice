@@ -45,19 +45,20 @@ type constructionTable struct {
 }
 
 type constructionBlock struct {
-	kind        constructionBlockKind
-	alertKind   AlertKind
-	level       int
-	depth       int
-	inlineGFM   string
-	info        string
-	label       string
-	destination string
-	title       string
-	hasTitle    bool
-	items       []constructionListItem
-	table       constructionTable
-	children    []constructionBlock
+	kind              constructionBlockKind
+	alertKind         AlertKind
+	level             int
+	depth             int
+	inlineGFM         string
+	info              string
+	label             string
+	destination       string
+	title             string
+	hasTitle          bool
+	items             []constructionListItem
+	table             constructionTable
+	children          []constructionBlock
+	footnoteMultiline bool
 }
 
 func (b *DocumentBuilder) appendConstructionBlock(block constructionBlock) error {
@@ -97,7 +98,7 @@ func validateConstructionBlock(block constructionBlock) error {
 	case constructionReferenceDefinition:
 		return validateConstructionReferenceDefinition(block.label, block.destination, block.title, block.hasTitle)
 	case constructionFootnoteDefinition:
-		return validateConstructionFootnoteDefinition(block.label, block.inlineGFM)
+		return validateConstructionFootnoteDefinition(block.label, block.inlineGFM, block.footnoteMultiline)
 	case constructionMathBlock:
 		return validateConstructionMathPayload(block.inlineGFM)
 	case constructionTableBlock:
@@ -381,12 +382,25 @@ func validateConstructionReferenceDefinition(label, destination, title string, h
 	return nil
 }
 
-func validateConstructionFootnoteDefinition(label, body string) error {
+func validateConstructionFootnoteDefinition(label, body string, multiline bool) error {
 	if err := validateConstructionFootnoteLabel(label); err != nil {
 		return err
 	}
-	if err := validateConstructionInlineGFM(body); err != nil {
-		return fmt.Errorf("%w: footnote body must be one non-empty physical line", ErrInvalidConstruction)
+	if !multiline {
+		if err := validateConstructionInlineGFM(body); err != nil {
+			return fmt.Errorf("%w: footnote body must be one non-empty physical line", ErrInvalidConstruction)
+		}
+		return nil
+	}
+	if err := validateConstructionNonEmptyUTF8(body, "multiline footnote body"); err != nil {
+		return err
+	}
+	if strings.IndexByte(body, 0) >= 0 || strings.IndexByte(body, '') >= 0 {
+		return fmt.Errorf("%w: multiline footnote body accepts LF separators and no NUL", ErrInvalidConstruction)
+	}
+	lines := strings.Split(body, "\n")
+	if len(lines) < 3 || lines[0] == "" || lines[len(lines)-1] == "" || !strings.Contains(body, "\n\n") {
+		return fmt.Errorf("%w: multiline footnote body requires non-empty first/last lines and at least one blank logical line", ErrInvalidConstruction)
 	}
 	return nil
 }

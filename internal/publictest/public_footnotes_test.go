@@ -273,6 +273,57 @@ func TestFootnoteLabelsResolveExactly(t *testing.T) {
 	}
 }
 
+func TestDocumentBuilderConstructsMultilineFootnoteDefinitions(t *testing.T) {
+	t.Parallel()
+
+	builder := marksplice.NewDocumentBuilder()
+	if err := builder.AppendFootnoteDefinitionMultiline("first", "alpha\n\nbeta"); err != nil {
+		t.Fatalf("AppendFootnoteDefinitionMultiline() error = %v", err)
+	}
+	if err := builder.DeferFootnoteDefinitionMultiline("later", "one\n\ntwo"); err != nil {
+		t.Fatalf("DeferFootnoteDefinitionMultiline() error = %v", err)
+	}
+	if err := builder.AppendParagraphContent(
+		marksplice.FootnoteReferenceInline("first"),
+		marksplice.TextInline(" "),
+		marksplice.FootnoteReferenceInline("later"),
+	); err != nil {
+		t.Fatalf("AppendParagraphContent() error = %v", err)
+	}
+
+	markdown, err := builder.Markdown()
+	if err != nil {
+		t.Fatalf("Markdown() error = %v", err)
+	}
+	want := []byte("[^first]: alpha\n\n    beta\n\n[^first] [^later]\n\n[^later]: one\n\n    two\n")
+	if !bytes.Equal(markdown, want) {
+		t.Fatalf("Markdown() = %q, want %q", markdown, want)
+	}
+	doc := mustParseFootnoteDocument(t, markdown)
+	definitions := doc.FootnoteDefinitions()
+	if len(definitions) != 2 {
+		t.Fatalf("FootnoteDefinitions() count = %d, want 2", len(definitions))
+	}
+	for _, definition := range definitions {
+		ranges, ok := doc.FootnoteDefinitionBodyRanges(definition.ID())
+		if !ok || len(ranges) != 2 {
+			t.Fatalf("FootnoteDefinitionBodyRanges(%q) = %v/%v, want 2 ranges", definition.Label(), ranges, ok)
+		}
+	}
+}
+
+func TestDocumentBuilderRejectsInvalidMultilineFootnoteBodies(t *testing.T) {
+	t.Parallel()
+
+	tests := []string{"", "\nalpha", "alpha\n", "alpha\nbeta", "alpha\r\nbeta", "alpha\x00beta"}
+	for _, body := range tests {
+		builder := marksplice.NewDocumentBuilder()
+		if err := builder.AppendFootnoteDefinitionMultiline("n", body); !errors.Is(err, marksplice.ErrInvalidConstruction) {
+			t.Fatalf("AppendFootnoteDefinitionMultiline(%q) error = %v, want ErrInvalidConstruction", body, err)
+		}
+	}
+}
+
 func TestFootnoteDefinitionsIntegrateWithStructuralQueries(t *testing.T) {
 	t.Parallel()
 

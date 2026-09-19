@@ -30,11 +30,25 @@ func appendConstructionBlocks(output *bytes.Buffer, blocks []constructionBlock) 
 	expected := make([]constructionExpectation, 0, len(blocks))
 	for index, block := range blocks {
 		if index != 0 {
+			separatorStart := output.Len()
 			output.WriteByte('\n')
+			extendMultilineFootnoteContainer(expected, separatorStart, output.Len())
 		}
 		expected = append(expected, writeConstructionBlock(output, block)...)
 	}
 	return expected
+}
+
+func extendMultilineFootnoteContainer(expected []constructionExpectation, separatorStart, separatorEnd int) {
+	if len(expected) == 0 {
+		return
+	}
+	previous := &expected[len(expected)-1]
+	if previous.kind != splice.KindFootnoteDefinition || len(previous.footnote.bodyRanges) < 2 ||
+		previous.sourceRange.End != separatorStart {
+		return
+	}
+	previous.sourceRange.End = separatorEnd
 }
 
 func writeConstructionBlock(output *bytes.Buffer, block constructionBlock) []constructionExpectation {
@@ -93,7 +107,7 @@ func writeConstructionAuxiliaryBlock(output *bytes.Buffer, block constructionBlo
 	case constructionReferenceDefinition:
 		return []constructionExpectation{writeConstructionReferenceDefinition(output, block.label, block.destination, block.title, block.hasTitle)}
 	case constructionFootnoteDefinition:
-		return []constructionExpectation{writeConstructionFootnoteDefinition(output, block.label, block.inlineGFM)}
+		return []constructionExpectation{writeConstructionFootnoteDefinition(output, block.label, block.inlineGFM, block.footnoteMultiline)}
 	case constructionMathBlock:
 		return []constructionExpectation{writeConstructionMathBlock(output, block.inlineGFM)}
 	case constructionTableBlock:
@@ -391,17 +405,34 @@ func writeConstructionReferenceDefinition(output *bytes.Buffer, label, destinati
 	}
 }
 
-func writeConstructionFootnoteDefinition(output *bytes.Buffer, label, body string) constructionExpectation {
+func writeConstructionFootnoteDefinition(output *bytes.Buffer, label, body string, multiline bool) constructionExpectation {
 	start := output.Len()
 	output.WriteString("[^")
 	labelStart := output.Len()
 	output.WriteString(label)
 	labelRange := splice.Range{Start: labelStart, End: output.Len()}
 	output.WriteString("]: ")
-	bodyStart := output.Len()
-	output.WriteString(body)
-	bodyRange := splice.Range{Start: bodyStart, End: output.Len()}
-	output.WriteByte('\n')
+
+	lines := []string{body}
+	if multiline {
+		lines = strings.Split(body, "\n")
+	}
+	bodyRanges := make([]splice.Range, 0, len(lines))
+	for index, line := range lines {
+		if index != 0 && line != "" {
+			output.WriteString("    ")
+		}
+		if line != "" {
+			lineStart := output.Len()
+			output.WriteString(line)
+			bodyRanges = append(bodyRanges, splice.Range{Start: lineStart, End: output.Len()})
+		}
+		output.WriteByte('\n')
+	}
+	bodyRange := splice.Range{}
+	if len(bodyRanges) == 1 {
+		bodyRange = bodyRanges[0]
+	}
 	return constructionExpectation{
 		kind:         splice.KindFootnoteDefinition,
 		contentRange: bodyRange,
@@ -410,6 +441,7 @@ func writeConstructionFootnoteDefinition(output *bytes.Buffer, label, body strin
 			label:      label,
 			labelRange: labelRange,
 			bodyRange:  bodyRange,
+			bodyRanges: bodyRanges,
 		},
 	}
 }

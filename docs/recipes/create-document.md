@@ -47,7 +47,7 @@ Common builder methods include:
 - homogeneous nested lists/tasks
 - blockquotes and GitHub alerts
 - tables with optional alignments and optional body rows
-- reference definitions and footnote definitions
+- reference definitions and footnote definitions, including explicit canonical multiline footnotes
 - mathematical blocks
 - YAML/TOML front matter through `SetYAMLFrontMatter` / `SetTOMLFrontMatter`
 
@@ -112,7 +112,7 @@ Do not use a builder as a formatter for an existing document when your goal is a
 
 For ordinary reference links/images, Marksplice distinguishes definitions that already exist in builder state from definitions explicitly deferred for forward-reference construction. Dedicated constructors make that intent explicit.
 
-Footnotes have a similar immediate/deferred construction flow.
+Footnotes have a similar immediate/deferred construction flow. Single-line definitions use `AppendFootnoteDefinition` / `DeferFootnoteDefinition`. When the logical note needs multiple parser-proven body segments, use `AppendFootnoteDefinitionMultiline` / `DeferFootnoteDefinitionMultiline`; the multiline builder contract is LF-only and uses blank logical lines plus canonical four-space continuation indentation.
 
 This prevents construction from silently depending on unresolved or ambiguous labels.
 

@@ -16,10 +16,12 @@ func main() {
 		marksplice.FrontMatterFieldInput{Key: "status", Value: "draft"},
 	))
 	must(builder.AppendHeadingContent(1, marksplice.TextInline("Release brief")))
+	must(builder.DeferFootnoteDefinitionMultiline("build-note", "Generated source is reparsed.\n\nConstruction fails closed when the requested structure cannot be proven."))
 	must(builder.AppendParagraphContent(
 		marksplice.TextInline("Generated with "),
 		marksplice.LinkInline("https://github.com/zoster81/marksplice", marksplice.TextInline("Marksplice")),
 		marksplice.TextInline("."),
+		marksplice.FootnoteReferenceInline("build-note"),
 	))
 	must(builder.AppendUnorderedTaskList(
 		marksplice.TaskListItem{InlineGFM: "Review API changes", Checked: true},

@@ -6,8 +6,8 @@ import (
 )
 
 // AppendFootnoteDefinition appends one canonical top-level footnote definition.
-// Body is one non-empty physical line; broader multiline parsed definitions remain
-// readable but are not synthesized by this conservative construction contract.
+// Body is one non-empty physical line. Use AppendFootnoteDefinitionMultiline when
+// the logical body requires multiple parser-proven body segments.
 func (b *DocumentBuilder) AppendFootnoteDefinition(label, body string) error {
 	if b == nil {
 		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
@@ -22,6 +22,34 @@ func (b *DocumentBuilder) DeferFootnoteDefinition(label, body string) error {
 		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
 	}
 	return b.appendFootnoteDefinition(constructionBlock{kind: constructionFootnoteDefinition, label: label, inlineGFM: body}, true)
+}
+
+// AppendFootnoteDefinitionMultiline appends one canonical top-level footnote definition
+// from LF-separated logical body lines. Continuation lines use canonical four-space indentation.
+func (b *DocumentBuilder) AppendFootnoteDefinitionMultiline(label, body string) error {
+	if b == nil {
+		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
+	}
+	return b.appendFootnoteDefinition(constructionBlock{
+		kind:              constructionFootnoteDefinition,
+		label:             label,
+		inlineGFM:         body,
+		footnoteMultiline: true,
+	}, false)
+}
+
+// DeferFootnoteDefinitionMultiline schedules one canonical LF-separated footnote
+// definition after ordinary body blocks and deferred ordinary reference definitions.
+func (b *DocumentBuilder) DeferFootnoteDefinitionMultiline(label, body string) error {
+	if b == nil {
+		return fmt.Errorf("%w: nil document builder", ErrInvalidConstruction)
+	}
+	return b.appendFootnoteDefinition(constructionBlock{
+		kind:              constructionFootnoteDefinition,
+		label:             label,
+		inlineGFM:         body,
+		footnoteMultiline: true,
+	}, true)
 }
 
 // FootnoteReferenceInline returns one typed `[^label]` reference. The label must

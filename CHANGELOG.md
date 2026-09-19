@@ -7,6 +7,7 @@ Marksplice follows Semantic Versioning-compatible Go module tags. `v1.0.0` estab
 ## Unreleased
 
 - Add prepared-change local-fragment continuity analysis so callers can distinguish preserved targets, explicit retargets, silent target changes, and missing/ambiguous/invalid fragment results across structural edits and composed changes without comparing snapshot-scoped `NodeID` values.
+- Add explicit canonical multiline footnote construction for immediate and deferred `DocumentBuilder` definitions while retaining the established single-line methods and fail-closed parser/source proof.
 
 ## v1.1.1 — 2026-09-17
 
