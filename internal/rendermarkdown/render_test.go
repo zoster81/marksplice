@@ -196,6 +196,20 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "*#*b#_)_**\n",
 		},
 		{
+			name:   "tab after nested emphasis preserves closing flanking",
+			source: "*#*a)_)_**\t1\n",
+		},
+		{
+			name:   "tab after ordinary emphasis remains canonical entity",
+			source: "*x*\t1\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*x*&#9;1\n" {
+					t.Fatalf("canonical ordinary emphasis tab = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "matching emphasis markers remain canonical through strikethrough",
 			source: "*~*x*~*\n",
 			check: func(t *testing.T, canonical string) {

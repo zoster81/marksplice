@@ -182,7 +182,7 @@ func (r *renderer) leaf(event parser.SemanticEvent) error {
 func (r *renderer) leafInline(event parser.SemanticEvent) error {
 	switch event.Kind {
 	case parser.SemanticText:
-		return r.appendText(event.Value)
+		return r.appendText(event)
 	case parser.SemanticSoftBreak:
 		return r.appendInline("\n")
 	case parser.SemanticHardBreak:
@@ -352,19 +352,69 @@ func (r *renderer) exitTable(current frame) error {
 	}
 }
 
-func (r *renderer) appendText(value string) error {
+func (r *renderer) appendText(event parser.SemanticEvent) error {
 	if len(r.stack) == 0 {
 		return fmt.Errorf("%w: text output outside container", ErrInvalidInput)
 	}
 	current := &r.stack[len(r.stack)-1]
+	value := event.Value
 	escaped := escapeText(value)
-	if inlineAtLineStart(current.inline) {
+	if r.preserveLeadingTabAfterDelimiter(current, event) {
+		escaped = "\t" + escapeText(value[1:])
+	} else if inlineAtLineStart(current.inline) {
 		escaped = escapeLeadingTextSpaces(value)
 	}
 	if current.bareAutoLinkTail {
 		escaped = escapeTextAfterBareAutoLink(value)
 	}
 	return r.appendInline(escaped)
+}
+
+func (r *renderer) preserveLeadingTabAfterDelimiter(parent *frame, event parser.SemanticEvent) bool {
+	previous, ok := r.delimiterSiblingBeforeSourceTab(parent, event)
+	if !ok {
+		return false
+	}
+	sourceOpen, sourceClose, ok := delimiterRunFlankingAtEnd(r.source, previous.sourceRange.End)
+	if !ok {
+		return false
+	}
+	candidate := make([]byte, len(parent.inline)+1)
+	copy(candidate, parent.inline)
+	candidate[len(parent.inline)] = '&'
+	candidateOpen, candidateClose, ok := delimiterRunFlankingAtEnd(candidate, previous.outputEnd)
+	return ok && (sourceOpen != candidateOpen || sourceClose != candidateClose)
+}
+
+func (r *renderer) delimiterSiblingBeforeSourceTab(parent *frame, event parser.SemanticEvent) (inlineDelimiterSibling, bool) {
+	if parent == nil || event.Value == "" || event.Value[0] != '\t' || !event.Range.Valid(len(r.source)) ||
+		event.Range.Start >= len(r.source) || r.source[event.Range.Start] != '\t' {
+		return inlineDelimiterSibling{}, false
+	}
+	previous := parent.lastDelimiterSibling
+	width := delimiterWidth(previous.kind)
+	if !previous.valid || width == 0 || previous.sourceRange.End != event.Range.Start ||
+		previous.outputEnd != len(parent.inline) || previous.outputEnd-previous.outputStart < 2*width {
+		return inlineDelimiterSibling{}, false
+	}
+	return previous, true
+}
+
+func delimiterRunFlankingAtEnd(source []byte, end int) (bool, bool, bool) {
+	if end <= 0 || end > len(source) {
+		return false, false, false
+	}
+	marker := source[end-1]
+	if marker != '*' && marker != '_' {
+		return false, false, false
+	}
+	start := end - 1
+	for start > 0 && source[start-1] == marker {
+		start--
+	}
+	segment := parser.Range{Start: 0, End: len(source)}
+	openCan, closeCan := parser.DelimiterFlanking(source, segment, start, end, marker)
+	return openCan, closeCan, true
 }
 
 func inlineAtLineStart(inline []byte) bool {
