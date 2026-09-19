@@ -192,6 +192,10 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "*~_)_~*\n",
 		},
 		{
+			name:   "triple nested emphasis preserves marker hierarchy",
+			source: "*#*b#_)_**\n",
+		},
+		{
 			name:   "matching emphasis markers remain canonical through strikethrough",
 			source: "*~*x*~*\n",
 			check: func(t *testing.T, canonical string) {

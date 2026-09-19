@@ -768,7 +768,7 @@ func (r *renderer) preserveWrappedEmphasisDelimiters(current *frame) {
 		if !ok {
 			return
 		}
-		if ancestorSource[0] == currentSource[0] || ancestor.delimiter[0] != current.delimiter[0] {
+		if ancestorSource[0] == currentSource[0] {
 			return
 		}
 		ancestor.delimiter = ancestorSource
