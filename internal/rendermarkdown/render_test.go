@@ -514,6 +514,36 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "shared opener children keep star prefix escaped before trailing text",
+			source: "***_*[*a*c*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\**_\\__\\[*a*c*\n" {
+					t.Fatalf("canonical shared opener trailing star prefix = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "shared opener children keep star prefix escaped before numeric trailing text",
+			source: "***>*#*a*1*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\**_\\>_\\#*a*1*\n" {
+					t.Fatalf("canonical numeric trailing star prefix = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "shared opener underscore prefix remains unescaped before trailing text",
+			source: "___>_[_a_!_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "___\\>_\\[_a_\\!_\n" {
+					t.Fatalf("canonical trailing underscore prefix = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},

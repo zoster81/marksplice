@@ -1428,7 +1428,7 @@ func (r *renderer) preserveUnconsumedEmphasisRunPrefix(parent *frame, current *f
 	}
 	preserveCount := 1
 	if current.unconsumedPrefixTopologySensitive() {
-		if r.multiChildSharedBoundaryPrefixConflict(current, sourceDelimiter) {
+		if r.multiChildSharedOpenPrefixConflict(current, sourceDelimiter) {
 			return
 		}
 	} else {
@@ -1466,13 +1466,13 @@ func (current *frame) unconsumedPrefixTopologySensitive() bool {
 		(current.directEmphasisChildren >= 2 && current.boundarySensitiveDirectEmphasisChild)
 }
 
-func (r *renderer) multiChildSharedBoundaryPrefixConflict(current *frame, sourceDelimiter string) bool {
+func (r *renderer) multiChildSharedOpenPrefixConflict(current *frame, sourceDelimiter string) bool {
 	if len(sourceDelimiter) != 1 || !multiChildPrefixTopology(current) {
 		return false
 	}
 	marker := sourceDelimiter[0]
-	return r.sourceMultiChildSharedPrefixBoundary(current, marker) &&
-		renderedMultiChildAlternateBoundary(current, marker)
+	return r.sourceMultiChildSharedOpenPrefixBoundary(current, marker) &&
+		renderedMultiChildSharedOpenAlternate(current, marker)
 }
 
 func multiChildPrefixTopology(current *frame) bool {
@@ -1481,24 +1481,17 @@ func multiChildPrefixTopology(current *frame) bool {
 		current.boundarySensitiveDirectEmphasisChild && len(current.inline) >= 2
 }
 
-func (r *renderer) sourceMultiChildSharedPrefixBoundary(current *frame, marker byte) bool {
+func (r *renderer) sourceMultiChildSharedOpenPrefixBoundary(current *frame, marker byte) bool {
 	if !current.event.Range.Valid(len(r.source)) {
 		return false
 	}
 	start, end := current.event.Range.Start, current.event.Range.End
-	return start+1 < end-1 && r.source[start+1] == marker && !sourceByteEscapedAt(r.source, start+1) &&
-		current.lastDelimiterSibling.valid && delimiterWidth(current.lastDelimiterSibling.kind) == 1 &&
-		current.lastDelimiterSibling.sourceRange.End == end-1
+	return start+1 < end-1 && r.source[start+1] == marker && !sourceByteEscapedAt(r.source, start+1)
 }
 
-func renderedMultiChildAlternateBoundary(current *frame, marker byte) bool {
+func renderedMultiChildSharedOpenAlternate(current *frame, marker byte) bool {
 	firstMarker := current.inline[0]
-	if (firstMarker != '*' && firstMarker != '_') || firstMarker == marker ||
-		current.lastDelimiterSibling.outputEnd != len(current.inline) {
-		return false
-	}
-	lastMarker, ok := inlineSiblingMarker(current.inline, current.lastDelimiterSibling, 1)
-	return ok && lastMarker == firstMarker
+	return (firstMarker == '*' || firstMarker == '_') && firstMarker != marker
 }
 
 func (r *renderer) shallowUnconsumedPrefixTopologySensitive(current *frame) bool {
