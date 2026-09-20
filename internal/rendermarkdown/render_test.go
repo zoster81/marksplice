@@ -338,6 +338,16 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "mixed-marker adjacent openers are separate physical runs",
+			source: "__*\xff*0*a*b_]_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "***\xff*0*a*b*\\]*\n" {
+					t.Fatalf("canonical mixed-marker adjacent openers = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},

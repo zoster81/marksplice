@@ -56,7 +56,15 @@ type inlineDelimiterSibling struct {
 	onlyDirectChildOutputStart int
 	onlyDirectChildOutputEnd   int
 	onlyDirectChildValid       bool
+	emphasisChain              *inlineEmphasisChain
 	valid                      bool
+}
+
+type inlineEmphasisChain struct {
+	kind        parser.SemanticKind
+	outputStart int
+	outputEnd   int
+	child       *inlineEmphasisChain
 }
 
 type inlineTextSibling struct {
@@ -529,6 +537,7 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 	r.preserveUnconsumedEmphasisRunPrefix(parent, &current)
 	r.repairSeparatedThreeLevelEmphasis(&current)
 	r.reconcileFinalSharedEmphasisPair(&current)
+	r.repairDeepUniqueEmphasisChain(parent, &current)
 	start := len(parent.inline)
 	if err := r.appendInline(current.delimiter + string(current.inline) + current.delimiter); err != nil {
 		return err
@@ -550,11 +559,106 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 		sibling.onlyDirectChildOutputStart = offset + child.outputStart
 		sibling.onlyDirectChildOutputEnd = offset + child.outputEnd
 		sibling.onlyDirectChildValid = true
+		sibling.emphasisChain = &inlineEmphasisChain{
+			kind:        child.kind,
+			outputStart: len(current.delimiter) + child.outputStart,
+			outputEnd:   len(current.delimiter) + child.outputEnd,
+			child:       child.emphasisChain,
+		}
 	}
 	parent.lastDelimiterSibling = sibling
 	parent.emphasisDescendantDepth = max(parent.emphasisDescendantDepth, current.emphasisDescendantDepth+1)
 	r.recordDirectEmphasisChild(parent, current, sibling)
 	return nil
+}
+
+func (r *renderer) repairDeepUniqueEmphasisChain(parent *frame, current *frame) {
+	if parent == nil || current == nil || delimiterWidth(parent.event.Kind) != 0 ||
+		current.directEmphasisChildren != 1 || !current.onlyDirectEmphasisChild.valid {
+		return
+	}
+	child := current.onlyDirectEmphasisChild
+	if child.emphasisChain == nil || emphasisChainDepth(child.emphasisChain)+2 < 4 {
+		return
+	}
+	candidate := make([]byte, len(current.inline)+2)
+	candidate[0] = current.delimiter[0]
+	copy(candidate[1:], current.inline)
+	candidate[len(candidate)-1] = current.delimiter[0]
+	pairs, ok := deepUniqueEmphasisPairs(len(candidate), child)
+	if !ok || delimiterCandidateMatches(candidate, pairs) {
+		return
+	}
+	patterns := [][2]byte{
+		{'*', '_'},
+		{'*', '*'},
+		{'_', '*'},
+		{'_', '_'},
+	}
+	for _, pattern := range patterns {
+		trial := append([]byte(nil), candidate...)
+		for index, pair := range pairs {
+			marker := pattern[0]
+			if index == len(pairs)-1 {
+				marker = pattern[1]
+			}
+			trial[pair[0].Start] = marker
+			trial[pair[1].Start] = marker
+		}
+		if !delimiterCandidateMatches(trial, pairs) {
+			continue
+		}
+		current.delimiter = string(trial[0])
+		copy(current.inline, trial[1:len(trial)-1])
+		return
+	}
+}
+
+func emphasisChainDepth(chain *inlineEmphasisChain) int {
+	depth := 0
+	for current := chain; current != nil; current = current.child {
+		depth++
+	}
+	return depth
+}
+
+func deepUniqueEmphasisPairs(candidateLen int, child inlineDelimiterSibling) ([][2]parser.Range, bool) {
+	if candidateLen < 2 || child.emphasisChain == nil {
+		return nil, false
+	}
+	pairs := make([][2]parser.Range, 0, emphasisChainDepth(child.emphasisChain)+2)
+	pairs = append(pairs,
+		[2]parser.Range{
+			{Start: 0, End: 1},
+			{Start: candidateLen - 1, End: candidateLen},
+		},
+		[2]parser.Range{
+			{Start: 1 + child.outputStart, End: 2 + child.outputStart},
+			{Start: child.outputEnd, End: 1 + child.outputEnd},
+		},
+	)
+	parentStart := 1 + child.outputStart
+	for chain := child.emphasisChain; chain != nil; chain = chain.child {
+		start := parentStart + chain.outputStart
+		end := parentStart + chain.outputEnd
+		if chain.kind != parser.SemanticEmphasis || start < 0 || end > candidateLen || end-start < 2 {
+			return nil, false
+		}
+		pairs = append(pairs, [2]parser.Range{
+			{Start: start, End: start + 1},
+			{Start: end - 1, End: end},
+		})
+		parentStart = start
+	}
+	return pairs, true
+}
+
+func delimiterCandidateMatches(candidate []byte, pairs [][2]parser.Range) bool {
+	runs, ok := emphasisCandidateRuns(candidate, pairs)
+	if !ok {
+		return false
+	}
+	return delimiterMatchesExpectedPairs(parser.ResolveDelimiterRuns(runs), pairs)
 }
 
 func (r *renderer) reconcileFinalSharedEmphasisPair(current *frame) {
