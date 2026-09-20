@@ -348,6 +348,26 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "three-level shared close run preserves source marker ownership",
+			source: "_#_0*a*__\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "_\\#_0*a*__\n" {
+					t.Fatalf("canonical shared close run = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "nearby shared close spelling keeps stable canonical output",
+			source: "*#*0_a_ b**\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\#_0\\_a\\_ b_*\n" {
+					t.Fatalf("canonical nearby shared close control = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},

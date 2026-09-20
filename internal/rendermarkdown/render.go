@@ -537,6 +537,7 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 	r.preserveUnconsumedEmphasisRunPrefix(parent, &current)
 	r.repairSeparatedThreeLevelEmphasis(&current)
 	r.reconcileFinalSharedEmphasisPair(&current)
+	r.repairSharedCloseThreeLevelEmphasis(&current)
 	r.repairDeepUniqueEmphasisChain(parent, &current)
 	start := len(parent.inline)
 	if err := r.appendInline(current.delimiter + string(current.inline) + current.delimiter); err != nil {
@@ -705,6 +706,115 @@ func (r *renderer) reconcileFinalSharedEmphasisPair(current *frame) {
 	}
 }
 
+type threeLevelEmphasisSourceMarkers struct {
+	outer byte
+	child byte
+	leaf  byte
+}
+
+func (r *renderer) repairSharedCloseThreeLevelEmphasis(current *frame) {
+	child, ok := threeLevelEmphasisChild(current)
+	if !ok {
+		return
+	}
+	markers, ok := r.sharedCloseThreeLevelSourceMarkers(current, child)
+	if !ok {
+		return
+	}
+	expected := threeLevelEmphasisExpectedPairs(len(current.inline)+2, child)
+	if delimiterCandidateMatchesPhysicalRuns(
+		delimitedInlineCandidate(current.inline, current.delimiter[0]),
+		expected,
+	) {
+		return
+	}
+	inline := append([]byte(nil), current.inline...)
+	rewriteInlineSiblingMarker(inline, child.outputStart, child.outputEnd, 1, markers.child)
+	rewriteInlineSiblingMarker(
+		inline,
+		child.onlyDirectChildOutputStart,
+		child.onlyDirectChildOutputEnd,
+		1,
+		markers.leaf,
+	)
+	if !delimiterCandidateMatchesPhysicalRuns(
+		delimitedInlineCandidate(inline, markers.outer),
+		expected,
+	) {
+		return
+	}
+	current.delimiter = string(markers.outer)
+	copy(current.inline, inline)
+}
+
+func threeLevelEmphasisChild(current *frame) (inlineDelimiterSibling, bool) {
+	if current == nil || current.directEmphasisChildren != 1 || !current.onlyDirectEmphasisChild.valid {
+		return inlineDelimiterSibling{}, false
+	}
+	child := current.onlyDirectEmphasisChild
+	if delimiterWidth(current.event.Kind) != 1 || delimiterWidth(child.kind) != 1 {
+		return inlineDelimiterSibling{}, false
+	}
+	if child.descendantDepth != 1 || child.directEmphasisChildren != 1 || !child.onlyDirectChildValid {
+		return inlineDelimiterSibling{}, false
+	}
+	if child.onlyDirectChildKind != parser.SemanticEmphasis {
+		return inlineDelimiterSibling{}, false
+	}
+	return child, true
+}
+
+func (r *renderer) sharedCloseThreeLevelSourceMarkers(
+	current *frame,
+	child inlineDelimiterSibling,
+) (threeLevelEmphasisSourceMarkers, bool) {
+	currentSource, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	childSource, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
+	leafSource, leafOK := r.sourceEmphasisDelimiter(child.onlyDirectChildKind, child.onlyDirectChildSourceRange)
+	if !currentOK || !childOK || !leafOK {
+		return threeLevelEmphasisSourceMarkers{}, false
+	}
+	if currentSource[0] != childSource[0] || !sharedCloseThreeLevelRanges(current, child) {
+		return threeLevelEmphasisSourceMarkers{}, false
+	}
+	if !r.sourceEmphasisCloseRunShared(current, child, currentSource[0]) {
+		return threeLevelEmphasisSourceMarkers{}, false
+	}
+	return threeLevelEmphasisSourceMarkers{
+		outer: currentSource[0],
+		child: childSource[0],
+		leaf:  leafSource[0],
+	}, true
+}
+
+func sharedCloseThreeLevelRanges(current *frame, child inlineDelimiterSibling) bool {
+	if current.event.Range.Start+1 == child.sourceRange.Start {
+		return false
+	}
+	if child.sourceRange.End != current.event.Range.End-1 {
+		return false
+	}
+	return child.onlyDirectChildSourceRange.End == child.sourceRange.End-1
+}
+
+func (r *renderer) sourceEmphasisCloseRunShared(
+	current *frame,
+	child inlineDelimiterSibling,
+	marker byte,
+) bool {
+	currentClose := sourceEmphasisRunAt(r.source, current.event.Range.End-1, 1, marker)
+	childClose := sourceEmphasisRunAt(r.source, child.sourceRange.End-1, 1, marker)
+	return currentClose.Valid(len(r.source)) && currentClose == childClose
+}
+
+func delimitedInlineCandidate(inline []byte, marker byte) []byte {
+	candidate := make([]byte, len(inline)+2)
+	candidate[0] = marker
+	copy(candidate[1:], inline)
+	candidate[len(candidate)-1] = marker
+	return candidate
+}
+
 func (r *renderer) repairSeparatedThreeLevelEmphasis(current *frame) {
 	if current == nil || current.directEmphasisChildren != 1 || !current.onlyDirectEmphasisChild.valid {
 		return
@@ -854,6 +964,62 @@ func emphasisCandidateRuns(source []byte, pairs [][2]parser.Range) ([]parser.Del
 		return runs[left].End < runs[right].End
 	})
 	return runs, true
+}
+
+func delimiterCandidateMatchesPhysicalRuns(candidate []byte, expected [][2]parser.Range) bool {
+	runs, ok := emphasisCandidateRuns(candidate, expected)
+	if !ok {
+		return false
+	}
+	matches := parser.ResolveDelimiterRuns(runs)
+	if len(matches) != len(expected) {
+		return false
+	}
+	runPairs := make([][2]int, len(expected))
+	for index, pair := range expected {
+		for side, endpoint := range pair {
+			if endpoint.Start < 0 || endpoint.Start >= len(candidate) {
+				return false
+			}
+			marker := candidate[endpoint.Start]
+			run := sourceEmphasisRunAt(candidate, endpoint.Start, 1, marker)
+			runIndex := delimiterRunIndex(runs, run, marker)
+			if runIndex < 0 {
+				return false
+			}
+			runPairs[index][side] = runIndex
+		}
+	}
+	seen := make([]bool, len(runPairs))
+	for _, match := range matches {
+		if match.Level != 1 {
+			return false
+		}
+		found := false
+		for index, pair := range runPairs {
+			if !seen[index] && match.OpenerRun == pair[0] && match.CloserRun == pair[1] {
+				seen[index] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func delimiterRunIndex(runs []parser.DelimiterRun, target parser.Range, marker byte) int {
+	if !target.Valid(target.End) {
+		return -1
+	}
+	for index, run := range runs {
+		if run.Start == target.Start && run.End == target.End && run.Marker == marker {
+			return index
+		}
+	}
+	return -1
 }
 
 func delimiterMatchesExpectedPairs(matches []parser.DelimiterRunMatch, expected [][2]parser.Range) bool {
