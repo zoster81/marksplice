@@ -932,7 +932,53 @@ func (r *renderer) preserveNestedEmphasisTopology(current *frame) {
 		return
 	}
 	r.preserveUnsafeDirectEmphasisDelimiter(current)
+	r.preserveSharedEmphasisRunComponent(current)
 	r.preserveAncestorEmphasisMarkerRelation(current)
+}
+
+func (r *renderer) preserveSharedEmphasisRunComponent(current *frame) {
+	width := delimiterWidth(current.event.Kind)
+	currentSource, ok := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	if width == 0 || !ok {
+		return
+	}
+	marker := currentSource[0]
+	previous := current.event
+	component := make([]int, 0, 2)
+	for index := len(r.stack) - 1; index >= 0; index-- {
+		ancestor := &r.stack[index]
+		ancestorWidth := delimiterWidth(ancestor.event.Kind)
+		if ancestorWidth == 0 {
+			continue
+		}
+		ancestorSource, ok := r.sourceEmphasisDelimiter(ancestor.event.Kind, ancestor.event.Range)
+		if !ok || ancestorWidth != width || ancestorSource[0] != marker ||
+			!emphasisDelimiterEventsShareSourceRun(ancestor.event, previous, width) {
+			break
+		}
+		component = append(component, index)
+		previous = ancestor.event
+	}
+	if len(component) < 2 {
+		return
+	}
+	current.delimiter = currentSource
+	for _, index := range component {
+		ancestor := &r.stack[index]
+		sourceDelimiter, ok := r.sourceEmphasisDelimiter(ancestor.event.Kind, ancestor.event.Range)
+		if ok {
+			ancestor.delimiter = sourceDelimiter
+		}
+	}
+}
+
+func emphasisDelimiterEventsShareSourceRun(outer, inner parser.SemanticEvent, width int) bool {
+	if width <= 0 || outer.Range.Start > inner.Range.Start || inner.Range.End > outer.Range.End {
+		return false
+	}
+	openShared := outer.Range.Start+width == inner.Range.Start
+	closeShared := inner.Range.End == outer.Range.End-width
+	return openShared || closeShared
 }
 
 func (r *renderer) preserveUnsafeDirectEmphasisDelimiter(current *frame) {

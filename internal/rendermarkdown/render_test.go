@@ -222,6 +222,14 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "*#*b#_)_**\n",
 		},
 		{
+			name:   "shared star delimiter run component preserves deep hierarchy",
+			source: "**#*a)_)_** a*\n",
+		},
+		{
+			name:   "shared underscore delimiter run component preserves deep hierarchy",
+			source: "__#_a)*)*__ a_\n",
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},
