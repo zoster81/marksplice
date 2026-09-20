@@ -262,6 +262,14 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "__a_*)*__\n",
 		},
 		{
+			name:   "single-child star suffix run keeps canonical escaping",
+			source: "**a*_***\n",
+		},
+		{
+			name:   "single-child underscore suffix run keeps canonical escaping",
+			source: "_*a**___\n",
+		},
+		{
 			name:   "tab after unconsumed suffix preserves run flanking",
 			source: "*_)_**\t1\n",
 		},

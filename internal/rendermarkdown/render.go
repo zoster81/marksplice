@@ -44,12 +44,13 @@ type frame struct {
 }
 
 type inlineDelimiterSibling struct {
-	kind            parser.SemanticKind
-	sourceRange     parser.Range
-	outputStart     int
-	outputEnd       int
-	descendantDepth int
-	valid           bool
+	kind                   parser.SemanticKind
+	sourceRange            parser.Range
+	outputStart            int
+	outputEnd              int
+	descendantDepth        int
+	directEmphasisChildren int
+	valid                  bool
 }
 
 type inlineTextSibling struct {
@@ -525,12 +526,13 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 		return err
 	}
 	parent.lastDelimiterSibling = inlineDelimiterSibling{
-		kind:            current.event.Kind,
-		sourceRange:     current.event.Range,
-		outputStart:     start,
-		outputEnd:       len(parent.inline),
-		descendantDepth: current.emphasisDescendantDepth,
-		valid:           true,
+		kind:                   current.event.Kind,
+		sourceRange:            current.event.Range,
+		outputStart:            start,
+		outputEnd:              len(parent.inline),
+		descendantDepth:        current.emphasisDescendantDepth,
+		directEmphasisChildren: current.directEmphasisChildren,
+		valid:                  true,
 	}
 	parent.emphasisDescendantDepth = max(parent.emphasisDescendantDepth, current.emphasisDescendantDepth+1)
 	r.recordDirectEmphasisChild(parent, current)
@@ -554,7 +556,7 @@ func (r *renderer) preserveUnconsumedEmphasisRunSuffix(parent *frame, event pars
 		return false
 	}
 	previous := parent.lastDelimiterSibling
-	if !previous.valid || previous.descendantDepth == 0 || previous.sourceRange.End != event.Range.Start ||
+	if !previous.valid || !unconsumedSuffixTopologySensitive(previous) || previous.sourceRange.End != event.Range.Start ||
 		previous.outputEnd != len(parent.inline) {
 		return false
 	}
@@ -563,6 +565,10 @@ func (r *renderer) preserveUnconsumedEmphasisRunSuffix(parent *frame, event pars
 		return false
 	}
 	return string(parent.inline[len(parent.inline)-len(sourceDelimiter):]) == sourceDelimiter
+}
+
+func unconsumedSuffixTopologySensitive(previous inlineDelimiterSibling) bool {
+	return previous.descendantDepth >= 2 || previous.directEmphasisChildren >= 2
 }
 
 func (r *renderer) escapeUnconsumedEmphasisRunSuffix(parent *frame, event parser.SemanticEvent) string {
