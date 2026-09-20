@@ -162,8 +162,7 @@ func (r *renderer) enter(event parser.SemanticEvent) error {
 	case parser.SemanticEmphasis, parser.SemanticStrong:
 		current.delimiter = r.emphasisDelimiter(event.Kind)
 		r.preserveAdjacentEmphasisDelimiters(&current)
-		r.preserveNestedEmphasisDelimiters(&current)
-		r.preserveWrappedEmphasisDelimiters(&current)
+		r.preserveNestedEmphasisTopology(&current)
 	case parser.SemanticStrikethrough:
 		current.delimiter = r.strikethroughDelimiter()
 		r.preserveNestedStrikethroughDelimiters(&current)
@@ -399,15 +398,10 @@ func (r *renderer) preserveLeadingTabAfterDelimiter(parent *frame, event parser.
 	if !ok {
 		return false
 	}
-	sourceOpen, sourceClose, ok := delimiterRunFlankingAtEnd(r.source, previous.sourceRange.End)
-	if !ok {
-		return false
-	}
 	candidate := make([]byte, len(parent.inline)+1)
 	copy(candidate, parent.inline)
 	candidate[len(parent.inline)] = '&'
-	candidateOpen, candidateClose, ok := delimiterRunFlankingAtEnd(candidate, previous.outputEnd)
-	return ok && (sourceOpen != candidateOpen || sourceClose != candidateClose)
+	return delimiterRunFlankingChanged(r.source, previous.sourceRange.End, candidate, previous.outputEnd)
 }
 
 func (r *renderer) delimiterSiblingBeforeSourceTab(parent *frame, event parser.SemanticEvent) (inlineDelimiterSibling, bool) {
@@ -422,6 +416,15 @@ func (r *renderer) delimiterSiblingBeforeSourceTab(parent *frame, event parser.S
 		return inlineDelimiterSibling{}, false
 	}
 	return previous, true
+}
+
+func delimiterRunFlankingChanged(source []byte, sourceEnd int, candidate []byte, candidateEnd int) bool {
+	sourceOpen, sourceClose, ok := delimiterRunFlankingAtEnd(source, sourceEnd)
+	if !ok {
+		return false
+	}
+	candidateOpen, candidateClose, ok := delimiterRunFlankingAtEnd(candidate, candidateEnd)
+	return ok && (sourceOpen != candidateOpen || sourceClose != candidateClose)
 }
 
 func delimiterRunFlankingAtEnd(source []byte, end int) (bool, bool, bool) {
@@ -563,16 +566,11 @@ func (r *renderer) preserveTabAfterUnconsumedRunSuffix(parent *frame, event pars
 		event.Range.Start+1 >= len(r.source) || r.source[event.Range.Start+1] != '\t' {
 		return false
 	}
-	sourceOpen, sourceClose, ok := delimiterRunFlankingAtEnd(r.source, event.Range.Start+1)
-	if !ok {
-		return false
-	}
 	candidate := make([]byte, len(parent.inline)+2)
 	copy(candidate, parent.inline)
 	candidate[len(parent.inline)] = event.Value[0]
 	candidate[len(parent.inline)+1] = '&'
-	candidateOpen, candidateClose, ok := delimiterRunFlankingAtEnd(candidate, len(parent.inline)+1)
-	return ok && (sourceOpen != candidateOpen || sourceClose != candidateClose)
+	return delimiterRunFlankingChanged(r.source, event.Range.Start+1, candidate, len(parent.inline)+1)
 }
 
 func (r *renderer) sourceUnconsumedRunSuffixMarker(event parser.SemanticEvent) (byte, bool) {
@@ -921,30 +919,30 @@ func (r *renderer) preserveAdjacentEmphasisDelimiters(current *frame) {
 	current.delimiter = currentDelimiter
 }
 
-func (r *renderer) preserveNestedEmphasisDelimiters(current *frame) {
+func (r *renderer) preserveNestedEmphasisTopology(current *frame) {
 	if current == nil || len(r.stack) == 0 {
 		return
 	}
+	r.preserveUnsafeDirectEmphasisDelimiter(current)
+	r.preserveAncestorEmphasisMarkerRelation(current)
+}
+
+func (r *renderer) preserveUnsafeDirectEmphasisDelimiter(current *frame) {
 	parent := &r.stack[len(r.stack)-1]
-	if delimiterWidth(parent.event.Kind) == 0 || delimiterWidth(current.event.Kind) == 0 {
+	if delimiterWidth(parent.event.Kind) == 0 || delimiterWidth(current.event.Kind) == 0 ||
+		r.sourceEmphasisDelimiterUsable(current.event, current.delimiter) {
 		return
 	}
-	parentDelimiter, ok := r.sourceEmphasisDelimiter(parent.event.Kind, parent.event.Range)
-	if !ok {
-		return
-	}
-	currentDelimiter, ok := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
-	if !ok || r.sourceEmphasisDelimiterUsable(current.event, current.delimiter) {
+	parentDelimiter, parentOK := r.sourceEmphasisDelimiter(parent.event.Kind, parent.event.Range)
+	currentDelimiter, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	if !parentOK || !currentOK {
 		return
 	}
 	parent.delimiter = parentDelimiter
 	current.delimiter = currentDelimiter
 }
 
-func (r *renderer) preserveWrappedEmphasisDelimiters(current *frame) {
-	if current == nil {
-		return
-	}
+func (r *renderer) preserveAncestorEmphasisMarkerRelation(current *frame) {
 	width := delimiterWidth(current.event.Kind)
 	if width == 0 || len(current.delimiter) != width {
 		return
@@ -959,10 +957,7 @@ func (r *renderer) preserveWrappedEmphasisDelimiters(current *frame) {
 			continue
 		}
 		ancestorSource, ok := r.sourceEmphasisDelimiter(ancestor.event.Kind, ancestor.event.Range)
-		if !ok {
-			return
-		}
-		if ancestorSource[0] == currentSource[0] {
+		if !ok || ancestorSource[0] == currentSource[0] {
 			return
 		}
 		ancestor.delimiter = ancestorSource
