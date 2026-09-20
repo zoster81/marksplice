@@ -791,10 +791,7 @@ func sharedCloseThreeLevelRanges(current *frame, child inlineDelimiterSibling) b
 	if current.event.Range.Start+1 == child.sourceRange.Start {
 		return false
 	}
-	if child.sourceRange.End != current.event.Range.End-1 {
-		return false
-	}
-	return child.onlyDirectChildSourceRange.End == child.sourceRange.End-1
+	return child.sourceRange.End == current.event.Range.End-1
 }
 
 func (r *renderer) sourceEmphasisCloseRunShared(

@@ -368,6 +368,16 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "three-level shared close run preserves middle tail",
+			source: "_#_1[*\xff0*a__\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "_\\#_1\\[*\xff0*a__\n" {
+					t.Fatalf("canonical shared close middle tail = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},
