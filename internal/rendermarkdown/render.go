@@ -587,7 +587,11 @@ func (r *renderer) repairDeepUniqueEmphasisChain(parent *frame, current *frame) 
 	copy(candidate[1:], current.inline)
 	candidate[len(candidate)-1] = current.delimiter[0]
 	pairs, ok := deepUniqueEmphasisPairs(len(candidate), child)
-	if !ok || delimiterCandidateMatches(candidate, pairs) {
+	if !ok {
+		return
+	}
+	if r.repairDeepSharedCloseEmphasis(current, child, candidate, pairs) ||
+		delimiterCandidateMatches(candidate, pairs) {
 		return
 	}
 	patterns := [][2]byte{
@@ -613,6 +617,56 @@ func (r *renderer) repairDeepUniqueEmphasisChain(parent *frame, current *frame) 
 		copy(current.inline, trial[1:len(trial)-1])
 		return
 	}
+}
+
+func (r *renderer) repairDeepSharedCloseEmphasis(
+	current *frame,
+	child inlineDelimiterSibling,
+	candidate []byte,
+	pairs [][2]parser.Range,
+) bool {
+	baseMarker, ok := r.sharedCloseEmphasisBaseMarker(current, child)
+	if !ok {
+		return false
+	}
+	if delimiterCandidateMatchesPhysicalRuns(candidate, pairs) {
+		return true
+	}
+	trial := append([]byte(nil), candidate...)
+	nestedMarker := alternateEmphasisMarker(baseMarker)
+	for index, pair := range pairs {
+		marker := nestedMarker
+		if index < 2 {
+			marker = baseMarker
+		}
+		trial[pair[0].Start] = marker
+		trial[pair[1].Start] = marker
+	}
+	if !delimiterCandidateMatchesPhysicalRuns(trial, pairs) {
+		return false
+	}
+	current.delimiter = string(trial[0])
+	copy(current.inline, trial[1:len(trial)-1])
+	return true
+}
+
+func (r *renderer) sharedCloseEmphasisBaseMarker(
+	current *frame,
+	child inlineDelimiterSibling,
+) (byte, bool) {
+	if current == nil || delimiterWidth(current.event.Kind) != 1 || delimiterWidth(child.kind) != 1 {
+		return 0, false
+	}
+	currentSource, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	childSource, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
+	if !currentOK || !childOK || currentSource[0] != childSource[0] {
+		return 0, false
+	}
+	if !sharedCloseEmphasisPairRanges(current, child) ||
+		!r.sourceEmphasisCloseRunShared(current, child, currentSource[0]) {
+		return 0, false
+	}
+	return currentSource[0], true
 }
 
 func emphasisChainDepth(chain *inlineEmphasisChain) int {
@@ -774,7 +828,7 @@ func (r *renderer) sharedCloseThreeLevelSourceMarkers(
 	if !currentOK || !childOK || !leafOK {
 		return threeLevelEmphasisSourceMarkers{}, false
 	}
-	if currentSource[0] != childSource[0] || !sharedCloseThreeLevelRanges(current, child) {
+	if currentSource[0] != childSource[0] || !sharedCloseEmphasisPairRanges(current, child) {
 		return threeLevelEmphasisSourceMarkers{}, false
 	}
 	if !r.sourceEmphasisCloseRunShared(current, child, currentSource[0]) {
@@ -787,7 +841,7 @@ func (r *renderer) sharedCloseThreeLevelSourceMarkers(
 	}, true
 }
 
-func sharedCloseThreeLevelRanges(current *frame, child inlineDelimiterSibling) bool {
+func sharedCloseEmphasisPairRanges(current *frame, child inlineDelimiterSibling) bool {
 	if current.event.Range.Start+1 == child.sourceRange.Start {
 		return false
 	}

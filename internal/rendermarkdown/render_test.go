@@ -378,6 +378,16 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "deep shared close run preserves nested component ownership",
+			source: "_#_1[*\xff*0*a*__\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "_\\#_1\\[*\xff*0*a*__\n" {
+					t.Fatalf("canonical deep shared close run = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},
