@@ -544,6 +544,36 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "separated children keep dual-purpose star prefix escaped",
+			source: "**~*>*#*:*#*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\**\\~_\\>_\\#_\\:_\\#*\n" {
+					t.Fatalf("canonical separated dual-purpose star prefix = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "separated children keep star prefix escaped before escaped marker tail",
+			source: "**~*a*#*_*\\**\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\**\\~_a_\\#_\\__\\**\n" {
+					t.Fatalf("canonical escaped-tail star prefix = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "separated children keep underscore prefix stable",
+			source: "__~_>_#_>_#_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "__\\~_\\>_\\#_\\>_\\#_\n" {
+					t.Fatalf("canonical separated underscore prefix = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},

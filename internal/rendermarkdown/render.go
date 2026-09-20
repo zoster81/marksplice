@@ -40,6 +40,7 @@ type frame struct {
 	lastTextSibling                      inlineTextSibling
 	emphasisDescendantDepth              int
 	directEmphasisChildren               int
+	sameMarkerDirectEmphasisChildren     int
 	boundarySensitiveDirectEmphasisChild bool
 	onlyDirectEmphasisChild              inlineDelimiterSibling
 }
@@ -1428,7 +1429,7 @@ func (r *renderer) preserveUnconsumedEmphasisRunPrefix(parent *frame, current *f
 	}
 	preserveCount := 1
 	if current.unconsumedPrefixTopologySensitive() {
-		if r.multiChildSharedOpenPrefixConflict(current, sourceDelimiter) {
+		if r.multiChildPrefixConflict(current, sourceDelimiter) {
 			return
 		}
 	} else {
@@ -1466,19 +1467,22 @@ func (current *frame) unconsumedPrefixTopologySensitive() bool {
 		(current.directEmphasisChildren >= 2 && current.boundarySensitiveDirectEmphasisChild)
 }
 
-func (r *renderer) multiChildSharedOpenPrefixConflict(current *frame, sourceDelimiter string) bool {
+func (r *renderer) multiChildPrefixConflict(current *frame, sourceDelimiter string) bool {
 	if len(sourceDelimiter) != 1 || !multiChildPrefixTopology(current) {
 		return false
 	}
 	marker := sourceDelimiter[0]
-	return r.sourceMultiChildSharedOpenPrefixBoundary(current, marker) &&
-		renderedMultiChildSharedOpenAlternate(current, marker)
+	if r.sourceMultiChildSharedOpenPrefixBoundary(current, marker) &&
+		renderedMultiChildSharedOpenAlternate(current, marker) {
+		return true
+	}
+	return r.sourceMultiChildSeparatedPrefixBoundary(current, marker)
 }
 
 func multiChildPrefixTopology(current *frame) bool {
 	return current != nil && delimiterWidth(current.event.Kind) == 1 &&
-		current.directEmphasisChildren == 2 && current.emphasisDescendantDepth == 1 &&
-		current.boundarySensitiveDirectEmphasisChild && len(current.inline) >= 2
+		current.directEmphasisChildren == 2 && current.sameMarkerDirectEmphasisChildren == 2 &&
+		current.emphasisDescendantDepth == 1 && current.boundarySensitiveDirectEmphasisChild && len(current.inline) >= 2
 }
 
 func (r *renderer) sourceMultiChildSharedOpenPrefixBoundary(current *frame, marker byte) bool {
@@ -1492,6 +1496,20 @@ func (r *renderer) sourceMultiChildSharedOpenPrefixBoundary(current *frame, mark
 func renderedMultiChildSharedOpenAlternate(current *frame, marker byte) bool {
 	firstMarker := current.inline[0]
 	return (firstMarker == '*' || firstMarker == '_') && firstMarker != marker
+}
+
+func (r *renderer) sourceMultiChildSeparatedPrefixBoundary(current *frame, marker byte) bool {
+	if marker != '*' || !current.event.Range.Valid(len(r.source)) {
+		return false
+	}
+	start, end := current.event.Range.Start, current.event.Range.End
+	if start+1 >= end-1 || r.source[start+1] == marker ||
+		(r.source[end-2] == marker && !sourceByteEscapedAt(r.source, end-2)) {
+		return false
+	}
+	segment := parser.Range{Start: 0, End: len(r.source)}
+	canOpen, canClose := parser.DelimiterFlanking(r.source, segment, start, start+1, marker)
+	return canOpen && canClose
 }
 
 func (r *renderer) shallowUnconsumedPrefixTopologySensitive(current *frame) bool {
@@ -1545,6 +1563,7 @@ func (r *renderer) recordDirectEmphasisChild(parent *frame, current frame, sibli
 	if !ok || parentDelimiter[0] != childDelimiter[0] {
 		return
 	}
+	parent.sameMarkerDirectEmphasisChildren++
 	width := delimiterWidth(current.event.Kind)
 	if width == 0 || current.event.Range.Start+width > len(r.source) {
 		return
