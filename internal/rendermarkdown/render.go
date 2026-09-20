@@ -41,11 +41,12 @@ type frame struct {
 }
 
 type inlineDelimiterSibling struct {
-	kind        parser.SemanticKind
-	sourceRange parser.Range
-	outputStart int
-	outputEnd   int
-	valid       bool
+	kind            parser.SemanticKind
+	sourceRange     parser.Range
+	outputStart     int
+	outputEnd       int
+	descendantDepth int
+	valid           bool
 }
 
 type inlineTextSibling struct {
@@ -368,7 +369,9 @@ func (r *renderer) appendText(event parser.SemanticEvent) error {
 	current := &r.stack[len(r.stack)-1]
 	value := event.Value
 	escaped := escapeText(value)
-	if r.preserveLeadingTabAfterDelimiter(current, event) {
+	if r.preserveUnconsumedEmphasisRunSuffix(current, event) {
+		escaped = value[:1] + escapeText(value[1:])
+	} else if r.preserveLeadingTabAfterDelimiter(current, event) {
 		escaped = "\t" + escapeText(value[1:])
 	} else if inlineAtLineStart(current.inline) {
 		escaped = escapeLeadingTextSpaces(value)
@@ -509,11 +512,12 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 		return err
 	}
 	parent.lastDelimiterSibling = inlineDelimiterSibling{
-		kind:        current.event.Kind,
-		sourceRange: current.event.Range,
-		outputStart: start,
-		outputEnd:   len(parent.inline),
-		valid:       true,
+		kind:            current.event.Kind,
+		sourceRange:     current.event.Range,
+		outputStart:     start,
+		outputEnd:       len(parent.inline),
+		descendantDepth: current.emphasisDescendantDepth,
+		valid:           true,
 	}
 	parent.emphasisDescendantDepth = max(parent.emphasisDescendantDepth, current.emphasisDescendantDepth+1)
 	return nil
@@ -525,6 +529,38 @@ func trailingEmphasisMarker(value string) (byte, bool) {
 	}
 	marker := value[len(value)-1]
 	return marker, marker == '*' || marker == '_'
+}
+
+func (r *renderer) preserveUnconsumedEmphasisRunSuffix(parent *frame, event parser.SemanticEvent) bool {
+	if parent == nil {
+		return false
+	}
+	marker, ok := r.sourceUnconsumedRunSuffixMarker(event)
+	if !ok {
+		return false
+	}
+	previous := parent.lastDelimiterSibling
+	if !previous.valid || previous.descendantDepth == 0 || previous.sourceRange.End != event.Range.Start ||
+		previous.outputEnd != len(parent.inline) {
+		return false
+	}
+	sourceDelimiter, ok := r.sourceEmphasisDelimiter(previous.kind, previous.sourceRange)
+	if !ok || sourceDelimiter[0] != marker || len(parent.inline) < len(sourceDelimiter) {
+		return false
+	}
+	return string(parent.inline[len(parent.inline)-len(sourceDelimiter):]) == sourceDelimiter
+}
+
+func (r *renderer) sourceUnconsumedRunSuffixMarker(event parser.SemanticEvent) (byte, bool) {
+	if event.Value == "" || !event.Range.Valid(len(r.source)) || event.Range.Start >= len(r.source) {
+		return 0, false
+	}
+	marker := event.Value[0]
+	if (marker != '*' && marker != '_') || r.source[event.Range.Start] != marker ||
+		sourceByteEscapedAt(r.source, event.Range.Start) {
+		return 0, false
+	}
+	return marker, true
 }
 
 func (r *renderer) preserveUnconsumedEmphasisRunPrefix(parent *frame, current *frame) {

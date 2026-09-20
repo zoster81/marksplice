@@ -204,6 +204,24 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "__#_a)*)*__\n",
 		},
 		{
+			name:   "unconsumed star run suffix survives nested emphasis",
+			source: "**a*_)_**\n",
+		},
+		{
+			name:   "unconsumed underscore run suffix survives nested emphasis",
+			source: "__a_*)*__\n",
+		},
+		{
+			name:   "shallow unconsumed suffix keeps canonical escaping",
+			source: "*x**\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*x*\\*\n" {
+					t.Fatalf("canonical shallow unconsumed suffix = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "shallow unconsumed run prefix keeps canonical escaping",
 			source: "**#*x**\n",
 			check: func(t *testing.T, canonical string) {
