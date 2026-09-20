@@ -318,6 +318,26 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "three-level separated openers preserve invalid-byte leaf before bracket",
+			source: "_#_1[*\xff*_]_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\#*1\\[_\xff_*\\]*\n" {
+					t.Fatalf("canonical separated invalid-byte bracket = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "three-level separated openers preserve invalid-byte leaf before hash",
+			source: "_>_Z\xff*\xfe*_#_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\>*Z\xff_\xfe_*\\#*\n" {
+					t.Fatalf("canonical separated invalid-byte hash = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},

@@ -527,6 +527,7 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 	}
 	parent := &r.stack[len(r.stack)-1]
 	r.preserveUnconsumedEmphasisRunPrefix(parent, &current)
+	r.repairSeparatedThreeLevelEmphasis(&current)
 	r.reconcileFinalSharedEmphasisPair(&current)
 	start := len(parent.inline)
 	if err := r.appendInline(current.delimiter + string(current.inline) + current.delimiter); err != nil {
@@ -561,7 +562,7 @@ func (r *renderer) reconcileFinalSharedEmphasisPair(current *frame) {
 	if !ok {
 		return
 	}
-	if baseMarker, leafMarker, rewrite := r.sharedEmphasisCanonicalMarkers(current, child, width); rewrite {
+	if baseMarker, leafMarker, rewrite := r.threeLevelEmphasisCanonicalMarkers(current, child, width); rewrite {
 		current.delimiter = string(baseMarker)
 		rewriteInlineSiblingMarker(current.inline, child.outputStart, child.outputEnd, width, baseMarker)
 		rewriteInlineSiblingMarker(
@@ -600,7 +601,50 @@ func (r *renderer) reconcileFinalSharedEmphasisPair(current *frame) {
 	}
 }
 
-func (r *renderer) sharedEmphasisCanonicalMarkers(
+func (r *renderer) repairSeparatedThreeLevelEmphasis(current *frame) {
+	if current == nil || current.directEmphasisChildren != 1 || !current.onlyDirectEmphasisChild.valid {
+		return
+	}
+	child := current.onlyDirectEmphasisChild
+	width := delimiterWidth(current.event.Kind)
+	childEvent := parser.SemanticEvent{Kind: child.kind, Range: child.sourceRange}
+	if width != 1 || delimiterWidth(child.kind) != width ||
+		emphasisDelimiterEventsShareSourceRun(current.event, childEvent, width) ||
+		r.threeLevelEmphasisCurrentMatches(current, child) {
+		return
+	}
+	baseMarker, leafMarker, ok := r.threeLevelEmphasisCanonicalMarkers(current, child, width)
+	if !ok {
+		return
+	}
+	current.delimiter = string(baseMarker)
+	rewriteInlineSiblingMarker(current.inline, child.outputStart, child.outputEnd, width, baseMarker)
+	rewriteInlineSiblingMarker(
+		current.inline,
+		child.onlyDirectChildOutputStart,
+		child.onlyDirectChildOutputEnd,
+		width,
+		leafMarker,
+	)
+}
+
+func (r *renderer) threeLevelEmphasisCurrentMatches(current *frame, child inlineDelimiterSibling) bool {
+	if current == nil || len(current.delimiter) != 1 || (current.delimiter[0] != '*' && current.delimiter[0] != '_') {
+		return false
+	}
+	candidate := make([]byte, len(current.inline)+2)
+	candidate[0] = current.delimiter[0]
+	copy(candidate[1:], current.inline)
+	candidate[len(candidate)-1] = current.delimiter[0]
+	expected := threeLevelEmphasisExpectedPairs(len(candidate), child)
+	runs, ok := emphasisCandidateRuns(candidate, expected)
+	if !ok {
+		return false
+	}
+	return delimiterMatchesExpectedPairs(parser.ResolveDelimiterRuns(runs), expected)
+}
+
+func (r *renderer) threeLevelEmphasisCanonicalMarkers(
 	current *frame,
 	child inlineDelimiterSibling,
 	width int,
@@ -617,14 +661,14 @@ func (r *renderer) sharedEmphasisCanonicalMarkers(
 		{'_', '_'},
 	}
 	for _, candidate := range candidates {
-		if r.sharedEmphasisCandidateMatches(current, child, candidate[0], candidate[1]) {
+		if r.threeLevelEmphasisCandidateMatches(current, child, candidate[0], candidate[1]) {
 			return candidate[0], candidate[1], true
 		}
 	}
 	return 0, 0, false
 }
 
-func (r *renderer) sharedEmphasisCandidateMatches(
+func (r *renderer) threeLevelEmphasisCandidateMatches(
 	current *frame,
 	child inlineDelimiterSibling,
 	baseMarker byte,
@@ -644,8 +688,17 @@ func (r *renderer) sharedEmphasisCandidateMatches(
 	copy(candidate[1:], inline)
 	candidate[len(candidate)-1] = baseMarker
 
-	expected := [][2]parser.Range{
-		{{Start: 0, End: 1}, {Start: len(candidate) - 1, End: len(candidate)}},
+	expected := threeLevelEmphasisExpectedPairs(len(candidate), child)
+	runs, ok := emphasisCandidateRuns(candidate, expected)
+	if !ok {
+		return false
+	}
+	return delimiterMatchesExpectedPairs(parser.ResolveDelimiterRuns(runs), expected)
+}
+
+func threeLevelEmphasisExpectedPairs(candidateLen int, child inlineDelimiterSibling) [][2]parser.Range {
+	return [][2]parser.Range{
+		{{Start: 0, End: 1}, {Start: candidateLen - 1, End: candidateLen}},
 		{
 			{Start: child.outputStart + 1, End: child.outputStart + 2},
 			{Start: child.outputEnd, End: child.outputEnd + 1},
@@ -655,14 +708,9 @@ func (r *renderer) sharedEmphasisCandidateMatches(
 			{Start: child.onlyDirectChildOutputEnd, End: child.onlyDirectChildOutputEnd + 1},
 		},
 	}
-	runs, ok := sharedEmphasisCandidateRuns(candidate, expected)
-	if !ok {
-		return false
-	}
-	return delimiterMatchesExpectedPairs(parser.ResolveDelimiterRuns(runs), expected)
 }
 
-func sharedEmphasisCandidateRuns(source []byte, pairs [][2]parser.Range) ([]parser.DelimiterRun, bool) {
+func emphasisCandidateRuns(source []byte, pairs [][2]parser.Range) ([]parser.DelimiterRun, bool) {
 	type runKey struct {
 		start  int
 		end    int
