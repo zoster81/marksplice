@@ -484,6 +484,36 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "x****1*1*a\n",
 		},
 		{
+			name:   "shared boundary children keep star prefix escaped",
+			source: "***_*[*a**\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\**_\\__\\[_a_*\n" {
+					t.Fatalf("canonical shared boundary star prefix = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "shared boundary children keep star prefix escaped with punctuation",
+			source: "***>*#*a**\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\**_\\>_\\#_a_*\n" {
+					t.Fatalf("canonical punctuated shared boundary star prefix = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "shared boundary underscore prefix remains unescaped",
+			source: "___>_[_a__\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "___\\>_\\[_a__\n" {
+					t.Fatalf("canonical shared boundary underscore prefix = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},
