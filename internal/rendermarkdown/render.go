@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/zoster81/marksplice/internal/parser"
 )
@@ -419,29 +420,36 @@ func (r *renderer) delimiterSiblingBeforeSourceTab(parent *frame, event parser.S
 }
 
 func delimiterRunFlankingChanged(source []byte, sourceEnd int, candidate []byte, candidateEnd int) bool {
-	sourceOpen, sourceClose, ok := delimiterRunFlankingAtEnd(source, sourceEnd)
+	sourceRange, marker, ok := delimiterRunRangeAtEnd(source, sourceEnd)
 	if !ok {
 		return false
 	}
-	candidateOpen, candidateClose, ok := delimiterRunFlankingAtEnd(candidate, candidateEnd)
-	return ok && (sourceOpen != candidateOpen || sourceClose != candidateClose)
+	candidateRange, candidateMarker, ok := delimiterRunRangeAtEnd(candidate, candidateEnd)
+	return ok && marker == candidateMarker &&
+		delimiterRangeFlankingChanged(source, sourceRange, candidate, candidateRange, marker)
 }
 
-func delimiterRunFlankingAtEnd(source []byte, end int) (bool, bool, bool) {
+func delimiterRangeFlankingChanged(source []byte, sourceRun parser.Range, candidate []byte, candidateRun parser.Range, marker byte) bool {
+	sourceSegment := parser.Range{Start: 0, End: len(source)}
+	candidateSegment := parser.Range{Start: 0, End: len(candidate)}
+	sourceOpen, sourceClose := parser.DelimiterFlanking(source, sourceSegment, sourceRun.Start, sourceRun.End, marker)
+	candidateOpen, candidateClose := parser.DelimiterFlanking(candidate, candidateSegment, candidateRun.Start, candidateRun.End, marker)
+	return sourceOpen != candidateOpen || sourceClose != candidateClose
+}
+
+func delimiterRunRangeAtEnd(source []byte, end int) (parser.Range, byte, bool) {
 	if end <= 0 || end > len(source) {
-		return false, false, false
+		return parser.Range{}, 0, false
 	}
 	marker := source[end-1]
-	if marker != '*' && marker != '_' {
-		return false, false, false
+	if marker != '*' && marker != '_' && marker != '~' {
+		return parser.Range{}, 0, false
 	}
 	start := end - 1
 	for start > 0 && source[start-1] == marker {
 		start--
 	}
-	segment := parser.Range{Start: 0, End: len(source)}
-	openCan, closeCan := parser.DelimiterFlanking(source, segment, start, end, marker)
-	return openCan, closeCan, true
+	return parser.Range{Start: start, End: end}, marker, true
 }
 
 func inlineAtLineStart(inline []byte) bool {
@@ -1050,7 +1058,7 @@ func (r *renderer) preserveNestedStrikethroughDelimiters(current *frame) {
 		return
 	}
 	parent := &r.stack[len(r.stack)-1]
-	r.restoreTrailingTabBeforeNestedStrikethrough(parent, current.event)
+	r.preserveNestedStrikethroughBoundaryFlanking(parent, current.event, currentDelimiter)
 	ancestor.delimiter = ancestorDelimiter
 	current.delimiter = currentDelimiter
 }
@@ -1064,15 +1072,40 @@ func (r *renderer) nearestStrikethroughAncestor() *frame {
 	return nil
 }
 
-func (r *renderer) restoreTrailingTabBeforeNestedStrikethrough(parent *frame, child parser.SemanticEvent) {
-	if parent == nil || child.Range.Start <= 0 || child.Range.Start > len(r.source) || r.source[child.Range.Start-1] != '\t' {
+func (r *renderer) preserveNestedStrikethroughBoundaryFlanking(parent *frame, child parser.SemanticEvent, delimiter string) {
+	if parent == nil || child.Range.Start <= 0 || child.Range.Start > len(r.source) ||
+		r.source[child.Range.Start-1] != '\t' || delimiter == "" {
 		return
 	}
 	const escapedTab = "&#9;"
 	if len(parent.inline) < len(escapedTab) || string(parent.inline[len(parent.inline)-len(escapedTab):]) != escapedTab {
 		return
 	}
+	sourceRun := parser.Range{Start: child.Range.Start, End: child.Range.Start + len(delimiter)}
+	if !sourceRun.Valid(len(r.source)) {
+		return
+	}
+	following := delimiterFollowingRuneBytes(r.source, sourceRun.End)
+	candidateRun := parser.Range{Start: len(parent.inline), End: len(parent.inline) + len(delimiter)}
+	candidate := make([]byte, candidateRun.End+len(following))
+	copy(candidate, parent.inline)
+	copy(candidate[candidateRun.Start:candidateRun.End], delimiter)
+	copy(candidate[candidateRun.End:], following)
+	if !delimiterRangeFlankingChanged(r.source, sourceRun, candidate, candidateRun, '~') {
+		return
+	}
 	parent.inline = append(parent.inline[:len(parent.inline)-len(escapedTab)], '\t')
+}
+
+func delimiterFollowingRuneBytes(source []byte, position int) []byte {
+	if position < 0 || position >= len(source) {
+		return nil
+	}
+	_, size := utf8.DecodeRune(source[position:])
+	if size <= 0 {
+		return nil
+	}
+	return source[position:min(position+size, len(source))]
 }
 
 func (r *renderer) sourceStrikethroughDelimiter(event parser.SemanticEvent) (string, bool) {

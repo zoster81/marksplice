@@ -180,12 +180,38 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "\\~~~x~~\n",
 		},
 		{
-			name:   "nested strikethrough preserves tab flanking",
+			name:   "nested strikethrough preserves tab when flanking changes",
 			source: "~#\t~#~~\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "~\\#\t~\\#~~\n" {
+					t.Fatalf("canonical nested strike tab = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "nested strikethrough keeps canonical tab entity when flanking is stable",
+			source: "~#\t~a~~\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "~\\#&#9;~a~~\n" {
+					t.Fatalf("canonical stable nested strike tab = %q", canonical)
+				}
+			},
 		},
 		{
 			name:   "nested strikethrough across emphasis preserves tab flanking",
 			source: "~*#\t~#~*~\n",
+		},
+		{
+			name:   "nested strikethrough across emphasis keeps stable tab entity",
+			source: "~*#\t~a~*~\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "~*\\#&#9;~a~*~\n" {
+					t.Fatalf("canonical stable wrapped strike tab = %q", canonical)
+				}
+			},
 		},
 		{
 			name:   "emphasis alternation survives strikethrough wrapper",
