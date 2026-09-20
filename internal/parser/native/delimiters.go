@@ -10,26 +10,13 @@ import (
 )
 
 type delimiterRun struct {
-	segment     int
-	start       int
-	end         int
-	marker      byte
-	length      int
-	remaining   int
-	canOpen     bool
-	canClose    bool
-	openActive  bool
-	openVersion int
-}
-
-type delimiterRef struct {
-	index   int
-	version int
-}
-
-type openerIndex struct {
-	byCategory [3][6][]delimiterRef
-	active     []int
+	segment  int
+	start    int
+	end      int
+	marker   byte
+	length   int
+	canOpen  bool
+	canClose bool
 }
 
 type delimiterMatch struct {
@@ -220,14 +207,13 @@ func collectDelimiterRuns(source []byte, block inlineBlock, exclusions [][]parse
 			}
 			canOpen, canClose := parser.DelimiterFlanking(source, segment, start, position, marker)
 			runs = append(runs, delimiterRun{
-				segment:   segmentIndex,
-				start:     start,
-				end:       position,
-				marker:    marker,
-				length:    length,
-				remaining: length,
-				canOpen:   canOpen,
-				canClose:  canClose,
+				segment:  segmentIndex,
+				start:    start,
+				end:      position,
+				marker:   marker,
+				length:   length,
+				canOpen:  canOpen,
+				canClose: canClose,
 			})
 		}
 	}
@@ -267,148 +253,40 @@ func delimiterPrecedingRune(source []byte, segment parser.Range, position int) (
 }
 
 func processDelimiters(runs []delimiterRun) []delimiterMatch {
-	index := openerIndex{active: make([]int, 0, len(runs))}
-	matches := make([]delimiterMatch, 0)
+	sharedRuns := make([]parser.DelimiterRun, len(runs))
+	for index, run := range runs {
+		sharedRuns[index] = parser.DelimiterRun{
+			Start:    run.start,
+			End:      run.end,
+			Marker:   run.marker,
+			CanOpen:  run.canOpen,
+			CanClose: run.canClose,
+		}
+	}
+	resolved := parser.ResolveDelimiterRuns(sharedRuns)
+	matches := make([]delimiterMatch, 0, len(resolved))
 	maxMatchedOpener := -1
-	for closerIndex := range runs {
-		closer := &runs[closerIndex]
-		for closer.canClose && closer.remaining > 0 {
-			openerIndex := nearestDelimiterOpener(runs, &index, *closer)
-			if openerIndex < 0 {
-				break
-			}
-			use := delimiterConsumption(runs[openerIndex], *closer)
-			match := delimiterMatchFor(runs[openerIndex], *closer, use)
-			match.hasDelimiterChild = maxMatchedOpener >= openerIndex
-			matches = append(matches, match)
-			maxMatchedOpener = max(maxMatchedOpener, openerIndex)
-			invalidateOpenersAbove(runs, &index, openerIndex)
-			consumeOpener(runs, &index, openerIndex, use)
-			closer.remaining -= use
+	for _, resolvedMatch := range resolved {
+		opener := runs[resolvedMatch.OpenerRun]
+		closer := runs[resolvedMatch.CloserRun]
+		match := delimiterMatch{
+			marker:            resolvedMatch.Marker,
+			level:             resolvedMatch.Level,
+			opener:            opener.start,
+			closer:            closer.start,
+			startSegment:      opener.segment,
+			endSegment:        closer.segment,
+			syntaxStart:       opener.start,
+			syntaxEnd:         closer.end,
+			openingConsumed:   resolvedMatch.OpeningConsumed,
+			closingConsumed:   resolvedMatch.ClosingConsumed,
+			content:           parser.Range{Start: opener.end, End: closer.start},
+			hasDelimiterChild: maxMatchedOpener >= resolvedMatch.OpenerRun,
 		}
-		if closer.canOpen && closer.remaining > 0 {
-			activateOpener(runs, &index, closerIndex)
-		}
+		matches = append(matches, match)
+		maxMatchedOpener = max(maxMatchedOpener, resolvedMatch.OpenerRun)
 	}
 	return matches
-}
-
-func nearestDelimiterOpener(runs []delimiterRun, index *openerIndex, closer delimiterRun) int {
-	markerIndex := delimiterMarkerIndex(closer.marker)
-	best := -1
-	for category := 0; category < len(index.byCategory[markerIndex]); category++ {
-		candidate := topCategoryOpener(runs, index, markerIndex, category)
-		if candidate < 0 || delimiterConsumption(runs[candidate], closer) == 0 {
-			continue
-		}
-		if candidate > best {
-			best = candidate
-		}
-	}
-	return best
-}
-
-func topCategoryOpener(runs []delimiterRun, index *openerIndex, markerIndex, category int) int {
-	stack := &index.byCategory[markerIndex][category]
-	for len(*stack) != 0 {
-		ref := (*stack)[len(*stack)-1]
-		run := runs[ref.index]
-		if ref.version == run.openVersion && run.openActive && run.remaining > 0 && openerCategory(run) == category {
-			return ref.index
-		}
-		*stack = (*stack)[:len(*stack)-1]
-	}
-	return -1
-}
-
-func delimiterConsumption(opener, closer delimiterRun) int {
-	if opener.marker != closer.marker || !opener.canOpen || !closer.canClose || opener.remaining == 0 || closer.remaining == 0 {
-		return 0
-	}
-	if (opener.canClose || closer.canOpen) && (opener.length+closer.length)%3 == 0 && closer.length%3 != 0 {
-		return 0
-	}
-	if opener.remaining >= 2 && closer.remaining >= 2 {
-		return 2
-	}
-	return 1
-}
-
-func activateOpener(runs []delimiterRun, index *openerIndex, runIndex int) {
-	run := &runs[runIndex]
-	if run.openActive || !run.canOpen || run.remaining == 0 {
-		return
-	}
-	run.openActive = true
-	index.active = append(index.active, runIndex)
-	pushOpenerCategory(runs, index, runIndex)
-}
-
-func pushOpenerCategory(runs []delimiterRun, index *openerIndex, runIndex int) {
-	run := runs[runIndex]
-	markerIndex := delimiterMarkerIndex(run.marker)
-	category := openerCategory(run)
-	index.byCategory[markerIndex][category] = append(index.byCategory[markerIndex][category], delimiterRef{index: runIndex, version: run.openVersion})
-}
-
-func consumeOpener(runs []delimiterRun, index *openerIndex, runIndex, count int) {
-	run := &runs[runIndex]
-	run.remaining -= count
-	run.openVersion++
-	if run.remaining == 0 {
-		run.openActive = false
-		if len(index.active) != 0 && index.active[len(index.active)-1] == runIndex {
-			index.active = index.active[:len(index.active)-1]
-		}
-		return
-	}
-	pushOpenerCategory(runs, index, runIndex)
-}
-
-func invalidateOpenersAbove(runs []delimiterRun, index *openerIndex, opener int) {
-	for len(index.active) != 0 && index.active[len(index.active)-1] > opener {
-		runIndex := index.active[len(index.active)-1]
-		index.active = index.active[:len(index.active)-1]
-		runs[runIndex].openActive = false
-		runs[runIndex].openVersion++
-	}
-}
-
-func delimiterMarkerIndex(marker byte) int {
-	switch marker {
-	case '_':
-		return 1
-	case '~':
-		return 2
-	default:
-		return 0
-	}
-}
-
-func openerCategory(run delimiterRun) int {
-	category := run.length % 3
-	if run.canClose {
-		category += 3
-	}
-	return category
-}
-
-func delimiterMatchFor(opener, closer delimiterRun, level int) delimiterMatch {
-	openingEnd := opener.start + opener.remaining
-	closingEnd := closer.start + closer.remaining
-	return delimiterMatch{
-		marker:          opener.marker,
-		level:           level,
-		opener:          opener.start,
-		closer:          closer.start,
-		startSegment:    opener.segment,
-		endSegment:      closer.segment,
-		syntaxStart:     opener.start,
-		syntaxEnd:       closer.end,
-		openingConsumed: parser.Range{Start: openingEnd - level, End: openingEnd},
-		closingConsumed: parser.Range{Start: closingEnd - level, End: closingEnd},
-		content:         parser.Range{Start: opener.end, End: closer.start},
-	}
 }
 
 type delimiterContentKey struct {

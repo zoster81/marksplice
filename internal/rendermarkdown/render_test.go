@@ -268,6 +268,56 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "three-level shared opener keeps leaf marker when closes are separated",
+			source: "__*#a*b_]_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "***\\#a*b*\\]*\n" {
+					t.Fatalf("canonical separated leaf close = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "three-level shared opener alternates leaf marker when closes are adjacent",
+			source: "__*#1*_ #_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "**_\\#1_* \\#*\n" {
+					t.Fatalf("canonical adjacent leaf close = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "three-level shared opener keeps same leaf marker across punctuation gap",
+			source: "__[*#a*b_]_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "**\\[*\\#a*b*\\]*\n" {
+					t.Fatalf("canonical punctuation-gap leaf = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "three-level shared opener flips base across adjacent punctuation gap",
+			source: "__#*#1*_ #_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "**\\#_\\#1_* \\#*\n" {
+					t.Fatalf("canonical punctuation-gap adjacent leaf = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "three-level shared opener same-marker spelling is a fixed point",
+			source: "**\\[*\\#a*b*\\]*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "**\\[*\\#a*b*\\]*\n" {
+					t.Fatalf("canonical same-marker fixed point = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},
@@ -290,6 +340,20 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 		{
 			name:   "unconsumed underscore run suffix survives nested emphasis",
 			source: "__a_*)*__\n",
+		},
+		{
+			name:   "two-child suffix avoids modulo-three collision",
+			source: "!\t_*1*\t*c*__\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\!&#9;_*1*&#9;*c*_\\_\n" {
+					t.Fatalf("canonical two-child suffix = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "star two-child suffix avoids modulo-three collision",
+			source: "!\t**1*\t*c***\n",
 		},
 		{
 			name:   "single-child star suffix run keeps canonical escaping",

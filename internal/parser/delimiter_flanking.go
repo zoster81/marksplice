@@ -16,6 +16,16 @@ func DelimiterFlanking(source []byte, segment Range, start, end int, marker byte
 	return delimiterFlankingFromClasses(beforeWhitespace, beforePunctuation, afterWhitespace, afterPunctuation, marker)
 }
 
+// DelimiterRunsHaveModuloThreeConflict reports whether CommonMark's
+// emphasis odd-match rule prevents an otherwise flanking-compatible pair.
+func DelimiterRunsHaveModuloThreeConflict(openLength int, openCanClose bool, closeLength int, closeCanOpen bool) bool {
+	if openLength <= 0 || closeLength <= 0 {
+		return false
+	}
+	return (openCanClose || closeCanOpen) &&
+		(openLength+closeLength)%3 == 0 && closeLength%3 != 0
+}
+
 func delimiterFlankingFromClasses(beforeWhitespace, beforePunctuation, afterWhitespace, afterPunctuation bool, marker byte) (bool, bool) {
 	leftFlanking := !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation)
 	rightFlanking := !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation)
