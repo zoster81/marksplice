@@ -230,6 +230,14 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "__#_a)*)*__ a_\n",
 		},
 		{
+			name:   "anchored mixed star delimiter run chain preserves deep hierarchy",
+			source: "*#*b#*a)_)_** a*\n",
+		},
+		{
+			name:   "anchored mixed underscore delimiter run chain preserves deep hierarchy",
+			source: "_#_b#_a)*)*__ a_\n",
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},

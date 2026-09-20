@@ -942,9 +942,9 @@ func (r *renderer) preserveSharedEmphasisRunComponent(current *frame) {
 	if width == 0 || !ok {
 		return
 	}
-	marker := currentSource[0]
 	previous := current.event
 	component := make([]int, 0, 2)
+	sameMarker := true
 	for index := len(r.stack) - 1; index >= 0; index-- {
 		ancestor := &r.stack[index]
 		ancestorWidth := delimiterWidth(ancestor.event.Kind)
@@ -952,23 +952,64 @@ func (r *renderer) preserveSharedEmphasisRunComponent(current *frame) {
 			continue
 		}
 		ancestorSource, ok := r.sourceEmphasisDelimiter(ancestor.event.Kind, ancestor.event.Range)
-		if !ok || ancestorWidth != width || ancestorSource[0] != marker ||
+		if !ok || ancestorWidth != width ||
 			!emphasisDelimiterEventsShareSourceRun(ancestor.event, previous, width) {
 			break
 		}
+		sameMarker = sameMarker && ancestorSource[0] == currentSource[0]
 		component = append(component, index)
 		previous = ancestor.event
 	}
+	anchorIndex := -1
 	if len(component) < 2 {
 		return
 	}
+	if !sameMarker {
+		var anchored bool
+		anchorIndex, anchored = r.sharedEmphasisRunComponentAnchor(component, width)
+		if !anchored {
+			return
+		}
+	}
 	current.delimiter = currentSource
 	for _, index := range component {
+		r.preserveFrameSourceEmphasisDelimiter(index)
+	}
+	if anchorIndex >= 0 {
+		r.preserveFrameSourceEmphasisDelimiter(anchorIndex)
+	}
+}
+
+func (r *renderer) sharedEmphasisRunComponentAnchor(component []int, width int) (int, bool) {
+	if len(component) == 0 {
+		return -1, false
+	}
+	rootIndex := component[len(component)-1]
+	rootSource, ok := r.sourceEmphasisDelimiter(r.stack[rootIndex].event.Kind, r.stack[rootIndex].event.Range)
+	if !ok {
+		return -1, false
+	}
+	for index := rootIndex - 1; index >= 0; index-- {
 		ancestor := &r.stack[index]
-		sourceDelimiter, ok := r.sourceEmphasisDelimiter(ancestor.event.Kind, ancestor.event.Range)
-		if ok {
-			ancestor.delimiter = sourceDelimiter
+		if delimiterWidth(ancestor.event.Kind) != width {
+			continue
 		}
+		ancestorSource, ok := r.sourceEmphasisDelimiter(ancestor.event.Kind, ancestor.event.Range)
+		if ok && ancestorSource[0] == rootSource[0] {
+			return index, true
+		}
+	}
+	return -1, false
+}
+
+func (r *renderer) preserveFrameSourceEmphasisDelimiter(index int) {
+	if index < 0 || index >= len(r.stack) {
+		return
+	}
+	ancestor := &r.stack[index]
+	sourceDelimiter, ok := r.sourceEmphasisDelimiter(ancestor.event.Kind, ancestor.event.Range)
+	if ok {
+		ancestor.delimiter = sourceDelimiter
 	}
 }
 
