@@ -408,6 +408,82 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "deep separated boundary encodes lowercase tail for underscore flanking",
+			source: "_#_1[*\xff*0*a*b_]_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\#*1\\[_\xff*0*a_&#98;*\\]*\n" {
+					t.Fatalf("canonical lowercase boundary entity = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "deep separated boundary encodes uppercase tail for underscore flanking",
+			source: "_#_1[*\xff*0*a*A_]_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\#*1\\[_\xff*0*a_&#65;*\\]*\n" {
+					t.Fatalf("canonical uppercase boundary entity = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "deep separated boundary encodes digit tail for underscore flanking",
+			source: "_#_1[*\xff*0*a*0_]_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\#*1\\[_\xff*0*a_&#48;*\\]*\n" {
+					t.Fatalf("canonical digit boundary entity = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "deep separated boundary encodes compound alphanumeric tail",
+			source: "_#_1[*\xff*0*a*b]_]_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\#*1\\[_\xff*0*a_&#98;\\]*\\]*\n" {
+					t.Fatalf("canonical compound boundary entity = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "final shared opener preserves tab flanking after marker reconciliation",
+			source: "**~*>*:*\t1*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "**\\~_\\>_\\:*\t1*\n" {
+					t.Fatalf("canonical final shared opener tab boundary = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "final shared opener combines marker repair with tab boundary",
+			source: "**~*>\x00*:*\t1*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "**\\~_\\>\x00_\\:*\t1*\n" {
+					t.Fatalf("canonical final shared opener combined boundary = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "unconsumed star run prefix survives shallow nested emphasis",
+			source: "***a*a*\n",
+		},
+		{
+			name:   "multiple unconsumed stars survive shallow nested emphasis",
+			source: "****1*1*\n",
+		},
+		{
+			name:   "unconsumed star run survives shallow nested emphasis after text",
+			source: "x***a*a*!\n",
+		},
+		{
+			name:   "multiple unconsumed stars survive shallow nested emphasis before text",
+			source: "x****1*1*a\n",
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},

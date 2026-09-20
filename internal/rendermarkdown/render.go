@@ -647,12 +647,54 @@ func (r *renderer) repairSeparatedBoundaryFourLevelEmphasis(
 		trial[pair[0].Start] = markers[index]
 		trial[pair[1].Start] = markers[index]
 	}
-	if !delimiterCandidateMatchesPhysicalRuns(trial, pairs) {
-		return false
+	trialPairs := pairs
+	if !delimiterCandidateMatchesPhysicalRuns(trial, trialPairs) {
+		var ok bool
+		trial, trialPairs, ok = encodeSeparatedBoundaryASCIITail(trial, trialPairs)
+		if !ok || !delimiterCandidateMatchesPhysicalRuns(trial, trialPairs) {
+			return false
+		}
 	}
 	current.delimiter = string(trial[0])
-	copy(current.inline, trial[1:len(trial)-1])
+	current.inline = append(current.inline[:0], trial[1:len(trial)-1]...)
 	return true
+}
+
+func encodeSeparatedBoundaryASCIITail(candidate []byte, pairs [][2]parser.Range) ([]byte, [][2]parser.Range, bool) {
+	if len(pairs) != 4 {
+		return nil, nil, false
+	}
+	closeRange := pairs[2][1]
+	position := closeRange.End
+	if !closeRange.Valid(len(candidate)) || closeRange.End-closeRange.Start != 1 ||
+		candidate[closeRange.Start] != '_' || position >= len(candidate) || !asciiAlphaNumeric(candidate[position]) {
+		return nil, nil, false
+	}
+	closeRun := sourceEmphasisRunAt(candidate, closeRange.Start, 1, '_')
+	if !closeRun.Valid(len(candidate)) {
+		return nil, nil, false
+	}
+	segment := parser.Range{Start: 0, End: len(candidate)}
+	_, canClose := parser.DelimiterFlanking(candidate, segment, closeRun.Start, closeRun.End, '_')
+	if canClose {
+		return nil, nil, false
+	}
+	entity := []byte(fmt.Sprintf("&#%d;", candidate[position]))
+	delta := len(entity) - 1
+	encoded := make([]byte, 0, len(candidate)+delta)
+	encoded = append(encoded, candidate[:position]...)
+	encoded = append(encoded, entity...)
+	encoded = append(encoded, candidate[position+1:]...)
+	shifted := append([][2]parser.Range(nil), pairs...)
+	for pairIndex := range shifted {
+		for side := range shifted[pairIndex] {
+			if shifted[pairIndex][side].Start > position {
+				shifted[pairIndex][side].Start += delta
+				shifted[pairIndex][side].End += delta
+			}
+		}
+	}
+	return encoded, shifted, true
 }
 
 func (r *renderer) separatedBoundaryFourLevelSource(
@@ -670,9 +712,6 @@ func (r *renderer) separatedBoundaryFourLevelSource(
 		return false
 	}
 	if current.event.Range.Start+1 == child.sourceRange.Start {
-		return false
-	}
-	if child.onlyDirectChildSourceRange.End != child.sourceRange.End-1 {
 		return false
 	}
 	return child.sourceRange.End != current.event.Range.End-1
@@ -780,16 +819,9 @@ func (r *renderer) reconcileFinalSharedEmphasisPair(current *frame) {
 	if !ok {
 		return
 	}
-	if baseMarker, leafMarker, rewrite := r.threeLevelEmphasisCanonicalMarkers(current, child, width); rewrite {
-		current.delimiter = string(baseMarker)
-		rewriteInlineSiblingMarker(current.inline, child.outputStart, child.outputEnd, width, baseMarker)
-		rewriteInlineSiblingMarker(
-			current.inline,
-			child.onlyDirectChildOutputStart,
-			child.onlyDirectChildOutputEnd,
-			width,
-			leafMarker,
-		)
+	if candidate, rewrite := r.threeLevelEmphasisCanonicalCandidate(current, child, width); rewrite {
+		current.delimiter = string(candidate.delimiter)
+		current.inline = candidate.inline
 		return
 	}
 	leafMarker, rewriteLeaf := r.sharedEmphasisLeafMarker(current, child, width)
@@ -823,6 +855,11 @@ type threeLevelEmphasisSourceMarkers struct {
 	outer byte
 	child byte
 	leaf  byte
+}
+
+type threeLevelEmphasisCandidate struct {
+	delimiter byte
+	inline    []byte
 }
 
 func (r *renderer) repairSharedCloseThreeLevelEmphasis(current *frame) {
@@ -937,19 +974,12 @@ func (r *renderer) repairSeparatedThreeLevelEmphasis(current *frame) {
 		r.threeLevelEmphasisCurrentMatches(current, child) {
 		return
 	}
-	baseMarker, leafMarker, ok := r.threeLevelEmphasisCanonicalMarkers(current, child, width)
+	candidate, ok := r.threeLevelEmphasisCanonicalCandidate(current, child, width)
 	if !ok {
 		return
 	}
-	current.delimiter = string(baseMarker)
-	rewriteInlineSiblingMarker(current.inline, child.outputStart, child.outputEnd, width, baseMarker)
-	rewriteInlineSiblingMarker(
-		current.inline,
-		child.onlyDirectChildOutputStart,
-		child.onlyDirectChildOutputEnd,
-		width,
-		leafMarker,
-	)
+	current.delimiter = string(candidate.delimiter)
+	current.inline = candidate.inline
 }
 
 func (r *renderer) threeLevelEmphasisCurrentMatches(current *frame, child inlineDelimiterSibling) bool {
@@ -968,56 +998,71 @@ func (r *renderer) threeLevelEmphasisCurrentMatches(current *frame, child inline
 	return delimiterMatchesExpectedPairs(parser.ResolveDelimiterRuns(runs), expected)
 }
 
-func (r *renderer) threeLevelEmphasisCanonicalMarkers(
+func (r *renderer) threeLevelEmphasisCanonicalCandidate(
 	current *frame,
 	child inlineDelimiterSibling,
 	width int,
-) (byte, byte, bool) {
+) (threeLevelEmphasisCandidate, bool) {
 	if current == nil || width != 1 || child.descendantDepth != 1 || child.directEmphasisChildren != 1 ||
 		!child.onlyDirectChildValid || child.kind != parser.SemanticEmphasis ||
 		child.onlyDirectChildKind != parser.SemanticEmphasis {
-		return 0, 0, false
+		return threeLevelEmphasisCandidate{}, false
 	}
-	candidates := [][2]byte{
+	markers := [][2]byte{
 		{'*', '_'},
 		{'*', '*'},
 		{'_', '*'},
 		{'_', '_'},
 	}
-	for _, candidate := range candidates {
-		if r.threeLevelEmphasisCandidateMatches(current, child, candidate[0], candidate[1]) {
-			return candidate[0], candidate[1], true
-		}
+	if candidate, ok := threeLevelEmphasisCandidateForInline(current.inline, child, markers); ok {
+		return candidate, true
 	}
-	return 0, 0, false
+	tabInline, ok := r.threeLevelEmphasisSourceTabInline(current, child)
+	if !ok {
+		return threeLevelEmphasisCandidate{}, false
+	}
+	return threeLevelEmphasisCandidateForInline(tabInline, child, markers)
 }
 
-func (r *renderer) threeLevelEmphasisCandidateMatches(
+func threeLevelEmphasisCandidateForInline(
+	baseInline []byte,
+	child inlineDelimiterSibling,
+	markers [][2]byte,
+) (threeLevelEmphasisCandidate, bool) {
+	for _, marker := range markers {
+		inline := append([]byte(nil), baseInline...)
+		rewriteInlineSiblingMarker(inline, child.outputStart, child.outputEnd, 1, marker[0])
+		rewriteInlineSiblingMarker(
+			inline,
+			child.onlyDirectChildOutputStart,
+			child.onlyDirectChildOutputEnd,
+			1,
+			marker[1],
+		)
+		candidate := delimitedInlineCandidate(inline, marker[0])
+		expected := threeLevelEmphasisExpectedPairs(len(candidate), child)
+		if delimiterCandidateMatches(candidate, expected) {
+			return threeLevelEmphasisCandidate{delimiter: marker[0], inline: inline}, true
+		}
+	}
+	return threeLevelEmphasisCandidate{}, false
+}
+
+func (r *renderer) threeLevelEmphasisSourceTabInline(
 	current *frame,
 	child inlineDelimiterSibling,
-	baseMarker byte,
-	leafMarker byte,
-) bool {
-	inline := append([]byte(nil), current.inline...)
-	rewriteInlineSiblingMarker(inline, child.outputStart, child.outputEnd, 1, baseMarker)
-	rewriteInlineSiblingMarker(
-		inline,
-		child.onlyDirectChildOutputStart,
-		child.onlyDirectChildOutputEnd,
-		1,
-		leafMarker,
-	)
-	candidate := make([]byte, len(inline)+2)
-	candidate[0] = baseMarker
-	copy(candidate[1:], inline)
-	candidate[len(candidate)-1] = baseMarker
-
-	expected := threeLevelEmphasisExpectedPairs(len(candidate), child)
-	runs, ok := emphasisCandidateRuns(candidate, expected)
-	if !ok {
-		return false
+) ([]byte, bool) {
+	position := child.outputEnd
+	if current == nil || child.sourceRange.End >= len(r.source) || r.source[child.sourceRange.End] != '\t' ||
+		position < 0 || position+4 > len(current.inline) ||
+		string(current.inline[position:position+4]) != "&#9;" {
+		return nil, false
 	}
-	return delimiterMatchesExpectedPairs(parser.ResolveDelimiterRuns(runs), expected)
+	inline := make([]byte, 0, len(current.inline)-3)
+	inline = append(inline, current.inline[:position]...)
+	inline = append(inline, '\t')
+	inline = append(inline, current.inline[position+4:]...)
+	return inline, true
 }
 
 func threeLevelEmphasisExpectedPairs(candidateLen int, child inlineDelimiterSibling) [][2]parser.Range {
@@ -1373,21 +1418,35 @@ func (r *renderer) sourceUnconsumedRunSuffixMarker(event parser.SemanticEvent) (
 }
 
 func (r *renderer) preserveUnconsumedEmphasisRunPrefix(parent *frame, current *frame) {
-	previous, ok := textSiblingBeforeTopologySensitiveEmphasis(parent, current)
+	previous, ok := textSiblingBeforeEmphasis(parent, current)
 	if !ok {
 		return
 	}
-	sourceDelimiter, ok := r.sourceUnconsumedRunDelimiter(previous, current.event)
-	if !ok || !escapedTextMarkerTail(parent.inline, previous.marker) {
+	sourceDelimiter, sourceRunLength, ok := r.sourceUnconsumedRunDelimiter(previous, current.event)
+	if !ok {
 		return
 	}
-	parent.inline = append(parent.inline[:len(parent.inline)-2], previous.marker)
+	preserveCount := 1
+	if !current.unconsumedPrefixTopologySensitive() {
+		if !r.shallowUnconsumedPrefixTopologySensitive(current) {
+			return
+		}
+		preserveCount = sourceRunLength
+	}
+	if !escapedTextMarkerRunTail(parent.inline, previous.marker, preserveCount) {
+		return
+	}
+	start := len(parent.inline) - 2*preserveCount
+	for index := 0; index < preserveCount; index++ {
+		parent.inline[start+index] = previous.marker
+	}
+	parent.inline = parent.inline[:start+preserveCount]
 	parent.lastTextSibling = inlineTextSibling{}
 	current.delimiter = sourceDelimiter
 }
 
-func textSiblingBeforeTopologySensitiveEmphasis(parent *frame, current *frame) (inlineTextSibling, bool) {
-	if parent == nil || current == nil || !current.unconsumedPrefixTopologySensitive() {
+func textSiblingBeforeEmphasis(parent *frame, current *frame) (inlineTextSibling, bool) {
+	if parent == nil || current == nil {
 		return inlineTextSibling{}, false
 	}
 	previous := parent.lastTextSibling
@@ -1401,6 +1460,39 @@ func textSiblingBeforeTopologySensitiveEmphasis(parent *frame, current *frame) (
 func (current *frame) unconsumedPrefixTopologySensitive() bool {
 	return current.emphasisDescendantDepth >= 2 ||
 		(current.directEmphasisChildren >= 2 && current.boundarySensitiveDirectEmphasisChild)
+}
+
+func (r *renderer) shallowUnconsumedPrefixTopologySensitive(current *frame) bool {
+	if current == nil || current.emphasisDescendantDepth != 1 || current.directEmphasisChildren != 1 ||
+		!current.onlyDirectEmphasisChild.valid || delimiterWidth(current.event.Kind) != 1 {
+		return false
+	}
+	child := current.onlyDirectEmphasisChild
+	if child.descendantDepth != 0 || child.directEmphasisChildren != 0 || delimiterWidth(child.kind) != 1 {
+		return false
+	}
+	return r.shallowUnconsumedPrefixSourceBoundary(current, child)
+}
+
+func (r *renderer) shallowUnconsumedPrefixSourceBoundary(current *frame, child inlineDelimiterSibling) bool {
+	currentDelimiter, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	childDelimiter, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
+	if !currentOK || !childOK || currentDelimiter[0] != '*' || childDelimiter[0] != '*' {
+		return false
+	}
+	tailPosition := child.sourceRange.End
+	return tailPosition < current.event.Range.End-1 && tailPosition < len(r.source) &&
+		asciiAlphaNumeric(r.source[tailPosition]) && r.sourceEmphasisCloserDualPurpose(child, '*')
+}
+
+func (r *renderer) sourceEmphasisCloserDualPurpose(child inlineDelimiterSibling, marker byte) bool {
+	closeRun := sourceEmphasisRunAt(r.source, child.sourceRange.End-1, 1, marker)
+	if !closeRun.Valid(len(r.source)) {
+		return false
+	}
+	segment := parser.Range{Start: 0, End: len(r.source)}
+	canOpen, canClose := parser.DelimiterFlanking(r.source, segment, closeRun.Start, closeRun.End, marker)
+	return canOpen && canClose
 }
 
 func (r *renderer) recordDirectEmphasisChild(parent *frame, current frame, sibling inlineDelimiterSibling) {
@@ -1438,21 +1530,34 @@ func (r *renderer) recordDirectEmphasisChild(parent *frame, current frame, sibli
 	}
 }
 
-func (r *renderer) sourceUnconsumedRunDelimiter(previous inlineTextSibling, event parser.SemanticEvent) (string, bool) {
+func (r *renderer) sourceUnconsumedRunDelimiter(previous inlineTextSibling, event parser.SemanticEvent) (string, int, bool) {
 	sourceDelimiter, ok := r.sourceEmphasisDelimiter(event.Kind, event.Range)
 	if !ok || sourceDelimiter[0] != previous.marker {
-		return "", false
+		return "", 0, false
 	}
 	markerPosition := previous.sourceRange.End - 1
-	if markerPosition < 0 || markerPosition >= len(r.source) ||
+	if markerPosition < previous.sourceRange.Start || markerPosition >= len(r.source) ||
 		r.source[markerPosition] != previous.marker || sourceByteEscapedAt(r.source, markerPosition) {
-		return "", false
+		return "", 0, false
 	}
-	return sourceDelimiter, true
+	start := markerPosition
+	for start > previous.sourceRange.Start && r.source[start-1] == previous.marker && !sourceByteEscapedAt(r.source, start-1) {
+		start--
+	}
+	return sourceDelimiter, markerPosition - start + 1, true
 }
 
-func escapedTextMarkerTail(inline []byte, marker byte) bool {
-	return len(inline) >= 2 && inline[len(inline)-2] == '\\' && inline[len(inline)-1] == marker
+func escapedTextMarkerRunTail(inline []byte, marker byte, count int) bool {
+	if count <= 0 || len(inline) < 2*count {
+		return false
+	}
+	start := len(inline) - 2*count
+	for index := 0; index < count; index++ {
+		if inline[start+2*index] != '\\' || inline[start+2*index+1] != marker {
+			return false
+		}
+	}
+	return true
 }
 
 func sourceByteEscapedAt(source []byte, position int) bool {
