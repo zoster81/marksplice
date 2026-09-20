@@ -370,7 +370,7 @@ func (r *renderer) appendText(event parser.SemanticEvent) error {
 	value := event.Value
 	escaped := escapeText(value)
 	if r.preserveUnconsumedEmphasisRunSuffix(current, event) {
-		escaped = value[:1] + escapeText(value[1:])
+		escaped = r.escapeUnconsumedEmphasisRunSuffix(current, event)
 	} else if r.preserveLeadingTabAfterDelimiter(current, event) {
 		escaped = "\t" + escapeText(value[1:])
 	} else if inlineAtLineStart(current.inline) {
@@ -549,6 +549,30 @@ func (r *renderer) preserveUnconsumedEmphasisRunSuffix(parent *frame, event pars
 		return false
 	}
 	return string(parent.inline[len(parent.inline)-len(sourceDelimiter):]) == sourceDelimiter
+}
+
+func (r *renderer) escapeUnconsumedEmphasisRunSuffix(parent *frame, event parser.SemanticEvent) string {
+	if r.preserveTabAfterUnconsumedRunSuffix(parent, event) {
+		return event.Value[:2] + escapeText(event.Value[2:])
+	}
+	return event.Value[:1] + escapeText(event.Value[1:])
+}
+
+func (r *renderer) preserveTabAfterUnconsumedRunSuffix(parent *frame, event parser.SemanticEvent) bool {
+	if parent == nil || len(event.Value) < 2 || event.Value[1] != '\t' ||
+		event.Range.Start+1 >= len(r.source) || r.source[event.Range.Start+1] != '\t' {
+		return false
+	}
+	sourceOpen, sourceClose, ok := delimiterRunFlankingAtEnd(r.source, event.Range.Start+1)
+	if !ok {
+		return false
+	}
+	candidate := make([]byte, len(parent.inline)+2)
+	copy(candidate, parent.inline)
+	candidate[len(parent.inline)] = event.Value[0]
+	candidate[len(parent.inline)+1] = '&'
+	candidateOpen, candidateClose, ok := delimiterRunFlankingAtEnd(candidate, len(parent.inline)+1)
+	return ok && (sourceOpen != candidateOpen || sourceClose != candidateClose)
 }
 
 func (r *renderer) sourceUnconsumedRunSuffixMarker(event parser.SemanticEvent) (byte, bool) {

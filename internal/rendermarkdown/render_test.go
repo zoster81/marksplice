@@ -212,12 +212,26 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "__a_*)*__\n",
 		},
 		{
+			name:   "tab after unconsumed suffix preserves run flanking",
+			source: "*_)_**\t1\n",
+		},
+		{
 			name:   "shallow unconsumed suffix keeps canonical escaping",
 			source: "*x**\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
 				if canonical != "*x*\\*\n" {
 					t.Fatalf("canonical shallow unconsumed suffix = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "tab after shallow unconsumed suffix stays canonical",
+			source: "*x**\t1\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*x*\\*&#9;1\n" {
+					t.Fatalf("canonical shallow suffix tab = %q", canonical)
 				}
 			},
 		},
