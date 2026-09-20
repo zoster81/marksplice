@@ -590,7 +590,7 @@ func (r *renderer) repairDeepUniqueEmphasisChain(parent *frame, current *frame) 
 	if !ok {
 		return
 	}
-	if r.repairDeepSharedCloseEmphasis(current, child, candidate, pairs) ||
+	if r.repairSpecialDeepEmphasisTopology(current, child, candidate, pairs) ||
 		delimiterCandidateMatches(candidate, pairs) {
 		return
 	}
@@ -617,6 +617,65 @@ func (r *renderer) repairDeepUniqueEmphasisChain(parent *frame, current *frame) 
 		copy(current.inline, trial[1:len(trial)-1])
 		return
 	}
+}
+
+func (r *renderer) repairSpecialDeepEmphasisTopology(
+	current *frame,
+	child inlineDelimiterSibling,
+	candidate []byte,
+	pairs [][2]parser.Range,
+) bool {
+	return r.repairDeepSharedCloseEmphasis(current, child, candidate, pairs) ||
+		r.repairSeparatedBoundaryFourLevelEmphasis(current, child, candidate, pairs)
+}
+
+func (r *renderer) repairSeparatedBoundaryFourLevelEmphasis(
+	current *frame,
+	child inlineDelimiterSibling,
+	candidate []byte,
+	pairs [][2]parser.Range,
+) bool {
+	if len(pairs) != 4 || !r.separatedBoundaryFourLevelSource(current, child) {
+		return false
+	}
+	if delimiterCandidateMatchesPhysicalRuns(candidate, pairs) {
+		return true
+	}
+	trial := append([]byte(nil), candidate...)
+	markers := [4]byte{'*', '*', '_', '*'}
+	for index, pair := range pairs {
+		trial[pair[0].Start] = markers[index]
+		trial[pair[1].Start] = markers[index]
+	}
+	if !delimiterCandidateMatchesPhysicalRuns(trial, pairs) {
+		return false
+	}
+	current.delimiter = string(trial[0])
+	copy(current.inline, trial[1:len(trial)-1])
+	return true
+}
+
+func (r *renderer) separatedBoundaryFourLevelSource(
+	current *frame,
+	child inlineDelimiterSibling,
+) bool {
+	if current == nil || !child.onlyDirectChildValid ||
+		delimiterWidth(current.event.Kind) != 1 || delimiterWidth(child.kind) != 1 ||
+		delimiterWidth(child.onlyDirectChildKind) != 1 {
+		return false
+	}
+	currentSource, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	childSource, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
+	if !currentOK || !childOK || currentSource[0] != childSource[0] {
+		return false
+	}
+	if current.event.Range.Start+1 == child.sourceRange.Start {
+		return false
+	}
+	if child.onlyDirectChildSourceRange.End != child.sourceRange.End-1 {
+		return false
+	}
+	return child.sourceRange.End != current.event.Range.End-1
 }
 
 func (r *renderer) repairDeepSharedCloseEmphasis(

@@ -388,6 +388,26 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "deep separated boundaries choose stable marker ownership",
+			source: "_#_1[*\xff*0*a*_]_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\#*1\\[_\xff*0*a_*\\]*\n" {
+					t.Fatalf("canonical deep separated boundaries = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "deep separated boundary fixed point stays unchanged",
+			source: "*\\#*1\\[_\xff*0*a_*\\]*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\#*1\\[_\xff*0*a_*\\]*\n" {
+					t.Fatalf("canonical deep separated fixed point = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},
