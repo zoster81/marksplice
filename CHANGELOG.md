@@ -10,7 +10,7 @@ Marksplice follows Semantic Versioning-compatible Go module tags. `v1.0.0` estab
 - Add explicit canonical multiline footnote construction for immediate and deferred `DocumentBuilder` definitions while retaining the established single-line methods and fail-closed parser/source proof.
 - Add final-state managed-TOC composition so same-snapshot structural changes and TOC synchronization can produce one atomic original-snapshot-bound `ChangeSet` derived from the final candidate.
 - Fix `DocumentBuilder` footnote ownership proof so a valid single-line definition can be followed by another block without `Markdown()` incorrectly rejecting the generated document.
-- Fix canonical Markdown semantic round-trip and byte idempotence across nested emphasis/strong/strikethrough delimiter collisions, wrapper nesting, escaped-tilde boundaries, and tab-sensitive delimiter flanking while preserving ordinary canonical formatting.
+- Fix canonical Markdown semantic round-trip and byte idempotence across nested emphasis/strong/strikethrough delimiter collisions, wrapper nesting, escaped-tilde boundaries, tab-sensitive delimiter flanking, shared delimiter-run ownership, and boundary-sensitive emphasis sibling topology while preserving ordinary canonical formatting.
 - Fix Native raw link-destination parsing to reject ASCII control characters, including control bytes following a backslash, as required by CommonMark 0.31.2.
 
 ## v1.1.1 — 2026-09-17

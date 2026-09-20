@@ -25,20 +25,22 @@ type Backend interface {
 }
 
 type frame struct {
-	event                   parser.SemanticEvent
-	inline                  []byte
-	blocks                  []string
-	items                   []listItem
-	rows                    []tableRow
-	cells                   []tableCell
-	task                    bool
-	checked                 bool
-	delimiter               string
-	bareAutoLinkTail        bool
-	lastList                listBoundary
-	lastDelimiterSibling    inlineDelimiterSibling
-	lastTextSibling         inlineTextSibling
-	emphasisDescendantDepth int
+	event                                parser.SemanticEvent
+	inline                               []byte
+	blocks                               []string
+	items                                []listItem
+	rows                                 []tableRow
+	cells                                []tableCell
+	task                                 bool
+	checked                              bool
+	delimiter                            string
+	bareAutoLinkTail                     bool
+	lastList                             listBoundary
+	lastDelimiterSibling                 inlineDelimiterSibling
+	lastTextSibling                      inlineTextSibling
+	emphasisDescendantDepth              int
+	directEmphasisChildren               int
+	boundarySensitiveDirectEmphasisChild bool
 }
 
 type inlineDelimiterSibling struct {
@@ -531,6 +533,7 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 		valid:           true,
 	}
 	parent.emphasisDescendantDepth = max(parent.emphasisDescendantDepth, current.emphasisDescendantDepth+1)
+	r.recordDirectEmphasisChild(parent, current)
 	return nil
 }
 
@@ -594,7 +597,7 @@ func (r *renderer) sourceUnconsumedRunSuffixMarker(event parser.SemanticEvent) (
 }
 
 func (r *renderer) preserveUnconsumedEmphasisRunPrefix(parent *frame, current *frame) {
-	previous, ok := textSiblingBeforeDeepEmphasis(parent, current)
+	previous, ok := textSiblingBeforeTopologySensitiveEmphasis(parent, current)
 	if !ok {
 		return
 	}
@@ -607,8 +610,8 @@ func (r *renderer) preserveUnconsumedEmphasisRunPrefix(parent *frame, current *f
 	current.delimiter = sourceDelimiter
 }
 
-func textSiblingBeforeDeepEmphasis(parent *frame, current *frame) (inlineTextSibling, bool) {
-	if parent == nil || current == nil || current.emphasisDescendantDepth < 2 {
+func textSiblingBeforeTopologySensitiveEmphasis(parent *frame, current *frame) (inlineTextSibling, bool) {
+	if parent == nil || current == nil || !current.unconsumedPrefixTopologySensitive() {
 		return inlineTextSibling{}, false
 	}
 	previous := parent.lastTextSibling
@@ -617,6 +620,41 @@ func textSiblingBeforeDeepEmphasis(parent *frame, current *frame) (inlineTextSib
 		previous.outputEnd == len(parent.inline) &&
 		previous.sourceRange.Start < previous.sourceRange.End
 	return previous, ok
+}
+
+func (current *frame) unconsumedPrefixTopologySensitive() bool {
+	return current.emphasisDescendantDepth >= 2 ||
+		(current.directEmphasisChildren >= 2 && current.boundarySensitiveDirectEmphasisChild)
+}
+
+func (r *renderer) recordDirectEmphasisChild(parent *frame, current frame) {
+	if parent == nil || delimiterWidth(parent.event.Kind) == 0 {
+		return
+	}
+	parent.directEmphasisChildren++
+	parentDelimiter, ok := r.sourceEmphasisDelimiter(parent.event.Kind, parent.event.Range)
+	if !ok {
+		return
+	}
+	childDelimiter, ok := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	if !ok || parentDelimiter[0] != childDelimiter[0] {
+		return
+	}
+	width := delimiterWidth(current.event.Kind)
+	if width == 0 || current.event.Range.Start+width > len(r.source) {
+		return
+	}
+	segment := parser.Range{Start: 0, End: len(r.source)}
+	canOpen, canClose := parser.DelimiterFlanking(
+		r.source,
+		segment,
+		current.event.Range.Start,
+		current.event.Range.Start+width,
+		childDelimiter[0],
+	)
+	if canOpen && canClose {
+		parent.boundarySensitiveDirectEmphasisChild = true
+	}
 }
 
 func (r *renderer) sourceUnconsumedRunDelimiter(previous inlineTextSibling, event parser.SemanticEvent) (string, bool) {

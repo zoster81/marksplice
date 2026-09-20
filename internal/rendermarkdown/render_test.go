@@ -246,6 +246,14 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "__#_a)*)*__\n",
 		},
 		{
+			name:   "unconsumed star run prefix survives sensitive emphasis siblings",
+			source: "**_)_*#* a*\n",
+		},
+		{
+			name:   "unconsumed underscore run prefix survives sensitive emphasis siblings",
+			source: "__*)*_*#_ a_\n",
+		},
+		{
 			name:   "unconsumed star run suffix survives nested emphasis",
 			source: "**a*_)_**\n",
 		},
