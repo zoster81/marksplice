@@ -196,6 +196,24 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "*#*b#_)_**\n",
 		},
 		{
+			name:   "unconsumed star run prefix survives deep emphasis",
+			source: "**#*a)_)_**\n",
+		},
+		{
+			name:   "unconsumed underscore run prefix survives deep emphasis",
+			source: "__#_a)*)*__\n",
+		},
+		{
+			name:   "shallow unconsumed run prefix keeps canonical escaping",
+			source: "**#*x**\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\**\\#_x_*\n" {
+					t.Fatalf("canonical shallow unconsumed prefix = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "tab after nested emphasis preserves closing flanking",
 			source: "*#*a)_)_**\t1\n",
 		},

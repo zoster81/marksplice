@@ -24,24 +24,33 @@ type Backend interface {
 }
 
 type frame struct {
-	event                parser.SemanticEvent
-	inline               []byte
-	blocks               []string
-	items                []listItem
-	rows                 []tableRow
-	cells                []tableCell
-	task                 bool
-	checked              bool
-	delimiter            string
-	bareAutoLinkTail     bool
-	lastList             listBoundary
-	lastDelimiterSibling inlineDelimiterSibling
+	event                   parser.SemanticEvent
+	inline                  []byte
+	blocks                  []string
+	items                   []listItem
+	rows                    []tableRow
+	cells                   []tableCell
+	task                    bool
+	checked                 bool
+	delimiter               string
+	bareAutoLinkTail        bool
+	lastList                listBoundary
+	lastDelimiterSibling    inlineDelimiterSibling
+	lastTextSibling         inlineTextSibling
+	emphasisDescendantDepth int
 }
 
 type inlineDelimiterSibling struct {
 	kind        parser.SemanticKind
 	sourceRange parser.Range
 	outputStart int
+	outputEnd   int
+	valid       bool
+}
+
+type inlineTextSibling struct {
+	sourceRange parser.Range
+	marker      byte
 	outputEnd   int
 	valid       bool
 }
@@ -367,7 +376,19 @@ func (r *renderer) appendText(event parser.SemanticEvent) error {
 	if current.bareAutoLinkTail {
 		escaped = escapeTextAfterBareAutoLink(value)
 	}
-	return r.appendInline(escaped)
+	if err := r.appendInline(escaped); err != nil {
+		return err
+	}
+	current = &r.stack[len(r.stack)-1]
+	if marker, ok := trailingEmphasisMarker(value); ok {
+		current.lastTextSibling = inlineTextSibling{
+			sourceRange: event.Range,
+			marker:      marker,
+			outputEnd:   len(current.inline),
+			valid:       true,
+		}
+	}
+	return nil
 }
 
 func (r *renderer) preserveLeadingTabAfterDelimiter(parent *frame, event parser.SemanticEvent) bool {
@@ -470,6 +491,7 @@ func (r *renderer) appendInline(value string) error {
 		current.inline = append(current.inline, value...)
 		current.bareAutoLinkTail = false
 		current.lastDelimiterSibling = inlineDelimiterSibling{}
+		current.lastTextSibling = inlineTextSibling{}
 		return nil
 	default:
 		return fmt.Errorf("%w: inline output inside kind %d", ErrInvalidInput, current.event.Kind)
@@ -481,6 +503,7 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 		return fmt.Errorf("%w: inline output outside container", ErrInvalidInput)
 	}
 	parent := &r.stack[len(r.stack)-1]
+	r.preserveUnconsumedEmphasisRunPrefix(parent, &current)
 	start := len(parent.inline)
 	if err := r.appendInline(current.delimiter + string(current.inline) + current.delimiter); err != nil {
 		return err
@@ -492,7 +515,68 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 		outputEnd:   len(parent.inline),
 		valid:       true,
 	}
+	parent.emphasisDescendantDepth = max(parent.emphasisDescendantDepth, current.emphasisDescendantDepth+1)
 	return nil
+}
+
+func trailingEmphasisMarker(value string) (byte, bool) {
+	if value == "" {
+		return 0, false
+	}
+	marker := value[len(value)-1]
+	return marker, marker == '*' || marker == '_'
+}
+
+func (r *renderer) preserveUnconsumedEmphasisRunPrefix(parent *frame, current *frame) {
+	previous, ok := textSiblingBeforeDeepEmphasis(parent, current)
+	if !ok {
+		return
+	}
+	sourceDelimiter, ok := r.sourceUnconsumedRunDelimiter(previous, current.event)
+	if !ok || !escapedTextMarkerTail(parent.inline, previous.marker) {
+		return
+	}
+	parent.inline = append(parent.inline[:len(parent.inline)-2], previous.marker)
+	parent.lastTextSibling = inlineTextSibling{}
+	current.delimiter = sourceDelimiter
+}
+
+func textSiblingBeforeDeepEmphasis(parent *frame, current *frame) (inlineTextSibling, bool) {
+	if parent == nil || current == nil || current.emphasisDescendantDepth < 2 {
+		return inlineTextSibling{}, false
+	}
+	previous := parent.lastTextSibling
+	ok := previous.valid &&
+		previous.sourceRange.End == current.event.Range.Start &&
+		previous.outputEnd == len(parent.inline) &&
+		previous.sourceRange.Start < previous.sourceRange.End
+	return previous, ok
+}
+
+func (r *renderer) sourceUnconsumedRunDelimiter(previous inlineTextSibling, event parser.SemanticEvent) (string, bool) {
+	sourceDelimiter, ok := r.sourceEmphasisDelimiter(event.Kind, event.Range)
+	if !ok || sourceDelimiter[0] != previous.marker {
+		return "", false
+	}
+	markerPosition := previous.sourceRange.End - 1
+	if markerPosition < 0 || markerPosition >= len(r.source) ||
+		r.source[markerPosition] != previous.marker || sourceByteEscapedAt(r.source, markerPosition) {
+		return "", false
+	}
+	return sourceDelimiter, true
+}
+
+func escapedTextMarkerTail(inline []byte, marker byte) bool {
+	return len(inline) >= 2 && inline[len(inline)-2] == '\\' && inline[len(inline)-1] == marker
+}
+
+func sourceByteEscapedAt(source []byte, position int) bool {
+	backslashes := 0
+	for position > 0 && source[position-1] == '\\' {
+		backslashes++
+		position--
+	}
+	return backslashes%2 != 0
 }
 
 func (r *renderer) appendBlock(value string, range_ parser.Range) error {
