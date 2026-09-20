@@ -238,6 +238,36 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "_#_b#_a)*)*__ a_\n",
 		},
 		{
+			name:   "shared closing pair follows final outer marker",
+			source: "_#_b#_a)*)*__ a*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\_\\#*b\\#*a\\)_\\)_** a\\*\n" {
+					t.Fatalf("canonical shared closing pair = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "shared opening pair follows final outer marker",
+			source: "**a_a)*)*_* a*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "**a\\_a\\)_\\)_\\_* a*\n" {
+					t.Fatalf("canonical shared opening pair = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "deep shared opening pair follows final outer marker",
+			source: "__#*a)_)_*_ a_\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "**\\#*a\\)_\\)_** a*\n" {
+					t.Fatalf("canonical deep shared opening pair = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},

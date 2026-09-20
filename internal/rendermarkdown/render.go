@@ -41,16 +41,22 @@ type frame struct {
 	emphasisDescendantDepth              int
 	directEmphasisChildren               int
 	boundarySensitiveDirectEmphasisChild bool
+	onlyDirectEmphasisChild              inlineDelimiterSibling
 }
 
 type inlineDelimiterSibling struct {
-	kind                   parser.SemanticKind
-	sourceRange            parser.Range
-	outputStart            int
-	outputEnd              int
-	descendantDepth        int
-	directEmphasisChildren int
-	valid                  bool
+	kind                       parser.SemanticKind
+	sourceRange                parser.Range
+	outputStart                int
+	outputEnd                  int
+	descendantDepth            int
+	directEmphasisChildren     int
+	onlyDirectChildKind        parser.SemanticKind
+	onlyDirectChildSourceRange parser.Range
+	onlyDirectChildOutputStart int
+	onlyDirectChildOutputEnd   int
+	onlyDirectChildValid       bool
+	valid                      bool
 }
 
 type inlineTextSibling struct {
@@ -521,11 +527,12 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 	}
 	parent := &r.stack[len(r.stack)-1]
 	r.preserveUnconsumedEmphasisRunPrefix(parent, &current)
+	r.reconcileFinalSharedEmphasisPair(&current)
 	start := len(parent.inline)
 	if err := r.appendInline(current.delimiter + string(current.inline) + current.delimiter); err != nil {
 		return err
 	}
-	parent.lastDelimiterSibling = inlineDelimiterSibling{
+	sibling := inlineDelimiterSibling{
 		kind:                   current.event.Kind,
 		sourceRange:            current.event.Range,
 		outputStart:            start,
@@ -534,9 +541,142 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 		directEmphasisChildren: current.directEmphasisChildren,
 		valid:                  true,
 	}
+	if current.directEmphasisChildren == 1 && current.onlyDirectEmphasisChild.valid {
+		child := current.onlyDirectEmphasisChild
+		offset := start + len(current.delimiter)
+		sibling.onlyDirectChildKind = child.kind
+		sibling.onlyDirectChildSourceRange = child.sourceRange
+		sibling.onlyDirectChildOutputStart = offset + child.outputStart
+		sibling.onlyDirectChildOutputEnd = offset + child.outputEnd
+		sibling.onlyDirectChildValid = true
+	}
+	parent.lastDelimiterSibling = sibling
 	parent.emphasisDescendantDepth = max(parent.emphasisDescendantDepth, current.emphasisDescendantDepth+1)
-	r.recordDirectEmphasisChild(parent, current)
+	r.recordDirectEmphasisChild(parent, current, sibling)
 	return nil
+}
+
+func (r *renderer) reconcileFinalSharedEmphasisPair(current *frame) {
+	child, width, ok := r.finalSharedEmphasisPair(current)
+	if !ok {
+		return
+	}
+	rewriteNested := r.sharedEmphasisPairNeedsNestedRewrite(child)
+	if child.descendantDepth < 2 && !rewriteNested {
+		return
+	}
+	rewriteInlineSiblingMarker(current.inline, child.outputStart, child.outputEnd, width, current.delimiter[0])
+	if rewriteNested {
+		rewriteInlineSiblingMarker(
+			current.inline,
+			child.onlyDirectChildOutputStart,
+			child.onlyDirectChildOutputEnd,
+			width,
+			alternateEmphasisMarker(current.delimiter[0]),
+		)
+	}
+}
+
+func (r *renderer) finalSharedEmphasisPair(current *frame) (inlineDelimiterSibling, int, bool) {
+	if current == nil || current.directEmphasisChildren != 1 || !current.onlyDirectEmphasisChild.valid {
+		return inlineDelimiterSibling{}, 0, false
+	}
+	child := current.onlyDirectEmphasisChild
+	width := delimiterWidth(current.event.Kind)
+	if width == 0 || delimiterWidth(child.kind) != width || len(current.delimiter) != width {
+		return inlineDelimiterSibling{}, 0, false
+	}
+	currentSource, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	childSource, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
+	childEvent := parser.SemanticEvent{Kind: child.kind, Range: child.sourceRange}
+	if !currentOK || !childOK || currentSource[0] != childSource[0] ||
+		!emphasisDelimiterEventsShareSourceRun(current.event, childEvent, width) {
+		return inlineDelimiterSibling{}, 0, false
+	}
+	childMarker, ok := inlineSiblingMarker(current.inline, child, width)
+	if !ok || childMarker == current.delimiter[0] {
+		return inlineDelimiterSibling{}, 0, false
+	}
+	return child, width, true
+}
+
+func (r *renderer) sharedEmphasisPairNeedsNestedRewrite(child inlineDelimiterSibling) bool {
+	return child.directEmphasisChildren == 1 &&
+		child.onlyDirectChildValid &&
+		r.sourceInlineDelimiterDualPurpose(child.onlyDirectChildKind, child.onlyDirectChildSourceRange)
+}
+
+func inlineSiblingMarker(inline []byte, sibling inlineDelimiterSibling, width int) (byte, bool) {
+	if width <= 0 || sibling.outputStart < 0 || sibling.outputEnd > len(inline) ||
+		sibling.outputEnd-sibling.outputStart < 2*width {
+		return 0, false
+	}
+	marker := inline[sibling.outputStart]
+	if marker != '*' && marker != '_' {
+		return 0, false
+	}
+	for index := 0; index < width; index++ {
+		if inline[sibling.outputStart+index] != marker ||
+			inline[sibling.outputEnd-width+index] != marker {
+			return 0, false
+		}
+	}
+	return marker, true
+}
+
+func rewriteInlineSiblingMarker(inline []byte, start, end, width int, marker byte) {
+	if width <= 0 || start < 0 || end > len(inline) || end-start < 2*width ||
+		(marker != '*' && marker != '_') {
+		return
+	}
+	for index := 0; index < width; index++ {
+		inline[start+index] = marker
+		inline[end-width+index] = marker
+	}
+}
+
+func alternateEmphasisMarker(marker byte) byte {
+	if marker == '*' {
+		return '_'
+	}
+	return '*'
+}
+
+func (r *renderer) sourceInlineDelimiterDualPurpose(kind parser.SemanticKind, range_ parser.Range) bool {
+	width := delimiterWidth(kind)
+	delimiter, ok := r.sourceEmphasisDelimiter(kind, range_)
+	if !ok || width == 0 {
+		return false
+	}
+	openRun := sourceEmphasisRunAt(r.source, range_.Start, width, delimiter[0])
+	closeRun := sourceEmphasisRunAt(r.source, range_.End-width, width, delimiter[0])
+	if !openRun.Valid(len(r.source)) || !closeRun.Valid(len(r.source)) {
+		return false
+	}
+	segment := parser.Range{Start: 0, End: len(r.source)}
+	openCan, openClose := parser.DelimiterFlanking(r.source, segment, openRun.Start, openRun.End, delimiter[0])
+	closeOpen, closeCan := parser.DelimiterFlanking(r.source, segment, closeRun.Start, closeRun.End, delimiter[0])
+	return openCan && openClose && closeOpen && closeCan
+}
+
+func sourceEmphasisRunAt(source []byte, position, width int, marker byte) parser.Range {
+	if width <= 0 || position < 0 || position+width > len(source) ||
+		(marker != '*' && marker != '_') {
+		return parser.Range{}
+	}
+	for index := 0; index < width; index++ {
+		if source[position+index] != marker || sourceByteEscapedAt(source, position+index) {
+			return parser.Range{}
+		}
+	}
+	start, end := position, position+width
+	for start > 0 && source[start-1] == marker && !sourceByteEscapedAt(source, start-1) {
+		start--
+	}
+	for end < len(source) && source[end] == marker && !sourceByteEscapedAt(source, end) {
+		end++
+	}
+	return parser.Range{Start: start, End: end}
 }
 
 func trailingEmphasisMarker(value string) (byte, bool) {
@@ -633,11 +773,16 @@ func (current *frame) unconsumedPrefixTopologySensitive() bool {
 		(current.directEmphasisChildren >= 2 && current.boundarySensitiveDirectEmphasisChild)
 }
 
-func (r *renderer) recordDirectEmphasisChild(parent *frame, current frame) {
+func (r *renderer) recordDirectEmphasisChild(parent *frame, current frame, sibling inlineDelimiterSibling) {
 	if parent == nil || delimiterWidth(parent.event.Kind) == 0 {
 		return
 	}
 	parent.directEmphasisChildren++
+	if parent.directEmphasisChildren == 1 {
+		parent.onlyDirectEmphasisChild = sibling
+	} else {
+		parent.onlyDirectEmphasisChild = inlineDelimiterSibling{}
+	}
 	parentDelimiter, ok := r.sourceEmphasisDelimiter(parent.event.Kind, parent.event.Range)
 	if !ok {
 		return
