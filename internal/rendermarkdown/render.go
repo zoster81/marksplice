@@ -44,6 +44,7 @@ type frame struct {
 	boundarySensitiveDirectEmphasisChild bool
 	onlyDirectEmphasisChild              inlineDelimiterSibling
 	firstDirectEmphasisChild             inlineDelimiterSibling
+	lastDirectEmphasisChild              inlineDelimiterSibling
 }
 
 type inlineDelimiterSibling struct {
@@ -1706,6 +1707,9 @@ func (r *renderer) multiChildPrefixConflict(current *frame, sourceDelimiter stri
 		return false
 	}
 	marker := sourceDelimiter[0]
+	if r.sourceMultiChildZeroSharedPrefixBoundary(current, marker) {
+		return true
+	}
 	if r.sourceMultiChildSharedClosePrefixBoundary(current, marker) {
 		return true
 	}
@@ -1714,6 +1718,25 @@ func (r *renderer) multiChildPrefixConflict(current *frame, sourceDelimiter stri
 		return true
 	}
 	return r.sourceMultiChildSeparatedPrefixBoundary(current, marker)
+}
+
+func (r *renderer) sourceMultiChildZeroSharedPrefixBoundary(current *frame, marker byte) bool {
+	if marker != '*' || current == nil || !current.event.Range.Valid(len(r.source)) ||
+		current.directEmphasisChildren != 2 || current.sameMarkerDirectEmphasisChildren != 2 ||
+		!current.firstDirectEmphasisChild.valid || !current.lastDirectEmphasisChild.valid {
+		return false
+	}
+	first := current.firstDirectEmphasisChild
+	second := current.lastDirectEmphasisChild
+	if first.sourceRange.Start <= current.event.Range.Start+1 ||
+		second.sourceRange.End >= current.event.Range.End-1 {
+		return false
+	}
+	segment := parser.Range{Start: 0, End: len(r.source)}
+	punctuationOpen, _ := parser.DelimiterFlanking(
+		r.source, segment, first.sourceRange.Start, first.sourceRange.Start+1, '_',
+	)
+	return punctuationOpen
 }
 
 func (r *renderer) sourceMultiChildSharedClosePrefixBoundary(current *frame, marker byte) bool {
@@ -1909,6 +1932,7 @@ func (r *renderer) recordDirectEmphasisChild(parent *frame, current frame, sibli
 		return
 	}
 	parent.directEmphasisChildren++
+	parent.lastDirectEmphasisChild = sibling
 	if parent.directEmphasisChildren == 1 {
 		parent.onlyDirectEmphasisChild = sibling
 		parent.firstDirectEmphasisChild = sibling
