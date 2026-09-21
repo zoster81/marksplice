@@ -543,6 +543,7 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 	r.reconcileFinalSharedEmphasisPair(&current)
 	r.repairSharedCloseThreeLevelEmphasis(&current)
 	r.repairMultiChildSameMarkerTopology(parent, &current)
+	r.repairSharedOpenCloseMultiChildTopology(&current)
 	r.repairDeepUniqueEmphasisChain(parent, &current)
 	start := len(parent.inline)
 	if err := r.appendInline(current.delimiter + string(current.inline) + current.delimiter); err != nil {
@@ -928,6 +929,114 @@ func (r *renderer) repairMultiChildSameMarkerTopology(parent *frame, current *fr
 	}
 	current.delimiter = string(marker)
 	current.inline = trial
+}
+
+func (r *renderer) repairSharedOpenCloseMultiChildTopology(current *frame) {
+	first, second, _, ok := r.sharedOpenCloseMultiChildSource(current)
+	if !ok {
+		return
+	}
+	pairs := sharedOpenCloseMultiChildPairs(len(current.inline)+2, first, second)
+	if delimiterCandidateMatchesPhysicalRuns(delimitedInlineCandidate(current.inline, current.delimiter[0]), pairs) {
+		return
+	}
+	for mask := 0; mask < 16; mask++ {
+		markers := [4]byte{'*', '*', '*', '*'}
+		for index := range markers {
+			if mask&(1<<index) != 0 {
+				markers[index] = '_'
+			}
+		}
+		trial := append([]byte(nil), current.inline...)
+		rewriteInlineSiblingMarker(trial, first.outputStart, first.outputEnd, 1, markers[1])
+		rewriteInlineSiblingMarker(trial, first.onlyDirectChildOutputStart, first.onlyDirectChildOutputEnd, 1, markers[2])
+		rewriteInlineSiblingMarker(trial, second.outputStart, second.outputEnd, 1, markers[3])
+		candidate := delimitedInlineCandidate(trial, markers[0])
+		if !delimiterCandidateMatchesPhysicalRuns(candidate, pairs) {
+			continue
+		}
+		current.delimiter = string(markers[0])
+		current.inline = trial
+		return
+	}
+}
+
+func (r *renderer) sharedOpenCloseMultiChildSource(current *frame) (inlineDelimiterSibling, inlineDelimiterSibling, byte, bool) {
+	first, second, ok := sharedOpenCloseMultiChildChildren(current)
+	if !ok || !sharedOpenCloseMultiChildRanges(current, first, second) {
+		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, 0, false
+	}
+	marker, ok := r.sharedOpenCloseMultiChildMarker(current, first, second)
+	if !ok || !r.sharedOpenCloseMultiChildRuns(current, first, second, marker) {
+		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, 0, false
+	}
+	return first, second, marker, true
+}
+
+func sharedOpenCloseMultiChildChildren(current *frame) (inlineDelimiterSibling, inlineDelimiterSibling, bool) {
+	if current == nil || delimiterWidth(current.event.Kind) != 1 ||
+		current.directEmphasisChildren != 2 || current.sameMarkerDirectEmphasisChildren != 2 ||
+		!current.firstDirectEmphasisChild.valid || !current.lastDirectEmphasisChild.valid {
+		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, false
+	}
+	first := current.firstDirectEmphasisChild
+	second := current.lastDirectEmphasisChild
+	if first.descendantDepth != 1 || first.directEmphasisChildren != 1 || !first.onlyDirectChildValid ||
+		second.descendantDepth != 0 || second.directEmphasisChildren != 0 ||
+		delimiterWidth(first.kind) != 1 || delimiterWidth(first.onlyDirectChildKind) != 1 ||
+		delimiterWidth(second.kind) != 1 {
+		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, false
+	}
+	return first, second, true
+}
+
+func sharedOpenCloseMultiChildRanges(current *frame, first, second inlineDelimiterSibling) bool {
+	return current != nil &&
+		first.sourceRange.Start == current.event.Range.Start+1 &&
+		second.sourceRange.End == current.event.Range.End-1 &&
+		first.sourceRange.Start+1 < first.onlyDirectChildSourceRange.Start &&
+		first.onlyDirectChildSourceRange.End < first.sourceRange.End-1
+}
+
+func (r *renderer) sharedOpenCloseMultiChildMarker(
+	current *frame,
+	first inlineDelimiterSibling,
+	second inlineDelimiterSibling,
+) (byte, bool) {
+	outer, outerOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	firstSource, firstOK := r.sourceEmphasisDelimiter(first.kind, first.sourceRange)
+	leafSource, leafOK := r.sourceEmphasisDelimiter(first.onlyDirectChildKind, first.onlyDirectChildSourceRange)
+	secondSource, secondOK := r.sourceEmphasisDelimiter(second.kind, second.sourceRange)
+	if !outerOK || !firstOK || !leafOK || !secondOK {
+		return 0, false
+	}
+	marker := outer[0]
+	return marker, marker == firstSource[0] && marker == leafSource[0] && marker == secondSource[0]
+}
+
+func (r *renderer) sharedOpenCloseMultiChildRuns(
+	current *frame,
+	first inlineDelimiterSibling,
+	second inlineDelimiterSibling,
+	marker byte,
+) bool {
+	outerOpen := sourceEmphasisRunAt(r.source, current.event.Range.Start, 1, marker)
+	firstOpen := sourceEmphasisRunAt(r.source, first.sourceRange.Start, 1, marker)
+	if !outerOpen.Valid(len(r.source)) || outerOpen != firstOpen {
+		return false
+	}
+	outerClose := sourceEmphasisRunAt(r.source, current.event.Range.End-1, 1, marker)
+	secondClose := sourceEmphasisRunAt(r.source, second.sourceRange.End-1, 1, marker)
+	return outerClose.Valid(len(r.source)) && outerClose == secondClose
+}
+
+func sharedOpenCloseMultiChildPairs(candidateLen int, first, second inlineDelimiterSibling) [][2]parser.Range {
+	return [][2]parser.Range{
+		{{Start: 0, End: 1}, {Start: candidateLen - 1, End: candidateLen}},
+		{{Start: 1 + first.outputStart, End: 2 + first.outputStart}, {Start: first.outputEnd, End: 1 + first.outputEnd}},
+		{{Start: 1 + first.onlyDirectChildOutputStart, End: 2 + first.onlyDirectChildOutputStart}, {Start: first.onlyDirectChildOutputEnd, End: 1 + first.onlyDirectChildOutputEnd}},
+		{{Start: 1 + second.outputStart, End: 2 + second.outputStart}, {Start: second.outputEnd, End: 1 + second.outputEnd}},
+	}
 }
 
 func multiChildSameMarkerChildren(

@@ -226,6 +226,16 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "**#*a)_)_** a*\n",
 		},
 		{
+			name:   "multi-child shared opening and closing runs preserve hierarchy",
+			source: "**)*|*_* *a**\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "**\\)*\\|*\\_* *a**\n" {
+					t.Fatalf("canonical shared opening and closing runs = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "shared underscore delimiter run component preserves deep hierarchy",
 			source: "__#_a)*)*__ a_\n",
 		},
