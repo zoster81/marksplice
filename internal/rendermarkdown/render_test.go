@@ -418,6 +418,16 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "same-marker multi-child shared close alternates first child",
+			source: "*>*\x00\t*)*\n*a***",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\>*\x00&#9;_\\)_\n*a***\n" {
+					t.Fatalf("canonical same-marker multi-child topology = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "mixed-marker adjacent openers are separate physical runs",
 			source: "__*\xff*0*a*b_]_\n",
 			check: func(t *testing.T, canonical string) {

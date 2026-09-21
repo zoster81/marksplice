@@ -43,6 +43,7 @@ type frame struct {
 	sameMarkerDirectEmphasisChildren     int
 	boundarySensitiveDirectEmphasisChild bool
 	onlyDirectEmphasisChild              inlineDelimiterSibling
+	firstDirectEmphasisChild             inlineDelimiterSibling
 }
 
 type inlineDelimiterSibling struct {
@@ -540,6 +541,7 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 	r.repairThreeLevelEmphasisHostOpen(parent, &current)
 	r.reconcileFinalSharedEmphasisPair(&current)
 	r.repairSharedCloseThreeLevelEmphasis(&current)
+	r.repairMultiChildSameMarkerTopology(parent, &current)
 	r.repairDeepUniqueEmphasisChain(parent, &current)
 	start := len(parent.inline)
 	if err := r.appendInline(current.delimiter + string(current.inline) + current.delimiter); err != nil {
@@ -902,6 +904,78 @@ func (r *renderer) repairSharedCloseThreeLevelEmphasis(current *frame) {
 	}
 	current.delimiter = string(markers.outer)
 	current.inline = inline
+}
+
+func (r *renderer) repairMultiChildSameMarkerTopology(parent *frame, current *frame) {
+	first, second, ok := multiChildSameMarkerChildren(current)
+	if !ok {
+		return
+	}
+	marker, ok := r.sourceMultiChildSameMarkerClose(parent, current, second)
+	if !ok {
+		return
+	}
+	expected := multiChildSameMarkerPairs(len(current.inline)+2, first, second)
+	currentCandidate := delimitedInlineCandidate(current.inline, marker)
+	if delimiterCandidateMatchesPhysicalRuns(currentCandidate, expected) {
+		return
+	}
+	trial := append([]byte(nil), current.inline...)
+	rewriteInlineSiblingMarker(trial, first.outputStart, first.outputEnd, 1, alternateEmphasisMarker(marker))
+	if !delimiterCandidateMatchesPhysicalRuns(delimitedInlineCandidate(trial, marker), expected) {
+		return
+	}
+	current.delimiter = string(marker)
+	current.inline = trial
+}
+
+func multiChildSameMarkerChildren(
+	current *frame,
+) (inlineDelimiterSibling, inlineDelimiterSibling, bool) {
+	if current == nil || delimiterWidth(current.event.Kind) != 1 ||
+		current.directEmphasisChildren != 2 || current.sameMarkerDirectEmphasisChildren != 2 ||
+		current.emphasisDescendantDepth != 1 || !current.firstDirectEmphasisChild.valid ||
+		!current.lastDelimiterSibling.valid {
+		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, false
+	}
+	first := current.firstDirectEmphasisChild
+	second := current.lastDelimiterSibling
+	if first.descendantDepth != 0 || second.descendantDepth != 0 ||
+		first.directEmphasisChildren != 0 || second.directEmphasisChildren != 0 ||
+		delimiterWidth(first.kind) != 1 || delimiterWidth(second.kind) != 1 {
+		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, false
+	}
+	return first, second, true
+}
+
+func (r *renderer) sourceMultiChildSameMarkerClose(
+	parent *frame,
+	current *frame,
+	second inlineDelimiterSibling,
+) (byte, bool) {
+	if parent == nil || delimiterWidth(parent.event.Kind) != 1 {
+		return 0, false
+	}
+	parentMarker, parentOK := r.sourceEmphasisDelimiter(parent.event.Kind, parent.event.Range)
+	currentMarker, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	if !parentOK || !currentOK || parentMarker[0] != currentMarker[0] ||
+		second.sourceRange.End != current.event.Range.End-1 ||
+		current.event.Range.End != parent.event.Range.End-1 {
+		return 0, false
+	}
+	return currentMarker[0], true
+}
+
+func multiChildSameMarkerPairs(
+	candidateLen int,
+	first inlineDelimiterSibling,
+	second inlineDelimiterSibling,
+) [][2]parser.Range {
+	return [][2]parser.Range{
+		{{Start: 0, End: 1}, {Start: candidateLen - 1, End: candidateLen}},
+		{{Start: 1 + first.outputStart, End: 2 + first.outputStart}, {Start: first.outputEnd, End: 1 + first.outputEnd}},
+		{{Start: 1 + second.outputStart, End: 2 + second.outputStart}, {Start: second.outputEnd, End: 1 + second.outputEnd}},
+	}
 }
 
 func (r *renderer) restoreSharedCloseSourceTabs(
@@ -1776,6 +1850,7 @@ func (r *renderer) recordDirectEmphasisChild(parent *frame, current frame, sibli
 	parent.directEmphasisChildren++
 	if parent.directEmphasisChildren == 1 {
 		parent.onlyDirectEmphasisChild = sibling
+		parent.firstDirectEmphasisChild = sibling
 	} else {
 		parent.onlyDirectEmphasisChild = inlineDelimiterSibling{}
 	}
