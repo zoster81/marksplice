@@ -970,8 +970,11 @@ func (r *renderer) repairSeparatedThreeLevelEmphasis(current *frame) {
 	child := current.onlyDirectEmphasisChild
 	width := delimiterWidth(current.event.Kind)
 	childEvent := parser.SemanticEvent{Kind: child.kind, Range: child.sourceRange}
+	currentSource, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	childSource, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
+	sharedSourceBoundary := emphasisDelimiterEventsShareSourceRun(current.event, childEvent, width)
 	if width != 1 || delimiterWidth(child.kind) != width ||
-		emphasisDelimiterEventsShareSourceRun(current.event, childEvent, width) ||
+		(sharedSourceBoundary && (!currentOK || !childOK || currentSource[0] == childSource[0])) ||
 		r.threeLevelEmphasisCurrentMatches(current, child) {
 		return
 	}

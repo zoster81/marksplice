@@ -338,6 +338,16 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "mixed-marker adjacent emphasis chain keeps three levels",
+			source: "_*!\t_*\x00_*\rc_",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "**\\!&#9;_\\*\x00_*\nc*\n" {
+					t.Fatalf("canonical mixed-marker adjacent chain = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "mixed-marker adjacent openers are separate physical runs",
 			source: "__*\xff*0*a*b_]_\n",
 			check: func(t *testing.T, canonical string) {
