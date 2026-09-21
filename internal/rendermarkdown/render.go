@@ -1706,11 +1706,44 @@ func (r *renderer) multiChildPrefixConflict(current *frame, sourceDelimiter stri
 		return false
 	}
 	marker := sourceDelimiter[0]
+	if r.sourceMultiChildSharedClosePrefixBoundary(current, marker) {
+		return true
+	}
 	if r.sourceMultiChildSharedOpenPrefixBoundary(current, marker) &&
 		renderedMultiChildSharedOpenAlternate(current, marker) {
 		return true
 	}
 	return r.sourceMultiChildSeparatedPrefixBoundary(current, marker)
+}
+
+func (r *renderer) sourceMultiChildSharedClosePrefixBoundary(current *frame, marker byte) bool {
+	if !r.sourceMultiChildDualFlankingPrefixBoundary(current, marker) {
+		return false
+	}
+	second := current.lastDelimiterSibling
+	if !second.valid || delimiterWidth(second.kind) != 1 ||
+		second.sourceRange.End != current.event.Range.End-1 {
+		return false
+	}
+	secondDelimiter, ok := r.sourceEmphasisDelimiter(second.kind, second.sourceRange)
+	return ok && secondDelimiter[0] == marker
+}
+
+func (r *renderer) sourceMultiChildDualFlankingPrefixBoundary(current *frame, marker byte) bool {
+	if marker != '*' || !current.event.Range.Valid(len(r.source)) {
+		return false
+	}
+	start, end := current.event.Range.Start, current.event.Range.End
+	if start == 0 || start+1 >= end-1 {
+		return false
+	}
+	if r.source[start-1] != marker || sourceByteEscapedAt(r.source, start-1) ||
+		r.source[start+1] == marker || r.source[end-2] != marker || sourceByteEscapedAt(r.source, end-2) {
+		return false
+	}
+	segment := parser.Range{Start: 0, End: len(r.source)}
+	canOpen, canClose := parser.DelimiterFlanking(r.source, segment, start, start+1, marker)
+	return canOpen && canClose
 }
 
 func multiChildPrefixTopology(current *frame) bool {

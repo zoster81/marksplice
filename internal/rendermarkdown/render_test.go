@@ -428,6 +428,16 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "dual-flanking multi-child prefix keeps unconsumed star escaped",
+			source: "**)*_*\r*\x00**",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\**\\)_\\__\n_\x00_*\n" {
+					t.Fatalf("canonical dual-flanking multi-child prefix = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "mixed-marker adjacent openers are separate physical runs",
 			source: "__*\xff*0*a*b_]_\n",
 			check: func(t *testing.T, canonical string) {
