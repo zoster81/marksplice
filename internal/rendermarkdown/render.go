@@ -537,6 +537,7 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 	parent := &r.stack[len(r.stack)-1]
 	r.preserveUnconsumedEmphasisRunPrefix(parent, &current)
 	r.repairSeparatedThreeLevelEmphasis(&current)
+	r.repairThreeLevelEmphasisHostOpen(parent, &current)
 	r.reconcileFinalSharedEmphasisPair(&current)
 	r.repairSharedCloseThreeLevelEmphasis(&current)
 	r.repairDeepUniqueEmphasisChain(parent, &current)
@@ -961,6 +962,39 @@ func delimitedInlineCandidate(inline []byte, marker byte) []byte {
 	copy(candidate[1:], inline)
 	candidate[len(candidate)-1] = marker
 	return candidate
+}
+
+func (r *renderer) repairThreeLevelEmphasisHostOpen(parent *frame, current *frame) {
+	if parent == nil || current == nil || current.directEmphasisChildren != 1 ||
+		!current.onlyDirectEmphasisChild.valid || delimiterWidth(current.event.Kind) != 1 ||
+		emphasisDelimiterCanOpenAfter(parent.inline, current.delimiter, current.inline) {
+		return
+	}
+	child := current.onlyDirectEmphasisChild
+	tabInline, tabChild, tabBeforeLeaf, ok := r.threeLevelEmphasisSourceTabInline(current, child)
+	if !ok || !tabBeforeLeaf {
+		return
+	}
+	candidate, ok := r.threeLevelEmphasisSourceMarkerCandidate(current, child, tabInline, tabChild)
+	if !ok || !emphasisDelimiterCanOpenAfter(parent.inline, string(candidate.delimiter), candidate.inline) {
+		return
+	}
+	current.delimiter = string(candidate.delimiter)
+	current.inline = candidate.inline
+}
+
+func emphasisDelimiterCanOpenAfter(prefix []byte, delimiter string, inline []byte) bool {
+	if len(delimiter) != 1 || (delimiter[0] != '*' && delimiter[0] != '_') {
+		return false
+	}
+	candidate := make([]byte, 0, len(prefix)+1+len(inline))
+	candidate = append(candidate, prefix...)
+	start := len(candidate)
+	candidate = append(candidate, delimiter[0])
+	candidate = append(candidate, inline...)
+	segment := parser.Range{Start: 0, End: len(candidate)}
+	canOpen, _ := parser.DelimiterFlanking(candidate, segment, start, start+1, delimiter[0])
+	return canOpen
 }
 
 func (r *renderer) repairSeparatedThreeLevelEmphasis(current *frame) {

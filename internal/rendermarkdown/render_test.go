@@ -378,6 +378,16 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "nested emphasis preserves host-valid outer marker",
+			source: "X*Z[_\x00\t*>\x00*2_\xff*",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "X*Z\\[_\x00\t*\\>\x00*2_\xff*\n" {
+					t.Fatalf("canonical host-valid outer marker = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "mixed-marker adjacent openers are separate physical runs",
 			source: "__*\xff*0*a*b_]_\n",
 			check: func(t *testing.T, canonical string) {
