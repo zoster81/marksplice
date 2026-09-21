@@ -438,6 +438,16 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "punctuation-boundary multi-child prefix keeps unconsumed star escaped",
+			source: "**a)*_*#*a**",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\**a\\)_\\__\\#_a_*\n" {
+					t.Fatalf("canonical punctuation-boundary multi-child prefix = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "mixed-marker adjacent openers are separate physical runs",
 			source: "__*\xff*0*a*b_]_\n",
 			check: func(t *testing.T, canonical string) {

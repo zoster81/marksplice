@@ -1717,7 +1717,8 @@ func (r *renderer) multiChildPrefixConflict(current *frame, sourceDelimiter stri
 }
 
 func (r *renderer) sourceMultiChildSharedClosePrefixBoundary(current *frame, marker byte) bool {
-	if !r.sourceMultiChildDualFlankingPrefixBoundary(current, marker) {
+	if !r.sourceMultiChildDualFlankingPrefixBoundary(current, marker) &&
+		!r.sourceMultiChildOpenOnlyPunctuationChildBoundary(current, marker) {
 		return false
 	}
 	second := current.lastDelimiterSibling
@@ -1727,6 +1728,33 @@ func (r *renderer) sourceMultiChildSharedClosePrefixBoundary(current *frame, mar
 	}
 	secondDelimiter, ok := r.sourceEmphasisDelimiter(second.kind, second.sourceRange)
 	return ok && secondDelimiter[0] == marker
+}
+
+func (r *renderer) sourceMultiChildOpenOnlyPunctuationChildBoundary(current *frame, marker byte) bool {
+	if marker != '*' || !current.event.Range.Valid(len(r.source)) ||
+		!current.firstDirectEmphasisChild.valid {
+		return false
+	}
+	start, end := current.event.Range.Start, current.event.Range.End
+	if start == 0 || start+1 >= end-1 || r.source[start-1] != marker ||
+		sourceByteEscapedAt(r.source, start-1) || r.source[start+1] == marker ||
+		r.source[end-2] != marker || sourceByteEscapedAt(r.source, end-2) {
+		return false
+	}
+	segment := parser.Range{Start: 0, End: len(r.source)}
+	canOpen, canClose := parser.DelimiterFlanking(r.source, segment, start, start+1, marker)
+	if !canOpen || canClose {
+		return false
+	}
+	first := current.firstDirectEmphasisChild
+	firstMarker, ok := r.sourceEmphasisDelimiter(first.kind, first.sourceRange)
+	if !ok || firstMarker[0] != marker {
+		return false
+	}
+	punctuationOpen, _ := parser.DelimiterFlanking(
+		r.source, segment, first.sourceRange.Start, first.sourceRange.Start+1, '_',
+	)
+	return punctuationOpen
 }
 
 func (r *renderer) sourceMultiChildDualFlankingPrefixBoundary(current *frame, marker byte) bool {
