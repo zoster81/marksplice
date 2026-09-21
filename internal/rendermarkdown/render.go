@@ -1021,11 +1021,38 @@ func (r *renderer) threeLevelEmphasisCanonicalCandidate(
 	if candidate, ok := threeLevelEmphasisCandidateForInline(current.inline, child, markers); ok {
 		return candidate, true
 	}
-	tabInline, ok := r.threeLevelEmphasisSourceTabInline(current, child)
+	tabInline, tabChild, tabBeforeLeaf, ok := r.threeLevelEmphasisSourceTabInline(current, child)
 	if !ok {
 		return threeLevelEmphasisCandidate{}, false
 	}
-	return threeLevelEmphasisCandidateForInline(tabInline, child, markers)
+	if tabBeforeLeaf {
+		if candidate, ok := r.threeLevelEmphasisSourceMarkerCandidate(current, child, tabInline, tabChild); ok {
+			return candidate, true
+		}
+	}
+	return threeLevelEmphasisCandidateForInline(tabInline, tabChild, markers)
+}
+
+func (r *renderer) threeLevelEmphasisSourceMarkerCandidate(
+	current *frame,
+	child inlineDelimiterSibling,
+	tabInline []byte,
+	tabChild inlineDelimiterSibling,
+) (threeLevelEmphasisCandidate, bool) {
+	currentSource, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	childSource, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
+	leafSource, leafOK := r.sourceEmphasisDelimiter(child.onlyDirectChildKind, child.onlyDirectChildSourceRange)
+	if !currentOK || !childOK || !leafOK ||
+		currentSource[0] == childSource[0] || currentSource[0] != leafSource[0] {
+		return threeLevelEmphasisCandidate{}, false
+	}
+	return threeLevelEmphasisCandidateForMarkers(
+		tabInline,
+		tabChild,
+		currentSource[0],
+		childSource[0],
+		leafSource[0],
+	)
 }
 
 func threeLevelEmphasisCandidateForInline(
@@ -1034,39 +1061,78 @@ func threeLevelEmphasisCandidateForInline(
 	markers [][2]byte,
 ) (threeLevelEmphasisCandidate, bool) {
 	for _, marker := range markers {
-		inline := append([]byte(nil), baseInline...)
-		rewriteInlineSiblingMarker(inline, child.outputStart, child.outputEnd, 1, marker[0])
-		rewriteInlineSiblingMarker(
-			inline,
-			child.onlyDirectChildOutputStart,
-			child.onlyDirectChildOutputEnd,
-			1,
+		if candidate, ok := threeLevelEmphasisCandidateForMarkers(
+			baseInline,
+			child,
+			marker[0],
+			marker[0],
 			marker[1],
-		)
-		candidate := delimitedInlineCandidate(inline, marker[0])
-		expected := threeLevelEmphasisExpectedPairs(len(candidate), child)
-		if delimiterCandidateMatches(candidate, expected) {
-			return threeLevelEmphasisCandidate{delimiter: marker[0], inline: inline}, true
+		); ok {
+			return candidate, true
 		}
 	}
 	return threeLevelEmphasisCandidate{}, false
 }
 
+func threeLevelEmphasisCandidateForMarkers(
+	baseInline []byte,
+	child inlineDelimiterSibling,
+	outerMarker byte,
+	childMarker byte,
+	leafMarker byte,
+) (threeLevelEmphasisCandidate, bool) {
+	inline := append([]byte(nil), baseInline...)
+	rewriteInlineSiblingMarker(inline, child.outputStart, child.outputEnd, 1, childMarker)
+	rewriteInlineSiblingMarker(
+		inline,
+		child.onlyDirectChildOutputStart,
+		child.onlyDirectChildOutputEnd,
+		1,
+		leafMarker,
+	)
+	candidate := delimitedInlineCandidate(inline, outerMarker)
+	expected := threeLevelEmphasisExpectedPairs(len(candidate), child)
+	if !delimiterCandidateMatches(candidate, expected) {
+		return threeLevelEmphasisCandidate{}, false
+	}
+	return threeLevelEmphasisCandidate{delimiter: outerMarker, inline: inline}, true
+}
+
 func (r *renderer) threeLevelEmphasisSourceTabInline(
 	current *frame,
 	child inlineDelimiterSibling,
-) ([]byte, bool) {
-	position := child.outputEnd
-	if current == nil || child.sourceRange.End >= len(r.source) || r.source[child.sourceRange.End] != '\t' ||
-		position < 0 || position+4 > len(current.inline) ||
-		string(current.inline[position:position+4]) != "&#9;" {
+) ([]byte, inlineDelimiterSibling, bool, bool) {
+	if current == nil {
+		return nil, inlineDelimiterSibling{}, false, false
+	}
+	if child.sourceRange.End < len(r.source) && r.source[child.sourceRange.End] == '\t' {
+		if inline, ok := restoreCanonicalTab(current.inline, child.outputEnd); ok {
+			return inline, child, false, true
+		}
+	}
+	if !child.onlyDirectChildValid || child.onlyDirectChildSourceRange.Start <= 0 ||
+		r.source[child.onlyDirectChildSourceRange.Start-1] != '\t' {
+		return nil, inlineDelimiterSibling{}, false, false
+	}
+	inline, ok := restoreCanonicalTab(current.inline, child.onlyDirectChildOutputStart-4)
+	if !ok {
+		return nil, inlineDelimiterSibling{}, false, false
+	}
+	child.outputEnd -= 3
+	child.onlyDirectChildOutputStart -= 3
+	child.onlyDirectChildOutputEnd -= 3
+	return inline, child, true, true
+}
+
+func restoreCanonicalTab(inline []byte, start int) ([]byte, bool) {
+	if start < 0 || start+4 > len(inline) || string(inline[start:start+4]) != "&#9;" {
 		return nil, false
 	}
-	inline := make([]byte, 0, len(current.inline)-3)
-	inline = append(inline, current.inline[:position]...)
-	inline = append(inline, '\t')
-	inline = append(inline, current.inline[position+4:]...)
-	return inline, true
+	restored := make([]byte, 0, len(inline)-3)
+	restored = append(restored, inline[:start]...)
+	restored = append(restored, '\t')
+	restored = append(restored, inline[start+4:]...)
+	return restored, true
 }
 
 func threeLevelEmphasisExpectedPairs(candidateLen int, child inlineDelimiterSibling) [][2]parser.Range {

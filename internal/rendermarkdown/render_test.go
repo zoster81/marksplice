@@ -348,6 +348,36 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "mixed-marker tab before leaf preserves star outer chain",
+			source: "*_\xfe\t*>*_*",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*_\xfe\t*\\>*_*\n" {
+					t.Fatalf("canonical star outer tab-before-leaf chain = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "mixed-marker tab before leaf preserves underscore outer chain",
+			source: "_*\xff\t_]_*_",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "_*\xff\t_\\]_*_\n" {
+					t.Fatalf("canonical underscore outer tab-before-leaf chain = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "mixed-marker tab before leaf preserves nested flanking",
+			source: "_*\x00\t_*1_*_",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "_*\x00\t_\\*1_*_\n" {
+					t.Fatalf("canonical mixed-marker tab-before-leaf flanking = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "mixed-marker adjacent openers are separate physical runs",
 			source: "__*\xff*0*a*b_]_\n",
 			check: func(t *testing.T, canonical string) {
