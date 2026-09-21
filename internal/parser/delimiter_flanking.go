@@ -50,6 +50,11 @@ func delimiterPrecedingClass(source []byte, segment Range, position int) (bool, 
 	return delimiterRuneClass(rune_)
 }
 
+// DelimiterFollowingClass reports the parser-owned CommonMark class of the rune immediately after a delimiter run.
+func DelimiterFollowingClass(source []byte, runStart, position, segmentEnd int) (bool, bool) {
+	return delimiterFollowingClass(source, runStart, position, segmentEnd)
+}
+
 func delimiterFollowingClass(source []byte, runStart, position, segmentEnd int) (bool, bool) {
 	if position >= segmentEnd {
 		return true, false

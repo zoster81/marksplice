@@ -574,6 +574,30 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "shallow star prefix alternates outer marker across punctuation tail",
+			source: "**a*a*[*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\*_a*a*\\[_\n" {
+					t.Fatalf("canonical shallow punctuation-tail prefix = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "shallow star prefix alternates outer marker across invalid-byte tail",
+			source: "**1*a*\xff*\n",
+		},
+		{
+			name:   "shallow alternate marker ignores whitespace tail controls",
+			source: "**#_a)*)__* a*\n",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\\**\\#\\_a\\)_\\)\\_\\__ a*\n" {
+					t.Fatalf("canonical shallow whitespace-tail control = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "unconsumed star run prefix survives deep emphasis",
 			source: "**#*a)_)_**\n",
 		},

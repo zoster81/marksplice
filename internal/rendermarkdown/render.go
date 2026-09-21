@@ -1427,6 +1427,10 @@ func (r *renderer) preserveUnconsumedEmphasisRunPrefix(parent *frame, current *f
 	if !ok {
 		return
 	}
+	if alternate, alternateOK := r.shallowUnconsumedPrefixAlternateDelimiter(current, sourceRunLength); alternateOK {
+		current.delimiter = alternate
+		return
+	}
 	preserveCount := 1
 	if current.unconsumedPrefixTopologySensitive() {
 		if r.multiChildPrefixConflict(current, sourceDelimiter) {
@@ -1510,6 +1514,70 @@ func (r *renderer) sourceMultiChildSeparatedPrefixBoundary(current *frame, marke
 	segment := parser.Range{Start: 0, End: len(r.source)}
 	canOpen, canClose := parser.DelimiterFlanking(r.source, segment, start, start+1, marker)
 	return canOpen && canClose
+}
+
+func (r *renderer) shallowUnconsumedPrefixAlternateDelimiter(current *frame, sourceRunLength int) (string, bool) {
+	child, ok := shallowAlternatePrefixChild(current, sourceRunLength)
+	if !ok || !r.shallowAlternatePrefixSourceBoundary(current, child) {
+		return "", false
+	}
+	return "_", true
+}
+
+func shallowAlternatePrefixChild(current *frame, sourceRunLength int) (inlineDelimiterSibling, bool) {
+	if sourceRunLength != 1 || current == nil {
+		return inlineDelimiterSibling{}, false
+	}
+	if current.emphasisDescendantDepth != 1 || current.directEmphasisChildren != 1 ||
+		!current.onlyDirectEmphasisChild.valid || delimiterWidth(current.event.Kind) != 1 {
+		return inlineDelimiterSibling{}, false
+	}
+	child := current.onlyDirectEmphasisChild
+	if child.descendantDepth != 0 || child.directEmphasisChildren != 0 || delimiterWidth(child.kind) != 1 {
+		return inlineDelimiterSibling{}, false
+	}
+	return child, true
+}
+
+func (r *renderer) shallowAlternatePrefixSourceBoundary(current *frame, child inlineDelimiterSibling) bool {
+	currentDelimiter, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	childDelimiter, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
+	if !currentOK || !childOK || currentDelimiter != "*" || childDelimiter != "*" {
+		return false
+	}
+	if child.sourceRange.Start <= current.event.Range.Start+1 || child.sourceRange.End >= current.event.Range.End-1 {
+		return false
+	}
+	return r.shallowAlternatePrefixFlanking(current, child)
+}
+
+func (r *renderer) shallowAlternatePrefixFlanking(current *frame, child inlineDelimiterSibling) bool {
+	outerOpen := sourceEmphasisRunAt(r.source, current.event.Range.Start, 1, '*')
+	if !outerOpen.Valid(len(r.source)) {
+		return false
+	}
+	outerClose := sourceEmphasisRunAt(r.source, current.event.Range.End-1, 1, '*')
+	if !outerClose.Valid(len(r.source)) {
+		return false
+	}
+	childOpen := sourceEmphasisRunAt(r.source, child.sourceRange.Start, 1, '*')
+	if !childOpen.Valid(len(r.source)) {
+		return false
+	}
+	childClose := sourceEmphasisRunAt(r.source, child.sourceRange.End-1, 1, '*')
+	if !childClose.Valid(len(r.source)) {
+		return false
+	}
+	afterWhitespace, _ := parser.DelimiterFollowingClass(r.source, childClose.Start, childClose.End, len(r.source))
+	if afterWhitespace {
+		return false
+	}
+	segment := parser.Range{Start: 0, End: len(r.source)}
+	oo, oc := parser.DelimiterFlanking(r.source, segment, outerOpen.Start, outerOpen.End, '*')
+	co, cc := parser.DelimiterFlanking(r.source, segment, outerClose.Start, outerClose.End, '*')
+	io, ic := parser.DelimiterFlanking(r.source, segment, childOpen.Start, childOpen.End, '*')
+	jo, jc := parser.DelimiterFlanking(r.source, segment, childClose.Start, childClose.End, '*')
+	return oo && !oc && !co && cc && io && ic && !jo && jc
 }
 
 func (r *renderer) shallowUnconsumedPrefixTopologySensitive(current *frame) bool {
