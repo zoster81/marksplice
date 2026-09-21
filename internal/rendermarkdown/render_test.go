@@ -388,6 +388,16 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "same-marker tab before leaf preserves host topology",
+			source: "\x00*Z>*\x00\t*)3*\x00*[*",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "\x00*Z\\>*\x00\t*\\)3*\x00*\\[*\n" {
+					t.Fatalf("canonical same-marker host topology = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "mixed-marker adjacent openers are separate physical runs",
 			source: "__*\xff*0*a*b_]_\n",
 			check: func(t *testing.T, canonical string) {

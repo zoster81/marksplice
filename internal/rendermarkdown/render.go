@@ -920,23 +920,14 @@ func (r *renderer) sharedCloseThreeLevelSourceMarkers(
 	current *frame,
 	child inlineDelimiterSibling,
 ) (threeLevelEmphasisSourceMarkers, bool) {
-	currentSource, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
-	childSource, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
-	leafSource, leafOK := r.sourceEmphasisDelimiter(child.onlyDirectChildKind, child.onlyDirectChildSourceRange)
-	if !currentOK || !childOK || !leafOK {
+	markers, ok := r.sourceThreeLevelEmphasisMarkers(current, child)
+	if !ok || markers.outer != markers.child || !sharedCloseEmphasisPairRanges(current, child) {
 		return threeLevelEmphasisSourceMarkers{}, false
 	}
-	if currentSource[0] != childSource[0] || !sharedCloseEmphasisPairRanges(current, child) {
+	if !r.sourceEmphasisCloseRunShared(current, child, markers.outer) {
 		return threeLevelEmphasisSourceMarkers{}, false
 	}
-	if !r.sourceEmphasisCloseRunShared(current, child, currentSource[0]) {
-		return threeLevelEmphasisSourceMarkers{}, false
-	}
-	return threeLevelEmphasisSourceMarkers{
-		outer: currentSource[0],
-		child: childSource[0],
-		leaf:  leafSource[0],
-	}, true
+	return markers, true
 }
 
 func sharedCloseEmphasisPairRanges(current *frame, child inlineDelimiterSibling) bool {
@@ -976,6 +967,18 @@ func (r *renderer) repairThreeLevelEmphasisHostOpen(parent *frame, current *fram
 		return
 	}
 	candidate, ok := r.threeLevelEmphasisSourceMarkerCandidate(current, child, tabInline, tabChild)
+	if !ok {
+		markers, markersOK := r.sourceThreeLevelEmphasisMarkers(current, child)
+		if markersOK {
+			candidate, ok = threeLevelEmphasisCandidateForMarkers(
+				tabInline,
+				tabChild,
+				markers.outer,
+				markers.child,
+				markers.leaf,
+			)
+		}
+	}
 	if !ok || !emphasisDelimiterCanOpenAfter(parent.inline, string(candidate.delimiter), candidate.inline) {
 		return
 	}
@@ -1073,20 +1076,34 @@ func (r *renderer) threeLevelEmphasisSourceMarkerCandidate(
 	tabInline []byte,
 	tabChild inlineDelimiterSibling,
 ) (threeLevelEmphasisCandidate, bool) {
-	currentSource, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
-	childSource, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
-	leafSource, leafOK := r.sourceEmphasisDelimiter(child.onlyDirectChildKind, child.onlyDirectChildSourceRange)
-	if !currentOK || !childOK || !leafOK ||
-		currentSource[0] == childSource[0] || currentSource[0] != leafSource[0] {
+	markers, ok := r.sourceThreeLevelEmphasisMarkers(current, child)
+	if !ok || markers.outer == markers.child || markers.outer != markers.leaf {
 		return threeLevelEmphasisCandidate{}, false
 	}
 	return threeLevelEmphasisCandidateForMarkers(
 		tabInline,
 		tabChild,
-		currentSource[0],
-		childSource[0],
-		leafSource[0],
+		markers.outer,
+		markers.child,
+		markers.leaf,
 	)
+}
+
+func (r *renderer) sourceThreeLevelEmphasisMarkers(
+	current *frame,
+	child inlineDelimiterSibling,
+) (threeLevelEmphasisSourceMarkers, bool) {
+	currentSource, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
+	childSource, childOK := r.sourceEmphasisDelimiter(child.kind, child.sourceRange)
+	leafSource, leafOK := r.sourceEmphasisDelimiter(child.onlyDirectChildKind, child.onlyDirectChildSourceRange)
+	if !currentOK || !childOK || !leafOK {
+		return threeLevelEmphasisSourceMarkers{}, false
+	}
+	return threeLevelEmphasisSourceMarkers{
+		outer: currentSource[0],
+		child: childSource[0],
+		leaf:  leafSource[0],
+	}, true
 }
 
 func threeLevelEmphasisCandidateForInline(
