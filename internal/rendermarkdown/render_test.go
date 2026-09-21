@@ -398,6 +398,26 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			},
 		},
 		{
+			name:   "star shared-close chain restores source tab",
+			source: "*\x00\t*)*a***",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\x00\t*\\)*a***\n" {
+					t.Fatalf("canonical star shared-close tab chain = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "underscore shared-close chain restores source tab",
+			source: "_\x00\n_\xff\t_]___",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "_\x00\n_\xff\t_\\]___\n" {
+					t.Fatalf("canonical underscore shared-close tab chain = %q", canonical)
+				}
+			},
+		},
+		{
 			name:   "mixed-marker adjacent openers are separate physical runs",
 			source: "__*\xff*0*a*b_]_\n",
 			check: func(t *testing.T, canonical string) {

@@ -880,15 +880,20 @@ func (r *renderer) repairSharedCloseThreeLevelEmphasis(current *frame) {
 	) {
 		return
 	}
-	inline := append([]byte(nil), current.inline...)
-	rewriteInlineSiblingMarker(inline, child.outputStart, child.outputEnd, 1, markers.child)
+	inline, normalizedChild, normalized := r.restoreSharedCloseSourceTabs(current.inline, child)
+	if !normalized {
+		inline = append([]byte(nil), current.inline...)
+		normalizedChild = child
+	}
+	rewriteInlineSiblingMarker(inline, normalizedChild.outputStart, normalizedChild.outputEnd, 1, markers.child)
 	rewriteInlineSiblingMarker(
 		inline,
-		child.onlyDirectChildOutputStart,
-		child.onlyDirectChildOutputEnd,
+		normalizedChild.onlyDirectChildOutputStart,
+		normalizedChild.onlyDirectChildOutputEnd,
 		1,
 		markers.leaf,
 	)
+	expected = threeLevelEmphasisExpectedPairs(len(inline)+2, normalizedChild)
 	if !delimiterCandidateMatchesPhysicalRuns(
 		delimitedInlineCandidate(inline, markers.outer),
 		expected,
@@ -896,7 +901,38 @@ func (r *renderer) repairSharedCloseThreeLevelEmphasis(current *frame) {
 		return
 	}
 	current.delimiter = string(markers.outer)
-	copy(current.inline, inline)
+	current.inline = inline
+}
+
+func (r *renderer) restoreSharedCloseSourceTabs(
+	baseInline []byte,
+	child inlineDelimiterSibling,
+) ([]byte, inlineDelimiterSibling, bool) {
+	inline := append([]byte(nil), baseInline...)
+	changed := false
+	if child.sourceRange.Start > 0 && r.source[child.sourceRange.Start-1] == '\t' {
+		start := child.outputStart - 4
+		if restored, ok := restoreCanonicalTab(inline, start); ok {
+			inline = restored
+			child.outputStart -= 3
+			child.outputEnd -= 3
+			child.onlyDirectChildOutputStart -= 3
+			child.onlyDirectChildOutputEnd -= 3
+			changed = true
+		}
+	}
+	if child.onlyDirectChildValid && child.onlyDirectChildSourceRange.Start > 0 &&
+		r.source[child.onlyDirectChildSourceRange.Start-1] == '\t' {
+		start := child.onlyDirectChildOutputStart - 4
+		if restored, ok := restoreCanonicalTab(inline, start); ok {
+			inline = restored
+			child.outputEnd -= 3
+			child.onlyDirectChildOutputStart -= 3
+			child.onlyDirectChildOutputEnd -= 3
+			changed = true
+		}
+	}
+	return inline, child, changed
 }
 
 func threeLevelEmphasisChild(current *frame) (inlineDelimiterSibling, bool) {
