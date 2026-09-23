@@ -556,10 +556,11 @@ func extendedAutolinkBoundary(source []byte, segmentStart, start int) bool {
 }
 
 func scanExtendedURLAutolink(source []byte, start, limit int) (int, bool) {
+	if hasPrefixAt(source, start, limit, "www.") {
+		return scanExtendedWWWAutolink(source, start, limit)
+	}
 	domainStart := start
 	switch {
-	case hasPrefixAt(source, start, limit, "www."):
-		domainStart += len("www.")
 	case hasPrefixAt(source, start, limit, "http://"):
 		domainStart += len("http://")
 	case hasPrefixAt(source, start, limit, "https://"):
@@ -583,6 +584,23 @@ func scanExtendedURLAutolink(source []byte, start, limit int) (int, bool) {
 		return start, false
 	}
 	return end, true
+}
+
+func scanExtendedWWWAutolink(source []byte, start, limit int) (int, bool) {
+	state := parser.StartBareWWWContinuation()
+	position := start + len("www.")
+	for position < limit {
+		active := state.AppendByte(source[position])
+		position++
+		if !active {
+			break
+		}
+	}
+	end, ok := state.Owner()
+	if !ok {
+		return start, false
+	}
+	return start + end, true
 }
 
 func scanExtendedDomainEnd(source []byte, start, limit int) (int, bool) {
