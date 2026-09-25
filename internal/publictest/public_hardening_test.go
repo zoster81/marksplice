@@ -44,16 +44,21 @@ func FuzzPublicReadSurfacesRemainSourceBound(f *testing.F) {
 		[]byte("---\ntitle: \"Example\"\n---\n\n> [!NOTE]\n> body\n\n```math\nx+y\n```\n"),
 		[]byte("[^note]: body with [link](target.md)\n\nuse[^note] and $x+y$ plus $`z`$\n"),
 		[]byte("| A | B |\n| :- | -: |\n| x | y |\n"),
+		[]byte("# NUL\x00 heading\n\ntext\x00 with *emphasis*\n"),
 	} {
 		f.Add(seed)
 	}
 
 	f.Fuzz(func(t *testing.T, source []byte) {
+		original := bytes.Clone(source)
 		document, err := marksplice.Parse(source)
 		if err != nil {
 			return
 		}
 		assertReadSurfaces(t, document, source)
+		if !bytes.Equal(source, original) {
+			t.Fatal("reading document mutated caller source")
+		}
 	})
 }
 
@@ -64,15 +69,19 @@ func FuzzNoopMutationsPreserveExactSource(f *testing.F) {
 		[]byte("text with *em* **strong** ~~strike~~ `code` and [link](target) ![image](img.png)\n"),
 		[]byte("[ref]: <target>\n\n<https://example.com>\n"),
 		[]byte("---\ntitle: \"Example\"\n---\n\n$x+y$\n"),
+		[]byte("# NUL\x00 heading\n\ntext\x00 with *emphasis*\n"),
 	} {
 		f.Add(seed)
 	}
 
 	f.Fuzz(func(t *testing.T, source []byte) {
+		original := bytes.Clone(source)
 		document, err := marksplice.Parse(source)
 		if err != nil {
 			return
 		}
+		// CommonMark preprocessing defines the snapshot that no-op edits preserve.
+		normalized := bytes.ReplaceAll(source, []byte{0}, []byte("\ufffd"))
 		matches, err := document.QueryNodes(marksplice.NodeQuery{Limit: 64})
 		if err != nil {
 			t.Fatalf("QueryNodes() error = %v", err)
@@ -93,15 +102,20 @@ func FuzzNoopMutationsPreserveExactSource(f *testing.F) {
 			if err != nil {
 				t.Fatalf("Apply() no-op for kind %v error = %v", match.Node().Kind(), err)
 			}
-			if !bytes.Equal(got, source) {
+			if !bytes.Equal(got, normalized) {
 				t.Fatalf("no-op mutation for kind %v changed source", match.Node().Kind())
 			}
+		}
+		if !bytes.Equal(source, original) {
+			t.Fatal("no-op mutation modified caller source")
 		}
 	})
 }
 
 func assertReadSurfaces(t testing.TB, document *marksplice.Document, source []byte) {
 	t.Helper()
+	// Public ranges address the normalized snapshot, not the caller's raw bytes.
+	source = bytes.ReplaceAll(source, []byte{0}, []byte("\ufffd"))
 	matches, err := document.QueryNodes(marksplice.NodeQuery{Limit: 256})
 	if err != nil {
 		t.Fatalf("QueryNodes() error = %v", err)
