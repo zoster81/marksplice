@@ -187,8 +187,9 @@ func analyzeInlineBlock(source []byte, block inlineBlock, definitions referenceD
 	delimiterExclusions := appendCompositeDelimiterExclusions(ownerExclusions, block, composites)
 	delimiters := parseDelimiterObservationsWithExclusions(source, block, owners, barriers, composites, delimiterExclusions)
 	relationshipExclusions := promoteRelationshipExclusions(delimiterExclusions, block, composites)
-	nodes := primaryInlineOwnerObservations(source, block, owners, delimiters.composites)
-	nodes = append(nodes, projectCompositeObservations(source, block, owners, delimiters.composites, delimiters.matches)...)
+	compositeNodes := projectCompositeObservations(source, block, owners, delimiters.composites, delimiters.matches)
+	nodes := primaryInlineOwnerObservations(source, block, owners, delimiters.composites, len(compositeNodes)+len(delimiters.nodes))
+	nodes = append(nodes, compositeNodes...)
 	nodes = append(nodes, delimiters.nodes...)
 	sortInlineNodes(nodes)
 	usages := compositeLinkUsages(delimiters.composites)
@@ -218,7 +219,7 @@ func sortInlineNodes(nodes []parser.Node) {
 	})
 }
 
-func primaryInlineOwnerObservations(source []byte, block inlineBlock, owners []inlineSpan, composites []compositeInline) []parser.Node {
+func primaryInlineOwnerObservations(source []byte, block inlineBlock, owners []inlineSpan, composites []compositeInline, additionalCapacity int) []parser.Node {
 	exclusions := activeCompositeSyntaxExclusions(block, composites)
 	count := 0
 	for _, owner := range owners {
@@ -226,10 +227,10 @@ func primaryInlineOwnerObservations(source []byte, block inlineBlock, owners []i
 			count++
 		}
 	}
-	if count == 0 {
+	if count+additionalCapacity == 0 {
 		return nil
 	}
-	nodes := make([]parser.Node, 0, count)
+	nodes := make([]parser.Node, 0, count+additionalCapacity)
 	for _, owner := range owners {
 		if !primaryInlineOwnerObservable(owner, exclusions) {
 			continue
