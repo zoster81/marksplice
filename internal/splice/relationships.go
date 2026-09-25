@@ -67,11 +67,20 @@ func (d *Document) LinkRelationships() ([]LinkRelationship, bool) {
 	if d == nil {
 		return nil, true
 	}
+	if len(d.linkUsages) == 0 {
+		return []LinkRelationship{}, true
+	}
 	sourceNodes := d.linkUsageSourceNodes()
-	definitionOwners := d.referenceDefinitionOwners()
-	fragments := d.fragmentCatalog()
+	var definitionOwners map[referenceDefinitionKey]referenceDefinitionOwner
+	var fragments fragmentCatalog
 	result := make([]LinkRelationship, 0, len(d.linkUsages))
 	for _, usage := range d.linkUsages {
+		if usage.Form != parser.LinkUsageDirect && definitionOwners == nil {
+			definitionOwners = d.referenceDefinitionOwners()
+		}
+		if strings.HasPrefix(usage.Destination, "#") && fragments == nil {
+			fragments = d.fragmentCatalog()
+		}
 		relationship, ok := d.linkRelationship(usage, sourceNodes, definitionOwners, fragments)
 		if !ok {
 			return nil, false

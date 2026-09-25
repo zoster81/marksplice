@@ -54,6 +54,9 @@ func (d *Document) MathExpressions() []MathExpression {
 		if !ok {
 			continue
 		}
+		if summary.Kind != splice.KindMathExpression && summary.Kind != splice.KindFencedCode {
+			continue
+		}
 		node, ok := d.document.Node(summary.ID)
 		if !ok {
 			continue
