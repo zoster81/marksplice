@@ -158,6 +158,7 @@ func TestDelimiterTopologyPreparedProbeScratchReuseIsEquivalent(t *testing.T) {
 	}
 	original := append([]delimiterRun(nil), runs...)
 	scratch := make([]delimiterRun, 0, len(runs)+1)
+	var resolver delimiterResolver
 
 	for repeat := 0; repeat < 3; repeat++ {
 		incoming, ok := delimiterTopologyIncomingOpenerMaskPrepared(source, runs, want, len(expected))
@@ -178,7 +179,7 @@ func TestDelimiterTopologyPreparedProbeScratchReuseIsEquivalent(t *testing.T) {
 					runs, want, len(expected), marker, width, category >= 3,
 				)
 				got := delimiterTopologyPreservedWithPreparedLeadingRunUsing(
-					scratch, runs, want, len(expected), marker, width, category >= 3,
+					scratch, runs, want, len(expected), marker, width, category >= 3, &resolver,
 				)
 				if got != baseline {
 					t.Fatalf(

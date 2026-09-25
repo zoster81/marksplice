@@ -354,6 +354,7 @@ func delimiterTopologyIncomingOpenerMaskPrepared(
 	)
 
 	probe := make([]delimiterRun, len(runs))
+	var resolver delimiterResolver
 	var mask uint8
 	var bit uint8
 	for width := 1; width <= 2; width++ {
@@ -368,7 +369,7 @@ func delimiterTopologyIncomingOpenerMaskPrepared(
 				first.marker,
 			)
 			if probe[0].canOpen &&
-				delimiterTopologyMatchesExpected(processDelimiters(probe), want, expectedCount, 0) {
+				delimiterTopologyMatchesExpected(resolver.resolve(probe), want, expectedCount, 0) {
 				mask |= 1 << bit
 			}
 			bit++
@@ -445,6 +446,7 @@ func delimiterTopologyLeadingRunForbiddenMasksPrepared(
 	expectedCount int,
 ) (star, underscore uint8) {
 	probe := make([]delimiterRun, 0, len(runs)+1)
+	var resolver delimiterResolver
 	for category := 0; category < 6; category++ {
 		width := category % 3
 		if width == 0 {
@@ -452,12 +454,12 @@ func delimiterTopologyLeadingRunForbiddenMasksPrepared(
 		}
 		canClose := category >= 3
 		if !delimiterTopologyPreservedWithPreparedLeadingRunUsing(
-			probe, runs, want, expectedCount, '*', width, canClose,
+			probe, runs, want, expectedCount, '*', width, canClose, &resolver,
 		) {
 			star |= 1 << category
 		}
 		if !delimiterTopologyPreservedWithPreparedLeadingRunUsing(
-			probe, runs, want, expectedCount, '_', width, canClose,
+			probe, runs, want, expectedCount, '_', width, canClose, &resolver,
 		) {
 			underscore |= 1 << category
 		}
@@ -490,9 +492,10 @@ func delimiterTopologyPreservedWithPreparedLeadingRun(
 	width int,
 	canClose bool,
 ) bool {
+	var resolver delimiterResolver
 	return delimiterTopologyPreservedWithPreparedLeadingRunUsing(
 		make([]delimiterRun, 0, len(runs)+1),
-		runs, want, expectedCount, marker, width, canClose,
+		runs, want, expectedCount, marker, width, canClose, &resolver,
 	)
 }
 
@@ -504,6 +507,7 @@ func delimiterTopologyPreservedWithPreparedLeadingRunUsing(
 	marker byte,
 	width int,
 	canClose bool,
+	resolver *delimiterResolver,
 ) bool {
 	delta := width + 1
 	probe = probe[:0]
@@ -516,33 +520,7 @@ func delimiterTopologyPreservedWithPreparedLeadingRunUsing(
 		run.end += delta
 		probe = append(probe, run)
 	}
-	matches := processDelimiters(probe)
-	if len(matches) != expectedCount {
-		return false
-	}
-	got := make(map[delimiterTopologyKey]int, len(matches))
-	for _, match := range matches {
-		got[delimiterTopologyKey{
-			marker: match.marker,
-			opening: parser.Range{
-				Start: match.openingConsumed.Start - delta,
-				End:   match.openingConsumed.End - delta,
-			},
-			closing: parser.Range{
-				Start: match.closingConsumed.Start - delta,
-				End:   match.closingConsumed.End - delta,
-			},
-		}]++
-	}
-	if len(got) != len(want) {
-		return false
-	}
-	for key, count := range want {
-		if got[key] != count {
-			return false
-		}
-	}
-	return true
+	return delimiterTopologyMatchesExpected(resolver.resolve(probe), want, expectedCount, delta)
 }
 
 type delimiterTopologyKey struct {

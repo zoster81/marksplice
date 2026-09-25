@@ -1,5 +1,7 @@
 package parser
 
+import "slices"
+
 // DelimiterRun describes one already-scanned Markdown delimiter run.
 type DelimiterRun struct {
 	Start    int
@@ -40,7 +42,24 @@ type delimiterRunOpenerIndex struct {
 // ResolveDelimiterRuns resolves already-scanned delimiter runs using CommonMark
 // emphasis matching. The input slice is not modified.
 func ResolveDelimiterRuns(runs []DelimiterRun) []DelimiterRunMatch {
-	state := make([]delimiterRunState, len(runs))
+	var resolver DelimiterRunResolver
+	return resolver.Resolve(runs)
+}
+
+// DelimiterRunResolver reuses scratch storage for a sequence of delimiter
+// proofs within one operation. It must not be shared by concurrent callers.
+// Results belong to the resolver and remain valid until its next Resolve call.
+type DelimiterRunResolver struct {
+	state   []delimiterRunState
+	index   delimiterRunOpenerIndex
+	matches []DelimiterRunMatch
+}
+
+// Resolve uses the same matching rules as ResolveDelimiterRuns without
+// modifying runs. All logical state is reset before the input is processed.
+func (r *DelimiterRunResolver) Resolve(runs []DelimiterRun) []DelimiterRunMatch {
+	r.state = slices.Grow(r.state[:0], len(runs))[:len(runs)]
+	state := r.state
 	for index, run := range runs {
 		length := run.End - run.Start
 		if length < 0 {
@@ -52,25 +71,35 @@ func ResolveDelimiterRuns(runs []DelimiterRun) []DelimiterRunMatch {
 			remaining:    length,
 		}
 	}
-	index := delimiterRunOpenerIndex{active: make([]int, 0, len(state))}
-	matches := make([]DelimiterRunMatch, 0)
+	index := &r.index
+	index.active = slices.Grow(index.active[:0], len(state))
+	for marker := range index.byCategory {
+		for category := range index.byCategory[marker] {
+			index.byCategory[marker][category] = index.byCategory[marker][category][:0]
+		}
+	}
+	matches := r.matches[:0]
+	if matches == nil {
+		matches = []DelimiterRunMatch{}
+	}
 	for closerIndex := range state {
 		closer := &state[closerIndex]
 		for closer.CanClose && closer.remaining > 0 {
-			openerIndex := nearestDelimiterRunOpener(state, &index, *closer)
+			openerIndex := nearestDelimiterRunOpener(state, index, *closer)
 			if openerIndex < 0 {
 				break
 			}
 			use := delimiterRunConsumption(state[openerIndex], *closer)
 			matches = append(matches, delimiterRunMatchFor(state[openerIndex], *closer, openerIndex, closerIndex, use))
-			invalidateDelimiterRunOpenersAbove(state, &index, openerIndex)
-			consumeDelimiterRunOpener(state, &index, openerIndex, use)
+			invalidateDelimiterRunOpenersAbove(state, index, openerIndex)
+			consumeDelimiterRunOpener(state, index, openerIndex, use)
 			closer.remaining -= use
 		}
 		if closer.CanOpen && closer.remaining > 0 {
-			activateDelimiterRunOpener(state, &index, closerIndex)
+			activateDelimiterRunOpener(state, index, closerIndex)
 		}
 	}
+	r.matches = matches
 	return matches
 }
 

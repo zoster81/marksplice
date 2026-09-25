@@ -291,7 +291,21 @@ func delimiterPrecedingRune(source []byte, segment parser.Range, position int) (
 }
 
 func processDelimiters(runs []delimiterRun) []delimiterMatch {
-	sharedRuns := make([]parser.DelimiterRun, len(runs))
+	var resolver delimiterResolver
+	return resolver.resolve(runs)
+}
+
+// delimiterResolver owns temporary conversion and resolution storage. A result
+// must be consumed before the next call; ordinary parsing uses a fresh resolver.
+type delimiterResolver struct {
+	sharedRuns []parser.DelimiterRun
+	shared     parser.DelimiterRunResolver
+	matches    []delimiterMatch
+}
+
+func (r *delimiterResolver) resolve(runs []delimiterRun) []delimiterMatch {
+	r.sharedRuns = slices.Grow(r.sharedRuns[:0], len(runs))[:len(runs)]
+	sharedRuns := r.sharedRuns
 	for index, run := range runs {
 		sharedRuns[index] = parser.DelimiterRun{
 			Start:    run.start,
@@ -301,8 +315,11 @@ func processDelimiters(runs []delimiterRun) []delimiterMatch {
 			CanClose: run.canClose,
 		}
 	}
-	resolved := parser.ResolveDelimiterRuns(sharedRuns)
-	matches := make([]delimiterMatch, 0, len(resolved))
+	resolved := r.shared.Resolve(sharedRuns)
+	matches := slices.Grow(r.matches[:0], len(resolved))
+	if matches == nil {
+		matches = []delimiterMatch{}
+	}
 	maxMatchedOpener := -1
 	for _, resolvedMatch := range resolved {
 		opener := runs[resolvedMatch.OpenerRun]
@@ -324,6 +341,7 @@ func processDelimiters(runs []delimiterRun) []delimiterMatch {
 		matches = append(matches, match)
 		maxMatchedOpener = max(maxMatchedOpener, resolvedMatch.OpenerRun)
 	}
+	r.matches = matches
 	return matches
 }
 
