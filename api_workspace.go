@@ -232,12 +232,9 @@ func ValidateWorkspace(documents []GraphDocument, resolver WorkspaceResolver, op
 		fragmentStatus: make(map[DocumentKey]func(string) (FragmentTarget, LinkFragmentStatus)),
 		graphFragments: make(graphFragmentResolvers),
 	}
-	if err := state.scanRelationships(resolver); err != nil {
-		return nil, err
-	}
-	graph, err := buildDocumentGraph(documents, state.graphResolver(), state.graphFragments)
+	graph, err := state.buildGraph(resolver)
 	if err != nil {
-		return nil, fmt.Errorf("%w: build resolved document graph: %v", ErrInvalidWorkspace, err)
+		return nil, err
 	}
 	if err := state.appendUnresolvedReferences(); err != nil {
 		return nil, err
@@ -342,25 +339,41 @@ func managedTOCStatuses(index map[DocumentKey]*Document, managed []ManagedTOC) m
 	return result
 }
 
-func (s *workspaceValidationState) scanRelationships(resolver WorkspaceResolver) error {
+func (s *workspaceValidationState) buildGraph(resolver WorkspaceResolver) (*DocumentGraph, error) {
+	graph, err := newDocumentGraph(s.documents)
+	if err != nil {
+		return nil, fmt.Errorf("%w: build resolved document graph: %v", ErrInvalidWorkspace, err)
+	}
 	for _, item := range s.documents {
 		relationships, ok := item.Document.linkRelationships()
 		if !ok {
-			return fmt.Errorf("%w: relationship projection failed for %q", ErrInvalidWorkspace, item.Key)
+			return nil, fmt.Errorf("%w: relationship projection failed for %q", ErrInvalidWorkspace, item.Key)
 		}
-		for _, relationship := range relationships {
-			if strings.HasPrefix(relationship.Destination(), "#") {
-				if diagnostic, ok := localFragmentDiagnostic(item.Key, relationship); ok {
-					s.diagnostics = append(s.diagnostics, diagnostic)
-				}
-				continue
+		if err := s.scanDocumentRelationships(item.Key, relationships, resolver); err != nil {
+			return nil, err
+		}
+		if err := graph.appendRelationshipEdges(item.Key, relationships, s.graphResolver(), s.graphFragments); err != nil {
+			return nil, fmt.Errorf("%w: build resolved document graph: %v", ErrInvalidWorkspace, err)
+		}
+		// Resolutions are needed only until this document's edges are copied.
+		clear(s.resolved)
+	}
+	return graph, nil
+}
+
+func (s *workspaceValidationState) scanDocumentRelationships(key DocumentKey, relationships []LinkRelationship, resolver WorkspaceResolver) error {
+	for _, relationship := range relationships {
+		if strings.HasPrefix(relationship.Destination(), "#") {
+			if diagnostic, ok := localFragmentDiagnostic(key, relationship); ok {
+				s.diagnostics = append(s.diagnostics, diagnostic)
 			}
-			if resolver == nil {
-				continue
-			}
-			if err := s.acceptResolution(item.Key, relationship, resolver(item.Key, relationship)); err != nil {
-				return err
-			}
+			continue
+		}
+		if resolver == nil {
+			continue
+		}
+		if err := s.acceptResolution(key, relationship, resolver(key, relationship)); err != nil {
+			return err
 		}
 	}
 	return nil

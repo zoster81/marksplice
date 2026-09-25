@@ -73,17 +73,11 @@ type DocumentGraph struct {
 // invoking resolver. Every other relationship is included only when resolver explicitly
 // maps it to a document key from the supplied set.
 func BuildDocumentGraph(documents []GraphDocument, resolver DocumentResolver) (*DocumentGraph, error) {
-	return buildDocumentGraph(documents, resolver, nil)
-}
-
-func buildDocumentGraph(documents []GraphDocument, resolver DocumentResolver, fragmentResolvers graphFragmentResolvers) (*DocumentGraph, error) {
 	graph, err := newDocumentGraph(documents)
 	if err != nil {
 		return nil, err
 	}
-	if fragmentResolvers == nil {
-		fragmentResolvers = make(graphFragmentResolvers)
-	}
+	fragmentResolvers := make(graphFragmentResolvers)
 	for _, item := range documents {
 		if err := graph.appendDocumentRelationships(item, resolver, fragmentResolvers); err != nil {
 			return nil, err
@@ -120,23 +114,27 @@ func (g *DocumentGraph) appendDocumentRelationships(item GraphDocument, resolver
 	if !ok {
 		return fmt.Errorf("%w: relationship projection failed for %q", ErrInvalidGraph, item.Key)
 	}
+	return g.appendRelationshipEdges(item.Key, relationships, resolver, fragmentResolvers)
+}
+
+func (g *DocumentGraph) appendRelationshipEdges(key DocumentKey, relationships []LinkRelationship, resolver DocumentResolver, fragmentResolvers graphFragmentResolvers) error {
 	for _, relationship := range relationships {
 		if strings.HasPrefix(relationship.Destination(), "#") {
-			g.addEdge(localGraphEdge(item.Key, relationship))
+			g.addEdge(localGraphEdge(key, relationship))
 			continue
 		}
 		if resolver == nil {
 			continue
 		}
-		resolution, resolved := resolver(item.Key, relationship)
+		resolution, resolved := resolver(key, relationship)
 		if !resolved {
 			continue
 		}
 		target, ok := g.documents[resolution.Target]
 		if resolution.Target == "" || !ok {
-			return fmt.Errorf("%w: resolver target %q from %q is not in the document set", ErrInvalidGraph, resolution.Target, item.Key)
+			return fmt.Errorf("%w: resolver target %q from %q is not in the document set", ErrInvalidGraph, resolution.Target, key)
 		}
-		g.addEdge(resolvedGraphEdge(item.Key, resolution, relationship, target, fragmentResolvers))
+		g.addEdge(resolvedGraphEdge(key, resolution, relationship, target, fragmentResolvers))
 	}
 	return nil
 }
