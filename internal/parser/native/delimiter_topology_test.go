@@ -1,10 +1,37 @@
 package native
 
 import (
+	"bytes"
+	"slices"
 	"testing"
 
 	"github.com/zoster81/marksplice/internal/parser"
 )
+
+func TestPreparedDelimiterTopologyCanAlternateProofsWithoutMutatingInputs(t *testing.T) {
+	source := []byte("*x* `~`")
+	owners := []parser.Range{{Start: 4, End: 7}}
+	expected := []DelimiterTopologyPair{{Marker: '*', Opening: parser.Range{Start: 0, End: 1}, Closing: parser.Range{Start: 2, End: 3}}}
+	originalSource, originalOwners, originalExpected := bytes.Clone(source), slices.Clone(owners), slices.Clone(expected)
+	candidate, ok := PrepareDelimiterTopologyCandidate(source, owners, expected)
+	if !ok {
+		t.Fatal("valid candidate rejected")
+	}
+	for i := 0; i < 4; i++ {
+		if !candidate.Matches() {
+			t.Fatal("prepared topology no longer matches")
+		}
+		withTilde := i%2 == 0
+		got, ok := candidate.TransferFacts(withTilde)
+		want, freshOK := DelimiterTopologyTransferFactsForCandidate(source, owners, expected, withTilde)
+		if !ok || !freshOK || got != want {
+			t.Fatalf("reused transfer facts differ: got %+v, want %+v", got, want)
+		}
+	}
+	if !bytes.Equal(source, originalSource) || !slices.Equal(owners, originalOwners) || !slices.Equal(expected, originalExpected) {
+		t.Fatal("proof mutated caller input")
+	}
+}
 
 func TestDelimiterTopologyTransferFactsForCandidate(t *testing.T) {
 	t.Parallel()
@@ -192,7 +219,7 @@ func TestDelimiterTopologyPreparedProbeScratchReuseIsEquivalent(t *testing.T) {
 	var resolver delimiterResolver
 
 	for repeat := 0; repeat < 3; repeat++ {
-		incoming, ok := delimiterTopologyIncomingOpenerMaskPrepared(source, runs, want, len(expected))
+		incoming, ok := delimiterTopologyIncomingOpenerMaskPrepared(source, runs, want, len(expected), &resolver)
 		if !ok {
 			t.Fatal("incoming opener mask preparation failed")
 		}

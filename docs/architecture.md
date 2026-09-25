@@ -234,6 +234,10 @@ Important complexity expectations include:
 - fenced/container source proof: linear in owned physical lines;
 - front-matter recognition: source-linear with temporary key counting only.
 
+Canonical inline proofs prepare Native delimiter runs once per candidate and reuse operation-local resolver scratch across exact-topology and boundary-response probes. Expected delimiter ownership uses binary search over source-ordered runs instead of repeated full scans. Scratch results are borrowed only within the current proof; they never become retained document state. Historical selector models used only by regression oracles remain in test files.
+
+Workspace validation projects each document's relationships once for both diagnostics and graph edges. Resolver results are consumed in document/source order and discarded after that document's edges are built; fragment lookup state remains local to the complete validation call.
+
 Measured optimization must precede architectural complexity. Persistent caches or secondary indexes require benchmark/profile evidence. The retained real-world corpus, pathological scaling benchmarks, fuzzing, race testing, and profile-driven refactors are engineering evidence; machine-specific wall-clock numbers are not cross-machine product guarantees.
 
 Production functions must remain at cyclomatic complexity 15 or lower. Static analysis, production/test-inclusive unparam checks, vulnerability checks, and diff hygiene are part of release-quality verification.

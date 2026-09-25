@@ -122,12 +122,11 @@ func canonicalInlinePlanForFrontierCandidate(
 
 func canonicalInlineSelectorStateFromProof(
 	proof canonicalInlineCandidate,
+	topology *native.DelimiterTopologyCandidate,
 	withTilde bool,
 	deferred bool,
 ) (canonicalInlineSelectorState, bool) {
-	facts, ok := native.DelimiterTopologyTransferFactsForCandidate(
-		proof.output, proof.owners, proof.pairs, withTilde && !deferred,
-	)
+	facts, ok := topology.TransferFacts(withTilde && !deferred)
 	if !ok {
 		return canonicalInlineSelectorState{}, false
 	}
@@ -251,7 +250,11 @@ func canonicalInlineEvaluateFrontierCandidate(
 		if err != nil {
 			return nil, err
 		}
-		structuralValid := native.DelimiterTopologyMatches(proof.output, proof.owners, proof.pairs)
+		topology, ok := native.PrepareDelimiterTopologyCandidate(proof.output, proof.owners, proof.pairs)
+		if !ok {
+			continue
+		}
+		structuralValid := topology.Matches()
 		deferred := false
 		if !structuralValid {
 			deferred = canonicalInlineDeferredRecoverable(proof.output, proof.owners, proof.pairs)
@@ -266,6 +269,7 @@ func canonicalInlineEvaluateFrontierCandidate(
 		}
 		state, ok := canonicalInlineSelectorStateFromProof(
 			proof,
+			&topology,
 			len(strikeNodes) != 0 || needsTilde,
 			deferred,
 		)
@@ -350,8 +354,12 @@ func canonicalInlinePendingRawTabResponse(
 	if err != nil {
 		return canonicalInlineSelectorState{}, false, err
 	}
-	if native.DelimiterTopologyMatches(proof.output, proof.owners, proof.pairs) {
-		state, ok := canonicalInlineSelectorStateFromProof(proof, true, false)
+	topology, ok := native.PrepareDelimiterTopologyCandidate(proof.output, proof.owners, proof.pairs)
+	if !ok {
+		return canonicalInlineSelectorState{}, false, nil
+	}
+	if topology.Matches() {
+		state, ok := canonicalInlineSelectorStateFromProof(proof, &topology, true, false)
 		if !ok {
 			return canonicalInlineSelectorState{}, false, ErrInvalidInput
 		}
@@ -360,7 +368,7 @@ func canonicalInlinePendingRawTabResponse(
 	if !canonicalInlineDeferredRecoverable(proof.output, proof.owners, proof.pairs) {
 		return canonicalInlineSelectorState{}, false, nil
 	}
-	state, ok := canonicalInlineSelectorStateFromProof(proof, false, true)
+	state, ok := canonicalInlineSelectorStateFromProof(proof, &topology, false, true)
 	if !ok {
 		return canonicalInlineSelectorState{}, false, ErrInvalidInput
 	}

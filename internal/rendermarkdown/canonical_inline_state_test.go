@@ -322,19 +322,3 @@ func canonicalInlineTildeOpenerMask(
 	}
 	return mask, true
 }
-
-func canonicalInlineTransferStateFromProof(
-	source []byte,
-	owners []parser.Range,
-	expected []native.DelimiterTopologyPair,
-) (canonicalInlineTransferState, bool) {
-	facts, ok := native.DelimiterTopologyTransferFactsForCandidate(source, owners, expected, false)
-	if !ok {
-		return canonicalInlineTransferState{}, false
-	}
-	state := canonicalInlineTransferStateFromBoundaryFacts(source, facts.Boundary)
-	state.incomingOpener = facts.IncomingOpener
-	state.starForbidden = facts.StarForbidden
-	state.underscoreForbidden = facts.UnderscoreForbidden
-	return state, true
-}

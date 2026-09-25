@@ -43,6 +43,28 @@ type DelimiterTopologyTransferFacts struct {
 	TildeForbidden      uint8
 }
 
+// DelimiterTopologyCandidate owns operation-local scan and resolver state for
+// repeated proofs of one candidate. Source and expected pairs are borrowed and
+// must remain unchanged until the last proof. It is not safe for concurrent use.
+type DelimiterTopologyCandidate struct {
+	source   []byte
+	expected []DelimiterTopologyPair
+	runs     []delimiterRun
+	want     map[delimiterTopologyKey]int
+	resolver delimiterResolver
+}
+
+// PrepareDelimiterTopologyCandidate scans once with Native owner exclusions.
+func PrepareDelimiterTopologyCandidate(source []byte, owners []parser.Range, expected []DelimiterTopologyPair) (DelimiterTopologyCandidate, bool) {
+	runs, want, ok := delimiterTopologyLeadingRunPreparation(source, owners, expected)
+	return DelimiterTopologyCandidate{source: source, expected: expected, runs: runs, want: want}, ok
+}
+
+// Matches proves exact delimiter consumption without rescanning the source.
+func (c *DelimiterTopologyCandidate) Matches() bool {
+	return delimiterTopologyMatchesExpected(c.resolver.resolve(c.runs), c.want, len(c.expected), 0)
+}
+
 // DelimiterTopologyBoundaryFactsForCandidate derives physical boundary-run
 // facts with the same Native scanner and owner exclusions used for topology
 // validation. Expected pairs remain the semantic authority for level-one demand.
@@ -137,11 +159,11 @@ func DelimiterTopologyMatches(
 	owners []parser.Range,
 	expected []DelimiterTopologyPair,
 ) bool {
-	runs, want, ok := delimiterTopologyLeadingRunPreparation(source, owners, expected)
+	candidate, ok := PrepareDelimiterTopologyCandidate(source, owners, expected)
 	if !ok {
 		return false
 	}
-	return delimiterTopologyMatchesExpected(processDelimiters(runs), want, len(expected), 0)
+	return candidate.Matches()
 }
 
 // DelimiterTopologyMatchesInContext proves that all expected delimiter pairs
@@ -280,22 +302,28 @@ func DelimiterTopologyTransferFactsForCandidate(
 	expected []DelimiterTopologyPair,
 	withTilde bool,
 ) (DelimiterTopologyTransferFacts, bool) {
-	runs, want, ok := delimiterTopologyLeadingRunPreparation(source, owners, expected)
+	candidate, ok := PrepareDelimiterTopologyCandidate(source, owners, expected)
 	if !ok {
 		return DelimiterTopologyTransferFacts{}, false
 	}
-	boundary, ok := delimiterTopologyBoundaryFactsFromPrepared(runs, expected)
+	return candidate.TransferFacts(withTilde)
+}
+
+// TransferFacts derives compact boundary responses using the prepared scan and
+// the same resolver scratch as Matches. Tilde categories are optional.
+func (c *DelimiterTopologyCandidate) TransferFacts(withTilde bool) (DelimiterTopologyTransferFacts, bool) {
+	boundary, ok := delimiterTopologyBoundaryFactsFromPrepared(c.runs, c.expected)
 	if !ok {
 		return DelimiterTopologyTransferFacts{}, false
 	}
 	incoming, ok := delimiterTopologyIncomingOpenerMaskPrepared(
-		source, runs, want, len(expected),
+		c.source, c.runs, c.want, len(c.expected), &c.resolver,
 	)
 	if !ok {
 		return DelimiterTopologyTransferFacts{}, false
 	}
 	star, underscore, tilde := delimiterTopologyLeadingRunForbiddenMasksPrepared(
-		runs, want, len(expected), withTilde,
+		c.runs, c.want, len(c.expected), withTilde, &c.resolver,
 	)
 	return DelimiterTopologyTransferFacts{
 		Boundary:            boundary,
@@ -319,7 +347,8 @@ func DelimiterTopologyIncomingOpenerMask(
 	if !ok {
 		return 0, false
 	}
-	return delimiterTopologyIncomingOpenerMaskPrepared(source, runs, want, len(expected))
+	var resolver delimiterResolver
+	return delimiterTopologyIncomingOpenerMaskPrepared(source, runs, want, len(expected), &resolver)
 }
 
 func delimiterTopologyIncomingOpenerMaskPrepared(
@@ -327,6 +356,7 @@ func delimiterTopologyIncomingOpenerMaskPrepared(
 	runs []delimiterRun,
 	want map[delimiterTopologyKey]int,
 	expectedCount int,
+	resolver *delimiterResolver,
 ) (uint8, bool) {
 	if len(runs) == 0 {
 		return 0, expectedCount == 0
@@ -337,7 +367,6 @@ func delimiterTopologyIncomingOpenerMaskPrepared(
 	)
 
 	probe := make([]delimiterRun, len(runs))
-	var resolver delimiterResolver
 	var mask uint8
 	var bit uint8
 	for width := 1; width <= 2; width++ {
@@ -417,8 +446,9 @@ func DelimiterTopologyLeadingRunForbiddenMasks(
 	if !ok {
 		return 0, 0, false
 	}
+	var resolver delimiterResolver
 	star, underscore, _ = delimiterTopologyLeadingRunForbiddenMasksPrepared(
-		runs, want, len(expected), false,
+		runs, want, len(expected), false, &resolver,
 	)
 	return star, underscore, true
 }
@@ -428,9 +458,9 @@ func delimiterTopologyLeadingRunForbiddenMasksPrepared(
 	want map[delimiterTopologyKey]int,
 	expectedCount int,
 	withTilde bool,
+	resolver *delimiterResolver,
 ) (star, underscore, tilde uint8) {
 	probe := make([]delimiterRun, 0, len(runs)+1)
-	var resolver delimiterResolver
 	for category := 0; category < 6; category++ {
 		width := category % 3
 		if width == 0 {
@@ -438,17 +468,17 @@ func delimiterTopologyLeadingRunForbiddenMasksPrepared(
 		}
 		canClose := category >= 3
 		if !delimiterTopologyPreservedWithPreparedLeadingRunUsing(
-			probe, runs, want, expectedCount, '*', width, canClose, &resolver,
+			probe, runs, want, expectedCount, '*', width, canClose, resolver,
 		) {
 			star |= 1 << category
 		}
 		if !delimiterTopologyPreservedWithPreparedLeadingRunUsing(
-			probe, runs, want, expectedCount, '_', width, canClose, &resolver,
+			probe, runs, want, expectedCount, '_', width, canClose, resolver,
 		) {
 			underscore |= 1 << category
 		}
 		if withTilde && width != 3 && !delimiterTopologyPreservedWithPreparedLeadingRunUsing(
-			probe, runs, want, expectedCount, '~', width, canClose, &resolver,
+			probe, runs, want, expectedCount, '~', width, canClose, resolver,
 		) {
 			tilde |= 1 << category
 		}
