@@ -113,25 +113,26 @@ const (
 // DetailIndex is a 1-based index into the kind-specific detail slice in the same
 // DocumentObservations value; zero means that the node has no sparse detail.
 type Node struct {
-	Kind                 Kind
-	DetailIndex          uint32
+	// Group pointer-bearing data and scalar widths to keep hot node arrays compact.
+	HeadingText          string
+	Destination          string
+	Label                string
+	Title                string
+	Value                string
 	Range                Range
 	Level                int
-	HeadingText          string
+	ListParentAnchor     int
+	ListContainerAnchor  int
+	ListDirectChildCount int
+	Anchor               int
+	DetailIndex          uint32
+	Kind                 Kind
 	Checked              bool
 	Ordered              bool
 	Marker               byte
 	HasListParent        bool
-	ListParentAnchor     int
-	ListContainerAnchor  int
 	HasListChildren      bool
-	ListDirectChildCount int
-	Anchor               int
-	Destination          string
-	Label                string
-	Title                string
 	HasTitle             bool
-	Value                string
 	AutoLinkEmail        bool
 	AutoLinkForm         AutoLinkForm
 	TopLevel             bool

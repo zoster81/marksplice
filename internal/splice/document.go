@@ -88,63 +88,64 @@ type Range = source.Range
 
 // Node is the minimal Marksplice-owned structural view used by the feasibility slice.
 type Node struct {
+	// Group pointer-bearing data and scalar widths to keep hot node arrays compact.
 	ID                        NodeID
-	Kind                      Kind
+	HeadingText               string
+	ListParentID              NodeID
+	TableRowID                NodeID
+	TableAlignments           []TableAlignment
+	TableID                   NodeID
+	TablePreviousRowID        NodeID
+	TableNextRowID            NodeID
+	Destination               string
+	Label                     string
+	Title                     string
+	Value                     string
+	Key                       string
+	HTMLAttribute             string
 	Range                     Range
 	ContentRange              Range
 	Level                     int
-	HeadingText               string
-	HeadingStyle              HeadingStyle
-	Checked                   bool
-	ListOrdered               bool
-	ListMarker                byte
-	ListHasParent             bool
 	ListParentAnchor          int
 	ListContainerAnchor       int
-	ListParentID              NodeID
-	ListHasChildren           bool
 	ListDirectChildCount      int
 	ListChildStart            int
 	ListChildCount            int
-	ListSubtreeComplete       bool
 	ListSubtreeEnd            int
 	ListItemLineRange         Range
-	TableHeader               bool
 	TableColumn               int
 	TableRowAnchor            int
 	TableRowSourceAnchor      int
-	TableRowID                NodeID
 	TableAnchor               int
 	TableColumnCount          int
-	TableAlignments           []TableAlignment
-	TableID                   NodeID
 	TableBodyRowCount         int
 	TableLastBodyRowAnchor    int
 	TablePromotedRowStart     int
 	TablePromotedRowCount     int
 	TableOwnedHeaderCellStart int
 	TableOwnedHeaderCellCount int
-	TablePreviousRowID        NodeID
-	TableNextRowID            NodeID
 	TableRowCellStart         int
 	TableRowCellCount         int
 	TableHeaderCellStart      int
 	TableHeaderCellCount      int
-	Editable                  bool
-	SourceDetailIndex         uint32
 	TableCellRange            Range
-	MathStyle                 MathExpressionStyle
 	Anchor                    int
-	Destination               string
-	Label                     string
-	Title                     string
+	SourceDetailIndex         uint32
+	Kind                      Kind
+	HeadingStyle              HeadingStyle
+	Checked                   bool
+	ListOrdered               bool
+	ListMarker                byte
+	ListHasParent             bool
+	ListHasChildren           bool
+	ListSubtreeComplete       bool
+	TableHeader               bool
+	Editable                  bool
+	MathStyle                 MathExpressionStyle
 	HasTitle                  bool
-	Value                     string
 	AutoLinkEmail             bool
-	Key                       string
 	FrontMatterFormat         FrontMatterFormat
 	FrontMatterStyle          source.FrontMatterValueStyle
-	HTMLAttribute             string
 	HTMLQuote                 byte
 	TopLevel                  bool
 }
