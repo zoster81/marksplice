@@ -282,34 +282,9 @@ func canonicalInlineBottomUpHostWithNormalization(
 		len(normalization.nodes) != len(ast.nodes) {
 		return nil, false, ErrInvalidInput
 	}
-	frontier := []canonicalInlineFrontierCandidate{{}}
-	view, err := newCanonicalInlineASTView(ast)
-	if err != nil {
-		return nil, false, err
-	}
-	previousSourceRoot := noCanonicalInlineASTNode
-	previousTargetRoot := noCanonicalInlineASTNode
-	for child := ast.nodes[ast.root].firstChild; child != noCanonicalInlineASTNode; child = ast.nodes[child].nextSibling {
-		childFrontier, supported, err := canonicalInlineBottomUpNodeWithNormalization(
-			ast, normalization, child, needsTilde, prune,
-		)
-		if err != nil || !supported {
-			return nil, supported, err
-		}
-		frontier = canonicalInlineCombineFrontiers(frontier, childFrontier)
-		previousTargetRoot, err = canonicalInlineASTViewAppendRoot(
-			&view, ast, child, previousSourceRoot, previousTargetRoot,
-		)
-		if err != nil {
-			return nil, false, err
-		}
-		previousSourceRoot = child
-		frontier, err = prune(view, frontier, needsTilde)
-		if err != nil || len(frontier) == 0 {
-			return frontier, true, err
-		}
-	}
-	return frontier, true, nil
+	return canonicalInlineBottomUpChildrenWithNormalization(
+		ast, normalization, ast.root, needsTilde, prune,
+	)
 }
 
 func canonicalInlineBottomUpNodeWithNormalization(
