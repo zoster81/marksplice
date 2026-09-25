@@ -1,6 +1,10 @@
 package native
 
-import "github.com/zoster81/marksplice/internal/parser"
+import (
+	"sort"
+
+	"github.com/zoster81/marksplice/internal/parser"
+)
 
 // DelimiterTopologyPair describes one semantic delimiter pair expected in an
 // emitted inline candidate. Ranges identify the exact delimiter bytes owned by
@@ -98,7 +102,11 @@ func delimiterTopologyContainingRun(
 	marker byte,
 	range_ parser.Range,
 ) int {
-	for index, run := range runs {
+	// Native scanning produces non-overlapping runs in source order. Expected
+	// pairs have non-empty ranges, so at most one run can own this start byte.
+	index := sort.Search(len(runs), func(i int) bool { return runs[i].end > range_.Start })
+	if index < len(runs) {
+		run := runs[index]
 		if run.marker == marker && run.start <= range_.Start && range_.End <= run.end {
 			return index
 		}
