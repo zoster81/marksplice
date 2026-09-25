@@ -22,7 +22,7 @@ func TestDelimiterTopologyTransferFactsForCandidate(t *testing.T) {
 			Closing: parser.Range{Start: 4, End: 6},
 		},
 	}
-	facts, ok := DelimiterTopologyTransferFactsForCandidate(source, nil, expected)
+	facts, ok := DelimiterTopologyTransferFactsForCandidate(source, nil, expected, false)
 	if !ok {
 		t.Fatal("transfer-facts derivation failed")
 	}
@@ -38,6 +38,37 @@ func TestDelimiterTopologyTransferFactsForCandidate(t *testing.T) {
 	if !ok || facts.StarForbidden != star || facts.UnderscoreForbidden != underscore {
 		t.Fatalf("forbidden masks = %02x/%02x, want %02x/%02x",
 			facts.StarForbidden, facts.UnderscoreForbidden, star, underscore)
+	}
+}
+
+func TestDelimiterTopologyTransferTildeMaskMatchesIndividualProbes(t *testing.T) {
+	for _, source := range []string{"", "text", "*x*", "~x~", "~~x~~", "~x~ ~~y~~", "~~~x~~~", "*~x~*"} {
+		runs, _, ok := delimiterTopologyLeadingRunPreparation([]byte(source), nil, nil)
+		if !ok {
+			t.Fatal("source preparation failed")
+		}
+		var expected []DelimiterTopologyPair
+		for _, match := range processDelimiters(runs) {
+			expected = append(expected, DelimiterTopologyPair{Marker: match.marker, Opening: match.openingConsumed, Closing: match.closingConsumed})
+		}
+		facts, ok := DelimiterTopologyTransferFactsForCandidate([]byte(source), nil, expected, true)
+		if !ok {
+			t.Fatalf("source %q rejected", source)
+		}
+		var want uint8
+		for _, category := range []int{1, 2, 4, 5} {
+			if !DelimiterTopologyPreservedWithLeadingRun([]byte(source), nil, expected, '~', category%3, category >= 3) {
+				want |= 1 << category
+			}
+		}
+		if facts.TildeForbidden != want {
+			t.Fatalf("source %q: tilde mask %02x, want %02x", source, facts.TildeForbidden, want)
+		}
+		without, ok := DelimiterTopologyTransferFactsForCandidate([]byte(source), nil, expected, false)
+		facts.TildeForbidden = 0
+		if !ok || facts != without {
+			t.Fatalf("source %q: tilde probes changed unrelated transfer facts", source)
+		}
 	}
 }
 

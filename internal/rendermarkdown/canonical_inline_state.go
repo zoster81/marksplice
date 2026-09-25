@@ -84,46 +84,15 @@ func canonicalInlineIncomingOpenerMask(
 	return native.DelimiterTopologyIncomingOpenerMask(source, owners, expected)
 }
 
-func canonicalInlineTildeOpenerMask(
+func canonicalInlineTransferStateFromFacts(
 	source []byte,
-	owners []parser.Range,
-	expected []native.DelimiterTopologyPair,
-) (uint8, bool) {
-	probes := [...]struct {
-		category int
-		width    int
-		canClose bool
-	}{
-		{category: 1, width: 1},
-		{category: 2, width: 2},
-		{category: 4, width: 1, canClose: true},
-		{category: 5, width: 2, canClose: true},
-	}
-	var mask uint8
-	for _, probe := range probes {
-		if !native.DelimiterTopologyPreservedWithLeadingRun(
-			source, owners, expected, '~', probe.width, probe.canClose,
-		) {
-			mask |= 1 << probe.category
-		}
-	}
-	return mask, true
-}
-
-func canonicalInlineTransferStateFromProof(
-	source []byte,
-	owners []parser.Range,
-	expected []native.DelimiterTopologyPair,
-) (canonicalInlineTransferState, bool) {
-	facts, ok := native.DelimiterTopologyTransferFactsForCandidate(source, owners, expected)
-	if !ok {
-		return canonicalInlineTransferState{}, false
-	}
+	facts native.DelimiterTopologyTransferFacts,
+) canonicalInlineTransferState {
 	state := canonicalInlineTransferStateFromBoundaryFacts(source, facts.Boundary)
 	state.incomingOpener = facts.IncomingOpener
 	state.starForbidden = facts.StarForbidden
 	state.underscoreForbidden = facts.UnderscoreForbidden
-	return state, true
+	return state
 }
 
 func canonicalInlineTransferBoundaryState(

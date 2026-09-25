@@ -40,6 +40,7 @@ type DelimiterTopologyTransferFacts struct {
 	IncomingOpener      uint8
 	StarForbidden       uint8
 	UnderscoreForbidden uint8
+	TildeForbidden      uint8
 }
 
 // DelimiterTopologyBoundaryFactsForCandidate derives physical boundary-run
@@ -136,40 +137,11 @@ func DelimiterTopologyMatches(
 	owners []parser.Range,
 	expected []DelimiterTopologyPair,
 ) bool {
-	segment := parser.Range{Start: 0, End: len(source)}
-	exclusions, ok := delimiterTopologyExclusions(source, owners)
+	runs, want, ok := delimiterTopologyLeadingRunPreparation(source, owners, expected)
 	if !ok {
 		return false
 	}
-	want, ok := delimiterTopologyExpected(source, expected)
-	if !ok {
-		return false
-	}
-
-	block := inlineBlock{segments: []parser.Range{segment}}
-	runs := collectDelimiterRuns(source, block, [][]parser.Range{exclusions})
-	matches := processDelimiters(runs)
-	if len(matches) != len(expected) {
-		return false
-	}
-
-	got := make(map[delimiterTopologyKey]int, len(matches))
-	for _, match := range matches {
-		got[delimiterTopologyKey{
-			marker:  match.marker,
-			opening: match.openingConsumed,
-			closing: match.closingConsumed,
-		}]++
-	}
-	if len(got) != len(want) {
-		return false
-	}
-	for key, count := range want {
-		if got[key] != count {
-			return false
-		}
-	}
-	return true
+	return delimiterTopologyMatchesExpected(processDelimiters(runs), want, len(expected), 0)
 }
 
 // DelimiterTopologyMatchesInContext proves that all expected delimiter pairs
@@ -300,11 +272,13 @@ func DelimiterTopologyPreservedWithLeadingRun(
 }
 
 // DelimiterTopologyTransferFactsForCandidate derives all compact transfer
-// facts from one Native scan of the candidate.
+// facts from one Native scan of the candidate. Tilde probes are optional and
+// use width-one/two categories (bits 1, 2, 4, 5) when requested.
 func DelimiterTopologyTransferFactsForCandidate(
 	source []byte,
 	owners []parser.Range,
 	expected []DelimiterTopologyPair,
+	withTilde bool,
 ) (DelimiterTopologyTransferFacts, bool) {
 	runs, want, ok := delimiterTopologyLeadingRunPreparation(source, owners, expected)
 	if !ok {
@@ -320,14 +294,15 @@ func DelimiterTopologyTransferFactsForCandidate(
 	if !ok {
 		return DelimiterTopologyTransferFacts{}, false
 	}
-	star, underscore := delimiterTopologyLeadingRunForbiddenMasksPrepared(
-		runs, want, len(expected),
+	star, underscore, tilde := delimiterTopologyLeadingRunForbiddenMasksPrepared(
+		runs, want, len(expected), withTilde,
 	)
 	return DelimiterTopologyTransferFacts{
 		Boundary:            boundary,
 		IncomingOpener:      incoming,
 		StarForbidden:       star,
 		UnderscoreForbidden: underscore,
+		TildeForbidden:      tilde,
 	}, true
 }
 
@@ -442,8 +417,8 @@ func DelimiterTopologyLeadingRunForbiddenMasks(
 	if !ok {
 		return 0, 0, false
 	}
-	star, underscore = delimiterTopologyLeadingRunForbiddenMasksPrepared(
-		runs, want, len(expected),
+	star, underscore, _ = delimiterTopologyLeadingRunForbiddenMasksPrepared(
+		runs, want, len(expected), false,
 	)
 	return star, underscore, true
 }
@@ -452,7 +427,8 @@ func delimiterTopologyLeadingRunForbiddenMasksPrepared(
 	runs []delimiterRun,
 	want map[delimiterTopologyKey]int,
 	expectedCount int,
-) (star, underscore uint8) {
+	withTilde bool,
+) (star, underscore, tilde uint8) {
 	probe := make([]delimiterRun, 0, len(runs)+1)
 	var resolver delimiterResolver
 	for category := 0; category < 6; category++ {
@@ -471,8 +447,13 @@ func delimiterTopologyLeadingRunForbiddenMasksPrepared(
 		) {
 			underscore |= 1 << category
 		}
+		if withTilde && width != 3 && !delimiterTopologyPreservedWithPreparedLeadingRunUsing(
+			probe, runs, want, expectedCount, '~', width, canClose, &resolver,
+		) {
+			tilde |= 1 << category
+		}
 	}
-	return star, underscore
+	return star, underscore, tilde
 }
 
 func delimiterTopologyLeadingRunPreparation(

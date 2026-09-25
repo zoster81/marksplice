@@ -125,22 +125,17 @@ func canonicalInlineSelectorStateFromProof(
 	withTilde bool,
 	deferred bool,
 ) (canonicalInlineSelectorState, bool) {
-	base, ok := canonicalInlineTransferStateFromProof(proof.output, proof.owners, proof.pairs)
+	facts, ok := native.DelimiterTopologyTransferFactsForCandidate(
+		proof.output, proof.owners, proof.pairs, withTilde && !deferred,
+	)
 	if !ok {
 		return canonicalInlineSelectorState{}, false
 	}
 	state := canonicalInlineSelectorState{
-		base:                 base,
+		base:                 canonicalInlineTransferStateFromFacts(proof.output, facts),
 		extendedWWW:          proof.bareWWW,
 		deferredContinuation: deferred,
-	}
-	if withTilde && !deferred {
-		state.tildeOpener, ok = canonicalInlineTildeOpenerMask(
-			proof.output, proof.owners, proof.pairs,
-		)
-		if !ok {
-			return canonicalInlineSelectorState{}, false
-		}
+		tildeOpener:          facts.TildeForbidden,
 	}
 	return state, true
 }
