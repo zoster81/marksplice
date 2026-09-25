@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/zoster81/marksplice/internal/parser"
@@ -81,7 +82,7 @@ func TestNativeMatchesPublishedCommonMark0312Contract(t *testing.T) {
 		if want.Number != tc.Number || want.Section != tc.Section || want.MarkdownSHA256 != publishedMarkdownHash(tc.Markdown) {
 			t.Fatalf("CommonMark example %d contract identity mismatch: fixture=%+v section=%q", tc.Number, want, tc.Section)
 		}
-		assertPublishedContractCase(t, backend, tc.Number, tc.Markdown, want.Observations)
+		assertPublishedContractCase(t, backend, tc.Number, tc.Markdown, want.Observations, normalizePublishedExpectedAutoLinkForms)
 	}
 }
 
@@ -117,7 +118,7 @@ func TestNativeMatchesPublishedGFMContract(t *testing.T) {
 		if want.Number != tc.Number || !slices.Equal(want.Extensions, tc.Extensions) || want.MarkdownSHA256 != publishedMarkdownHash(tc.Markdown) {
 			t.Fatalf("GFM example %d contract identity mismatch: fixture=%+v extensions=%v", tc.Number, want, tc.Extensions)
 		}
-		assertPublishedContractCase(t, backend, tc.Number, tc.Markdown, want.Observations)
+		assertPublishedContractCase(t, backend, tc.Number, tc.Markdown, want.Observations, normalizePublishedExpectedAutoLinkForms)
 		fixtureIndex++
 	}
 	if fixtureIndex != len(fixture.Cases) {
@@ -138,7 +139,14 @@ func loadPublishedContractFixture(t *testing.T, path string) publishedContractFi
 	return fixture
 }
 
-func assertPublishedContractCase(t *testing.T, backend parser.Backend, number int, markdown string, legacyWant publishedDocumentObservations) {
+func assertPublishedContractCase(
+	t *testing.T,
+	backend parser.Backend,
+	number int,
+	markdown string,
+	legacyWant publishedDocumentObservations,
+	normalizeExpected func(*parser.DocumentObservations),
+) {
 	t.Helper()
 	source := []byte(markdown)
 	before := bytes.Clone(source)
@@ -150,6 +158,9 @@ func assertPublishedContractCase(t *testing.T, backend parser.Backend, number in
 		t.Fatalf("example %d ParseDocument() mutated source", number)
 	}
 	want := legacyWant.current()
+	if normalizeExpected != nil {
+		normalizeExpected(&want)
+	}
 	normalizePublishedObservations(&got)
 	normalizePublishedObservations(&want)
 	if !reflect.DeepEqual(got, want) {
@@ -239,6 +250,66 @@ func nonNilPublishedAlignments(alignments []parser.TableAlignment) []parser.Tabl
 		return []parser.TableAlignment{}
 	}
 	return alignments
+}
+
+func normalizePublishedExpectedAutoLinkForms(observed *parser.DocumentObservations) {
+	for index := range observed.Nodes {
+		node := &observed.Nodes[index]
+		if node.Kind != parser.KindAutoLink || node.AutoLinkForm != parser.AutoLinkUnknown {
+			continue
+		}
+		if node.Anchor < node.Range.Start {
+			node.AutoLinkForm = parser.AutoLinkExplicitURI
+			if node.AutoLinkEmail {
+				node.AutoLinkForm = parser.AutoLinkExplicitEmail
+			}
+			continue
+		}
+		if node.Anchor != node.Range.Start {
+			continue
+		}
+		if node.AutoLinkEmail {
+			node.AutoLinkForm = parser.AutoLinkExtendedEmail
+			continue
+		}
+		switch {
+		case strings.HasPrefix(node.Value, "www."):
+			node.AutoLinkForm = parser.AutoLinkExtendedWWW
+		case strings.HasPrefix(node.Value, "http://"), strings.HasPrefix(node.Value, "https://"):
+			node.AutoLinkForm = parser.AutoLinkExtendedURL
+		case strings.HasPrefix(node.Value, "mailto:"), strings.HasPrefix(node.Value, "xmpp:"):
+			node.AutoLinkForm = parser.AutoLinkExtendedProtocol
+		}
+	}
+}
+
+func TestNormalizePublishedExpectedAutoLinkForms(t *testing.T) {
+	t.Parallel()
+
+	observed := parser.DocumentObservations{Nodes: []parser.Node{
+		{Kind: parser.KindAutoLink, Range: parser.Range{Start: 1, End: 10}, Anchor: 0, AutoLinkEmail: false},
+		{Kind: parser.KindAutoLink, Range: parser.Range{Start: 1, End: 10}, Anchor: 0, AutoLinkEmail: true},
+		{Kind: parser.KindAutoLink, Range: parser.Range{Start: 0, End: 19}, Anchor: 0, Value: "https://example.com"},
+		{Kind: parser.KindAutoLink, Range: parser.Range{Start: 0, End: 19}, Anchor: 0, Value: "foo@bar.example.com", AutoLinkEmail: true},
+		{Kind: parser.KindAutoLink, Range: parser.Range{Start: 0, End: 15}, Anchor: 0, Value: "www.example.com"},
+		{Kind: parser.KindAutoLink, Range: parser.Range{Start: 0, End: 23}, Anchor: 0, Value: "mailto:foo@example.com"},
+		{Kind: parser.KindParagraph},
+	}}
+	normalizePublishedExpectedAutoLinkForms(&observed)
+	want := []parser.AutoLinkForm{
+		parser.AutoLinkExplicitURI,
+		parser.AutoLinkExplicitEmail,
+		parser.AutoLinkExtendedURL,
+		parser.AutoLinkExtendedEmail,
+		parser.AutoLinkExtendedWWW,
+		parser.AutoLinkExtendedProtocol,
+		parser.AutoLinkUnknown,
+	}
+	for index := range want {
+		if observed.Nodes[index].AutoLinkForm != want[index] {
+			t.Fatalf("node %d autolink form = %v, want %v", index, observed.Nodes[index].AutoLinkForm, want[index])
+		}
+	}
 }
 
 func normalizePublishedObservations(observed *parser.DocumentObservations) {

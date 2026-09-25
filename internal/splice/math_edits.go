@@ -1,10 +1,15 @@
 package splice
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/zoster81/marksplice/internal/source"
+)
 
 // PrepareReplaceMathExpression prepares a source-preserving replacement of one
 // reviewed mathematical payload while retaining its exact delimiter/container form.
 func (d *Document) PrepareReplaceMathExpression(id NodeID, replacement []byte) (ChangeSet, error) {
+	replacement = source.NormalizeCommonMarkInput(replacement)
 	if d == nil {
 		return ChangeSet{}, ErrNodeNotFound
 	}
@@ -39,7 +44,7 @@ func validateMathReplacement(style MathExpressionStyle, replacement []byte) erro
 	if err := validateNonEmptySingleLine(replacement); err != nil {
 		return err
 	}
-	if bytes.IndexByte(replacement, 0) >= 0 || hasUnescapedMathReplacementDollar(replacement) {
+	if hasUnescapedMathReplacementDollar(replacement) {
 		return ErrInvalidReplacement
 	}
 	if style == MathExpressionInlineBacktick && bytes.IndexByte(replacement, '`') >= 0 {

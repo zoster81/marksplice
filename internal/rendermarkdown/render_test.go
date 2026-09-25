@@ -69,6 +69,120 @@ func TestCanonicalMarkdownSemanticRoundTripComplexFamilies(t *testing.T) {
 	}
 }
 
+func TestCanonicalMarkdownTableCellUsesBottomUpInlineHost(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| H |\n| --- |\n| ***x*** |\n")
+	backend := native.New()
+	var output bytes.Buffer
+	if err := Render(&output, source, backend); err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if want := "| H |\n| --- |\n| *__x__* |\n"; output.String() != want {
+		t.Fatalf("canonical table = %q, want %q", output.String(), want)
+	}
+	before := collectSemanticFacts(t, backend, source)
+	after := collectSemanticFacts(t, backend, output.Bytes())
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("semantic facts changed: %s", semanticFactsDifference(before, after))
+	}
+}
+
+func TestCanonicalMarkdownTableCellCutoverPreservesReferenceLabels(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| H |\n| --- |\n| ***![Build Status]*** |\n\n[Build Status]: /badge.svg\n")
+	backend := native.New()
+	var output bytes.Buffer
+	if err := Render(&output, source, backend); err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if !strings.Contains(output.String(), "| *__![Build Status]__* |\n") {
+		t.Fatalf("canonical reference-image table cell = %q", output.String())
+	}
+	before := collectSemanticFacts(t, backend, source)
+	after := collectSemanticFacts(t, backend, output.Bytes())
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("semantic facts changed: %s", semanticFactsDifference(before, after))
+	}
+}
+
+func TestCanonicalMarkdownTableCellCutoverPreservesCodeSpanEscaping(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("| H |\n| --- |\n| `a\\|b` |\n")
+	backend := native.New()
+	var output bytes.Buffer
+	if err := Render(&output, source, backend); err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if want := "| H |\n| --- |\n| `a\\|b` |\n"; output.String() != want {
+		t.Fatalf("canonical code-span table = %q, want %q", output.String(), want)
+	}
+	before := collectSemanticFacts(t, backend, source)
+	after := collectSemanticFacts(t, backend, output.Bytes())
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("semantic facts changed: %s", semanticFactsDifference(before, after))
+	}
+}
+
+func TestCanonicalMarkdownHeadingUsesBottomUpInlineHost(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("# ***x***\n")
+	backend := native.New()
+	var output bytes.Buffer
+	if err := Render(&output, source, backend); err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if want := "# *__x__*\n"; output.String() != want {
+		t.Fatalf("canonical heading = %q, want %q", output.String(), want)
+	}
+	before := collectSemanticFacts(t, backend, source)
+	after := collectSemanticFacts(t, backend, output.Bytes())
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("semantic facts changed: %s", semanticFactsDifference(before, after))
+	}
+}
+
+func TestCanonicalMarkdownParagraphUsesBottomUpInlineHost(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("***x***\n")
+	backend := native.New()
+	var output bytes.Buffer
+	if err := Render(&output, source, backend); err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if want := "*__x__*\n"; output.String() != want {
+		t.Fatalf("canonical paragraph = %q, want %q", output.String(), want)
+	}
+	before := collectSemanticFacts(t, backend, source)
+	after := collectSemanticFacts(t, backend, output.Bytes())
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("semantic facts changed: %s", semanticFactsDifference(before, after))
+	}
+}
+
+func TestCanonicalMarkdownHeadingCutoverPreservesReferenceLinks(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("# ***[Build][ref]***\n\n[ref]: /target\n")
+	backend := native.New()
+	var output bytes.Buffer
+	if err := Render(&output, source, backend); err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if !strings.Contains(output.String(), "# *__[Build][ref]__*\n") {
+		t.Fatalf("canonical reference-link heading = %q", output.String())
+	}
+	before := collectSemanticFacts(t, backend, source)
+	after := collectSemanticFacts(t, backend, output.Bytes())
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("semantic facts changed: %s", semanticFactsDifference(before, after))
+	}
+}
+
 func TestPublishedCommonMarkCanonicalSemanticRoundTrip(t *testing.T) {
 	path := os.Getenv("MARKSPLICE_COMMONMARK_SPEC_HTML")
 	if path == "" {
@@ -180,22 +294,22 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "\\~~~x~~\n",
 		},
 		{
-			name:   "nested strikethrough preserves tab when flanking changes",
+			name:   "mismatched strikethrough widths remain canonical text with tab",
 			source: "~#\t~#~~\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "~\\#\t~\\#~~\n" {
-					t.Fatalf("canonical nested strike tab = %q", canonical)
+				if canonical != "\\~\\#&#9;\\~\\#\\~\\~\n" {
+					t.Fatalf("canonical mismatched-width tilde text = %q", canonical)
 				}
 			},
 		},
 		{
-			name:   "nested strikethrough keeps canonical tab entity when flanking is stable",
+			name:   "mismatched strikethrough widths remain canonical text with stable tab",
 			source: "~#\t~a~~\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "~\\#&#9;~a~~\n" {
-					t.Fatalf("canonical stable nested strike tab = %q", canonical)
+				if canonical != "\\~\\#&#9;\\~a\\~\\~\n" {
+					t.Fatalf("canonical mismatched-width tilde text = %q", canonical)
 				}
 			},
 		},
@@ -208,7 +322,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "~*#\t~a~*~\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "~*\\#&#9;~a~*~\n" {
+				if canonical != "~~*\\#&#9;~~a~~*~~\n" {
 					t.Fatalf("canonical stable wrapped strike tab = %q", canonical)
 				}
 			},
@@ -230,7 +344,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "**)*|*_* *a**\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "**\\)*\\|*\\_* *a**\n" {
+				if canonical != "**\\)*\\|*\\_* _a_*\n" {
 					t.Fatalf("canonical shared opening and closing runs = %q", canonical)
 				}
 			},
@@ -262,7 +376,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "**a_a)*)*_* a*\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "**a\\_a\\)_\\)_\\_* a*\n" {
+				if canonical != "**a\\_a\\)*\\)*\\_* a*\n" {
 					t.Fatalf("canonical shared opening pair = %q", canonical)
 				}
 			},
@@ -272,7 +386,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "__#*a)_)_*_ a_\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "**\\#*a\\)_\\)_** a*\n" {
+				if canonical != "**\\#_a\\)*\\)*_* a*\n" {
 					t.Fatalf("canonical deep shared opening pair = %q", canonical)
 				}
 			},
@@ -282,7 +396,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "__*#a*b_]_\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "***\\#a*b*\\]*\n" {
+				if canonical != "__*\\#a*b_\\]_\n" {
 					t.Fatalf("canonical separated leaf close = %q", canonical)
 				}
 			},
@@ -352,8 +466,18 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "_*!\t_*\x00_*\rc_",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "**\\!&#9;_\\*\x00_*\nc*\n" {
+				if canonical != "*_\\!\t*\\*\x00*_\nc*\n" {
 					t.Fatalf("canonical mixed-marker adjacent chain = %q", canonical)
+				}
+			},
+		},
+		{
+			name:   "text tab before delimiter preserves flanking",
+			source: "*_!\t*_\x00_*\r\nc*",
+			check: func(t *testing.T, canonical string) {
+				t.Helper()
+				if canonical != "*\\_\\!&#9;_*\x00*_\nc*\n" {
+					t.Fatalf("canonical tab-before-delimiter chain = %q", canonical)
 				}
 			},
 		},
@@ -372,7 +496,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "_*\xff\t_]_*_",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "_*\xff\t_\\]_*_\n" {
+				if canonical != "*_\xff\t*\\]*_*\n" {
 					t.Fatalf("canonical underscore outer tab-before-leaf chain = %q", canonical)
 				}
 			},
@@ -382,7 +506,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "_*\x00\t_*1_*_",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "_*\x00\t_\\*1_*_\n" {
+				if canonical != "*_\x00\t*\\*1*_*\n" {
 					t.Fatalf("canonical mixed-marker tab-before-leaf flanking = %q", canonical)
 				}
 			},
@@ -392,7 +516,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "X*Z[_\x00\t*>\x00*2_\xff*",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "X*Z\\[_\x00\t*\\>\x00*2_\xff*\n" {
+				if canonical != "X*Z\\[*\x00\t*\\>\x00*2*\xff*\n" {
 					t.Fatalf("canonical host-valid outer marker = %q", canonical)
 				}
 			},
@@ -412,7 +536,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "*\x00\t*)*a***",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "*\x00\t*\\)*a***\n" {
+				if canonical != "*\x00&#9;_\\)*a*_*\n" {
 					t.Fatalf("canonical star shared-close tab chain = %q", canonical)
 				}
 			},
@@ -422,7 +546,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "_\x00\n_\xff\t_]___",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "_\x00\n_\xff\t_\\]___\n" {
+				if canonical != "*\x00\n_\xff\t*\\]*_*\n" {
 					t.Fatalf("canonical underscore shared-close tab chain = %q", canonical)
 				}
 			},
@@ -432,7 +556,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "*>*\x00\t*)*\n*a***",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "*\\>*\x00&#9;_\\)_\n*a***\n" {
+				if canonical != "*\\>_\x00\t*\\)*\n*a*_*\n" {
 					t.Fatalf("canonical same-marker multi-child topology = %q", canonical)
 				}
 			},
@@ -462,7 +586,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "**a)*_*#*a*(*",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "\\**a\\)_\\__\\#_a_\\(*\n" {
+				if canonical != "\\**a\\)_\\__\\#*a*\\(*\n" {
 					t.Fatalf("canonical zero-shared multi-child prefix = %q", canonical)
 				}
 			},
@@ -472,7 +596,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "__*\xff*0*a*b_]_\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "***\xff*0*a*b*\\]*\n" {
+				if canonical != "__*\xff*0*a*b_\\]_\n" {
 					t.Fatalf("canonical mixed-marker adjacent openers = %q", canonical)
 				}
 			},
@@ -512,7 +636,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "_#_1[*\xff*0*a*__\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "_\\#_1\\[*\xff*0*a*__\n" {
+				if canonical != "*\\#*1\\[_\xff*0*a_**\n" {
 					t.Fatalf("canonical deep shared close run = %q", canonical)
 				}
 			},
@@ -542,7 +666,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "_#_1[*\xff*0*a*b_]_\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "*\\#*1\\[_\xff*0*a_&#98;*\\]*\n" {
+				if canonical != "_\\#_1\\[*\xff*0*a*b_\\]_\n" {
 					t.Fatalf("canonical lowercase boundary entity = %q", canonical)
 				}
 			},
@@ -552,7 +676,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "_#_1[*\xff*0*a*A_]_\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "*\\#*1\\[_\xff*0*a_&#65;*\\]*\n" {
+				if canonical != "_\\#_1\\[*\xff*0*a*A_\\]_\n" {
 					t.Fatalf("canonical uppercase boundary entity = %q", canonical)
 				}
 			},
@@ -562,7 +686,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "_#_1[*\xff*0*a*0_]_\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "*\\#*1\\[_\xff*0*a_&#48;*\\]*\n" {
+				if canonical != "_\\#_1\\[*\xff*0*a*0_\\]_\n" {
 					t.Fatalf("canonical digit boundary entity = %q", canonical)
 				}
 			},
@@ -572,7 +696,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "_#_1[*\xff*0*a*b]_]_\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "*\\#*1\\[_\xff*0*a_&#98;\\]*\\]*\n" {
+				if canonical != "_\\#_1\\[*\xff*0*a*b\\]_\\]_\n" {
 					t.Fatalf("canonical compound boundary entity = %q", canonical)
 				}
 			},
@@ -638,7 +762,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "___>_[_a__\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "___\\>_\\[_a__\n" {
+				if canonical != "\\_*_\\>_\\[_a_*\n" {
 					t.Fatalf("canonical shared boundary underscore prefix = %q", canonical)
 				}
 			},
@@ -668,7 +792,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "___>_[_a_!_\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "___\\>_\\[_a_\\!_\n" {
+				if canonical != "\\_*_\\>_\\[*a*\\!*\n" {
 					t.Fatalf("canonical trailing underscore prefix = %q", canonical)
 				}
 			},
@@ -688,7 +812,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "**~*a*#*_*\\**\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "\\**\\~_a_\\#_\\__\\**\n" {
+				if canonical != "\\**\\~*a*\\#_\\__\\**\n" {
 					t.Fatalf("canonical escaped-tail star prefix = %q", canonical)
 				}
 			},
@@ -698,7 +822,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "__~_>_#_>_#_\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "__\\~_\\>_\\#_\\>_\\#_\n" {
+				if canonical != "\\_*\\~_\\>_\\#_\\>_\\#*\n" {
 					t.Fatalf("canonical separated underscore prefix = %q", canonical)
 				}
 			},
@@ -756,7 +880,7 @@ func TestCanonicalMarkdownEdgeSyntaxRoundTrips(t *testing.T) {
 			source: "!\t_*1*\t*c*__\n",
 			check: func(t *testing.T, canonical string) {
 				t.Helper()
-				if canonical != "\\!&#9;_*1*&#9;*c*_\\_\n" {
+				if canonical != "\\!&#9;*_1_&#9;_c_*\\_\n" {
 					t.Fatalf("canonical two-child suffix = %q", canonical)
 				}
 			},

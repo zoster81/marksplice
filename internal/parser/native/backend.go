@@ -446,6 +446,7 @@ type constructionSemantic struct {
 	title         string
 	hasTitle      bool
 	autoLinkEmail bool
+	autoLinkForm  parser.AutoLinkForm
 	parent        int
 }
 
@@ -548,6 +549,7 @@ func collectConstructionSemantics(owners []inlineSpan, delimiters delimiterParse
 				syntax:        parser.Range{Start: owner.start, End: owner.end},
 				content:       owner.content,
 				autoLinkEmail: owner.autoLinkEmail,
+				autoLinkForm:  owner.autoLinkForm,
 				parent:        -1,
 			})
 		}
@@ -754,7 +756,7 @@ func validateNativeInlineDelimiter(want parser.ConstructionInlineExpectation) er
 			return fmt.Errorf("strong delimiter changed")
 		}
 	case parser.KindStrikethrough:
-		if want.DelimiterLength != 2 || want.Marker != '~' {
+		if !validNativeStrikethroughDelimiter(want) {
 			return fmt.Errorf("strikethrough delimiter changed")
 		}
 	case parser.KindInlineLink, parser.KindImage:
@@ -763,6 +765,10 @@ func validateNativeInlineDelimiter(want parser.ConstructionInlineExpectation) er
 		return fmt.Errorf("unsupported typed inline hierarchy kind %d", want.Kind)
 	}
 	return nil
+}
+
+func validNativeStrikethroughDelimiter(want parser.ConstructionInlineExpectation) bool {
+	return (want.DelimiterLength == 1 || want.DelimiterLength == 2) && want.Marker == '~'
 }
 
 func validateNativeInlineChildSets(state constructionState, expected []parser.ConstructionInlineExpectation, actualToExpected map[int]int) error {

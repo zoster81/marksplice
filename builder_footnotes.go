@@ -60,6 +60,7 @@ func FootnoteReferenceInline(label string) Inline {
 }
 
 func (b *DocumentBuilder) appendFootnoteDefinition(block constructionBlock, deferred bool) error {
+	block = normalizeConstructionBlockCommonMarkInput(block)
 	if err := validateConstructionBlockStandalone(block); err != nil {
 		return err
 	}

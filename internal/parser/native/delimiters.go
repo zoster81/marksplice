@@ -205,7 +205,14 @@ func collectDelimiterRuns(source []byte, block inlineBlock, exclusions [][]parse
 			if marker == '~' && !strikethroughRunEligible(source, segment, start, length) {
 				continue
 			}
-			canOpen, canClose := parser.DelimiterFlanking(source, segment, start, position, marker)
+			canOpen, canClose := delimiterFlankingAtOwnedBoundary(
+				source,
+				segment,
+				start,
+				position,
+				marker,
+				segmentExclusions,
+			)
 			runs = append(runs, delimiterRun{
 				segment:  segmentIndex,
 				start:    start,
@@ -218,6 +225,37 @@ func collectDelimiterRuns(source []byte, block inlineBlock, exclusions [][]parse
 		}
 	}
 	return runs
+}
+
+func delimiterFlankingAtOwnedBoundary(
+	source []byte,
+	segment parser.Range,
+	start, end int,
+	marker byte,
+	exclusions []parser.Range,
+) (bool, bool) {
+	if marker != '~' || len(exclusions) == 0 {
+		return parser.DelimiterFlanking(source, segment, start, end, marker)
+	}
+	beforeWhitespace, beforePunctuation := parser.DelimiterPrecedingClass(source, segment, start)
+	afterWhitespace, afterPunctuation := parser.DelimiterFollowingClass(source, start, end, segment.End)
+	if ownedInlineEndsAt(exclusions, start) {
+		beforeWhitespace, beforePunctuation = false, true
+	}
+	return parser.DelimiterFlankingFromClasses(
+		beforeWhitespace,
+		beforePunctuation,
+		afterWhitespace,
+		afterPunctuation,
+		marker,
+	)
+}
+
+func ownedInlineEndsAt(exclusions []parser.Range, position int) bool {
+	index := sort.Search(len(exclusions), func(index int) bool {
+		return exclusions[index].End >= position
+	})
+	return index < len(exclusions) && exclusions[index].End == position
 }
 
 func hasActiveComposite(composites []compositeInline) bool {

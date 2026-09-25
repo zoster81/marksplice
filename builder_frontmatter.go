@@ -43,7 +43,12 @@ func (b *DocumentBuilder) setFrontMatter(format FrontMatterFormat, fields []Fron
 	if b.frontMatter != nil {
 		return fmt.Errorf("%w: document builder already has front matter", ErrInvalidConstruction)
 	}
-	frontMatter := constructionFrontMatter{format: format, fields: append([]FrontMatterFieldInput(nil), fields...)}
+	normalizedFields := append([]FrontMatterFieldInput(nil), fields...)
+	for index := range normalizedFields {
+		normalizedFields[index].Key = source.NormalizeCommonMarkString(normalizedFields[index].Key)
+		normalizedFields[index].Value = source.NormalizeCommonMarkString(normalizedFields[index].Value)
+	}
+	frontMatter := constructionFrontMatter{format: format, fields: normalizedFields}
 	if err := validateConstructionFrontMatterInput(frontMatter); err != nil {
 		return err
 	}

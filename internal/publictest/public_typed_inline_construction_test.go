@@ -316,7 +316,6 @@ func TestPublicTypedLinkAndImageTitleConstructionRejectsUnsafeTitles(t *testing.
 	invalidTitles := []string{
 		"",
 		"line\nbreak",
-		"contains\x00nul",
 		string([]byte{0xff}),
 		`quote"title`,
 		`escape\\title`,
@@ -470,7 +469,6 @@ func TestPublicTypedAutoLinkConstructionRejectsUnsafeShapes(t *testing.T) {
 		marksplice.AutoLinkInline("line\nbreak@example.test"),
 		marksplice.AutoLinkInline("left<angle@example.test"),
 		marksplice.AutoLinkInline("right>angle@example.test"),
-		marksplice.AutoLinkInline("contains\x00nul@example.test"),
 		marksplice.AutoLinkInline(string([]byte{0xff})),
 	}
 	for _, inline := range invalid {
@@ -515,7 +513,6 @@ func TestPublicTypedLinkAndImageConstructionCopyChildrenAndRejectUnsafeShapes(t 
 	invalid := []marksplice.Inline{
 		marksplice.LinkInline("", marksplice.TextInline("label")),
 		marksplice.LinkInline("line\nbreak", marksplice.TextInline("label")),
-		marksplice.LinkInline("contains\x00nul", marksplice.TextInline("label")),
 		marksplice.LinkInline(string([]byte{0xff}), marksplice.TextInline("label")),
 		marksplice.LinkInline("left<angle", marksplice.TextInline("label")),
 		marksplice.LinkInline("right>angle", marksplice.TextInline("label")),
@@ -570,6 +567,25 @@ func TestPublicTypedStructuredInlineConstructionCopiesChildrenAndRejectsUnsafeSh
 	}
 }
 
+func TestPublicTypedInlineConstructionNormalizesCommonMarkNUL(t *testing.T) {
+	t.Parallel()
+
+	var builder marksplice.DocumentBuilder
+	if err := builder.AppendParagraphContent(
+		marksplice.TextInline("a\x00b"),
+		marksplice.LinkInline("target\x00path", marksplice.TextInline(" c\x00d")),
+	); err != nil {
+		t.Fatalf("AppendParagraphContent() error = %v", err)
+	}
+	got, err := builder.Markdown()
+	if err != nil {
+		t.Fatalf("Markdown() error = %v", err)
+	}
+	if bytes.IndexByte(got, 0) >= 0 || bytes.Count(got, []byte("�")) < 3 {
+		t.Fatalf("Markdown() = % x (%q), want normalized U+FFFD values and no NUL", got, got)
+	}
+}
+
 func TestPublicTypedTextConstructionRejectsInvalidInlineValues(t *testing.T) {
 	t.Parallel()
 
@@ -578,7 +594,6 @@ func TestPublicTypedTextConstructionRejectsInvalidInlineValues(t *testing.T) {
 		marksplice.TextInline(""),
 		marksplice.TextInline("line one\nline two"),
 		marksplice.TextInline("line one\rline two"),
-		marksplice.TextInline("contains\x00nul"),
 		marksplice.TextInline(string([]byte{0xff})),
 	}
 	for _, inline := range invalid {

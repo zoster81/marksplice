@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"strconv"
 	"strings"
@@ -858,8 +857,8 @@ func decodeMarkdownString(value string) string {
 			if relative := strings.IndexByte(value[position:], ';'); relative > 1 && relative <= 64 {
 				end := position + relative + 1
 				raw := value[position:end]
-				decoded := html.UnescapeString(raw)
-				if decoded != raw {
+				decoded, ok := parser.DecodeCommonMarkCharacterReference(raw)
+				if ok {
 					output.WriteString(decoded)
 					position = end
 					continue

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/zoster81/marksplice/internal/source"
 	"github.com/zoster81/marksplice/internal/splice"
 )
 
@@ -263,6 +264,7 @@ func (b *DocumentBuilder) renderTypedInlineConstruction(content []Inline) (strin
 }
 
 func writeTypedInlineConstruction(output *strings.Builder, inline Inline, context typedInlineWriteContext) error {
+	inline = normalizeTypedInlineCommonMarkInput(inline)
 	if !typedInlineKindAllowed(context.policy, inline.kind) {
 		return fmt.Errorf("nested typed inline kind is not supported")
 	}
@@ -304,6 +306,14 @@ func typedInlineKindAllowed(policy typedInlineWritePolicy, kind inlineConstructi
 	default:
 		return false
 	}
+}
+
+func normalizeTypedInlineCommonMarkInput(inline Inline) Inline {
+	inline.text = source.NormalizeCommonMarkString(inline.text)
+	inline.destination = source.NormalizeCommonMarkString(inline.destination)
+	inline.reference = source.NormalizeCommonMarkString(inline.reference)
+	inline.title = source.NormalizeCommonMarkString(inline.title)
+	return inline
 }
 
 func writeTypedInlineText(output *strings.Builder, text string) error {

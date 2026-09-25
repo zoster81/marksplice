@@ -21,6 +21,7 @@ type footnoteBodyLayout struct {
 // separator; Marksplice renders the source with the definition's proven EOL and
 // continuation-prefix style.
 func (d *Document) PrepareReplaceFootnoteDefinitionBodyMultiline(id NodeID, replacement []byte) (ChangeSet, error) {
+	replacement = source.NormalizeCommonMarkInput(replacement)
 	target, err := d.editableTargetNode(id, KindFootnoteDefinition, "footnote definition")
 	if err != nil {
 		return ChangeSet{}, err
@@ -58,6 +59,8 @@ func (d *Document) PrepareReplaceFootnoteDefinitionBodyMultiline(id NodeID, repl
 // body uses LF as its logical line separator; continuation lines are rendered with
 // canonical four-space indentation and the document's proven EOL style.
 func (d *Document) PrepareAppendFootnoteDefinition(label, body []byte) (ChangeSet, error) {
+	label = source.NormalizeCommonMarkInput(label)
+	body = source.NormalizeCommonMarkInput(body)
 	if d == nil || d.footnoteLabelExists(string(label)) {
 		return ChangeSet{}, ErrInvalidReplacement
 	}

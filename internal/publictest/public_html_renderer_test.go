@@ -83,6 +83,23 @@ func TestPublicHTMLRendererNormalizesDestinationsTitlesAndFenceLanguage(t *testi
 	}
 }
 
+func TestPublicHTMLRendererUsesCommonMarkCharacterReferenceSemantics(t *testing.T) {
+	t.Parallel()
+
+	document, err := marksplice.Parse([]byte("[x](/&nGt; \"&#128;\")\n"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	got, err := document.HTML(marksplice.HTMLRenderOptions{})
+	if err != nil {
+		t.Fatalf("HTML() error = %v", err)
+	}
+	want := "<p><a href=\"/%E2%89%AB%E2%83%92\" title=\"\u0080\">x</a></p>\n"
+	if string(got) != want {
+		t.Fatalf("HTML() = %q, want %q", got, want)
+	}
+}
+
 func TestPublicHTMLRendererFlattensNestedImageAltSemantics(t *testing.T) {
 	t.Parallel()
 

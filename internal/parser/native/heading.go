@@ -2,7 +2,6 @@ package native
 
 import (
 	"cmp"
-	"html"
 	"slices"
 	"sort"
 	"strings"
@@ -290,8 +289,8 @@ func decodeHeadingEntity(source []byte, start int) (string, int, bool) {
 		return "", start, false
 	}
 	raw := string(source[start:end])
-	decoded := html.UnescapeString(raw)
-	if decoded == raw {
+	decoded, ok := parser.DecodeCommonMarkCharacterReference(raw)
+	if !ok {
 		return "", start, false
 	}
 	return decoded, end, true

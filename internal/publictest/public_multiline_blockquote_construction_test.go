@@ -64,7 +64,6 @@ func TestPublicDocumentBuilderRejectsInvalidMultilineBlockquoteParagraphs(t *tes
 		"first\n- item",
 		"first\n> nested",
 		"---\nsecond",
-		"first\ncontains\x00nul",
 		"first\n" + string([]byte{0xff}),
 	}
 	for _, content := range invalid {

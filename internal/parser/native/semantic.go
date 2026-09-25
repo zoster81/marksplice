@@ -826,6 +826,7 @@ func emitSemanticInlineNode(source []byte, block inlineBlock, nodes []constructi
 		}
 		if kind == parser.SemanticAutoLink {
 			event.AutoLinkEmail = node.autoLinkEmail
+			event.AutoLinkForm = node.autoLinkForm
 			event.Destination = semanticAutoLinkDestination(value, node.autoLinkEmail)
 		}
 		return visit(event)
@@ -998,9 +999,8 @@ func semanticDelimiterProjection(match delimiterMatch) (parser.Range, parser.Ran
 		match.closingConsumed.End-match.closingConsumed.Start != match.level || match.closer > match.syntaxEnd {
 		return parser.Range{}, parser.Range{}, false
 	}
-	consumedBefore := match.syntaxEnd - match.closingConsumed.End
-	closingStart := match.closer + consumedBefore
-	closingEnd := closingStart + match.level
+	closingStart := match.closingConsumed.Start
+	closingEnd := match.closingConsumed.End
 	syntax := parser.Range{Start: match.openingConsumed.Start, End: closingEnd}
 	content := parser.Range{Start: match.openingConsumed.End, End: closingStart}
 	if syntax.Start < match.syntaxStart || syntax.End > match.syntaxEnd || content.Start > content.End ||

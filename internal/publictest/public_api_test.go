@@ -80,6 +80,39 @@ func TestPublicDocumentSnapshotAndNodeLookup(t *testing.T) {
 	}
 }
 
+func TestPublicPreparedChangeNormalizesCommonMarkNULInputAndReplacement(t *testing.T) {
+	t.Parallel()
+
+	source := []byte{'a', 0x00, 'b', '\n'}
+	doc, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	var paragraph marksplice.Node
+	for _, node := range doc.Nodes() {
+		if node.Kind() == marksplice.KindParagraph {
+			paragraph = node
+			break
+		}
+	}
+	if paragraph.ID().String() == "" {
+		t.Fatal("normalized paragraph was not promoted")
+	}
+
+	change, err := doc.PrepareReplaceParagraph(paragraph.ID(), []byte{'x', 0x00, 'y'})
+	if err != nil {
+		t.Fatalf("PrepareReplaceParagraph() error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply(raw input) error = %v", err)
+	}
+	want := []byte("x\uFFFDy\n")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("Apply(raw input) = % x (%q), want % x (%q)", got, got, want, want)
+	}
+}
+
 func TestPublicPreparedChangePreservesErrorCategories(t *testing.T) {
 	t.Parallel()
 

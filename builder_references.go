@@ -3,6 +3,7 @@ package marksplice
 import (
 	"fmt"
 
+	"github.com/zoster81/marksplice/internal/source"
 	"github.com/zoster81/marksplice/internal/splice"
 )
 
@@ -37,6 +38,7 @@ func (b *DocumentBuilder) DeferReferenceDefinitionWithTitle(label, destination, 
 }
 
 func (b *DocumentBuilder) deferReferenceDefinition(block constructionBlock) error {
+	block = normalizeConstructionBlockCommonMarkInput(block)
 	if err := validateConstructionBlockStandalone(block); err != nil {
 		return err
 	}
@@ -48,6 +50,7 @@ func (b *DocumentBuilder) deferReferenceDefinition(block constructionBlock) erro
 }
 
 func (b *DocumentBuilder) rejectDeferredReferenceCollision(label string) error {
+	label = source.NormalizeCommonMarkString(label)
 	if referenceDefinitionLabelCollides(label, b.deferredReferences) {
 		return fmt.Errorf("%w: reference label conflicts with a deferred normalized definition", ErrInvalidConstruction)
 	}

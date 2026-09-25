@@ -96,7 +96,6 @@ func TestPublicDocumentBuilderRejectsNestedBlockquoteShapeEscapes(t *testing.T) 
 		"- item",
 		"> extra depth",
 		"first\n> extra depth",
-		"contains\x00nul",
 		string([]byte{0xff}),
 	}
 	for _, content := range invalid {

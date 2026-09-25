@@ -85,6 +85,22 @@ func TestPublicDocumentBuilderWritesFrontMatterOnlyDocument(t *testing.T) {
 	assertGeneratedFrontMatter(t, got, marksplice.FrontMatterFormatYAML, map[string]string{"title": "Only metadata"})
 }
 
+func TestPublicDocumentBuilderNormalizesCommonMarkNULInFrontMatterValue(t *testing.T) {
+	t.Parallel()
+
+	var builder marksplice.DocumentBuilder
+	if err := builder.SetYAMLFrontMatter(marksplice.FrontMatterFieldInput{Key: "title", Value: "a\x00b"}); err != nil {
+		t.Fatalf("SetYAMLFrontMatter() error = %v", err)
+	}
+	got, err := builder.Markdown()
+	if err != nil {
+		t.Fatalf("Markdown() error = %v", err)
+	}
+	if bytes.IndexByte(got, 0) >= 0 || !bytes.Contains(got, []byte("�")) {
+		t.Fatalf("Markdown() = % x (%q), want normalized U+FFFD and no NUL", got, got)
+	}
+}
+
 func TestPublicDocumentBuilderRejectsInvalidFrontMatterConstruction(t *testing.T) {
 	t.Parallel()
 
@@ -98,7 +114,6 @@ func TestPublicDocumentBuilderRejectsInvalidFrontMatterConstruction(t *testing.T
 		{{Key: "title", Value: "line\rbreak"}},
 		{{Key: "title", Value: "quote\"inside"}},
 		{{Key: "title", Value: "back\\slash"}},
-		{{Key: "title", Value: "contains\x00nul"}},
 		{{Key: "title", Value: string([]byte{0xff})}},
 		{{Key: "title", Value: "one"}, {Key: "title", Value: "two"}},
 	}

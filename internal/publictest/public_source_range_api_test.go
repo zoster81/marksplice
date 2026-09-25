@@ -7,6 +7,26 @@ import (
 	"github.com/zoster81/marksplice"
 )
 
+func TestPublicParseNormalizesCommonMarkNULBeforeSnapshot(t *testing.T) {
+	t.Parallel()
+
+	input := []byte{'a', 0x00, 'b', '\n'}
+	before := bytes.Clone(input)
+	doc, err := marksplice.Parse(input)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if !bytes.Equal(input, before) {
+		t.Fatalf("Parse() mutated caller input: got % x, want % x", input, before)
+	}
+
+	want := []byte("a\uFFFDb\n")
+	got, ok := doc.SourceRange(marksplice.Range{Start: 0, End: len(want)})
+	if !ok || !bytes.Equal(got, want) {
+		t.Fatalf("normalized source = % x/%v, want % x/true", got, ok, want)
+	}
+}
+
 func TestPublicSourceRangeReadsCopiedSnapshotBytes(t *testing.T) {
 	t.Parallel()
 

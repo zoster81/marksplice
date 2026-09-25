@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestPrepareReplaceMathExpressionNoOpPreservesSourceProvenNULPayload(t *testing.T) {
+func TestPrepareReplaceMathExpressionNormalizesSourceProvenNULPayload(t *testing.T) {
 	t.Parallel()
 
 	source := []byte{'$', 0, '$'}
@@ -19,32 +19,34 @@ func TestPrepareReplaceMathExpressionNoOpPreservesSourceProvenNULPayload(t *test
 		t.Fatalf("math node count = %d, want 1", len(nodes))
 	}
 	target := nodes[0]
-	if target.ContentRange != (Range{Start: 1, End: 2}) {
-		t.Fatalf("math payload range = %v, want [1,2)", target.ContentRange)
+	if target.ContentRange != (Range{Start: 1, End: 4}) {
+		t.Fatalf("math payload range = %v, want [1,4)", target.ContentRange)
 	}
 
 	change, err := doc.PrepareReplaceMathExpression(target.ID, []byte{0})
 	if err != nil {
-		t.Fatalf("PrepareReplaceMathExpression(no-op) error = %v", err)
+		t.Fatalf("PrepareReplaceMathExpression(normalized no-op) error = %v", err)
 	}
 	got, err := change.Apply(source)
 	if err != nil {
-		t.Fatalf("Apply(no-op) error = %v", err)
+		t.Fatalf("Apply(normalized no-op) error = %v", err)
 	}
-	if !bytes.Equal(got, source) {
-		t.Fatalf("no-op changed source: %q", got)
+	want := []byte("$�$")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("normalized no-op source = % x (%q), want % x (%q)", got, got, want, want)
 	}
 	stale := append([]byte(nil), source...)
 	stale[1] = 'x'
 	if _, err := change.Apply(stale); !errors.Is(err, ErrSourceConflict) {
-		t.Fatalf("Apply(stale no-op) error = %v, want ErrSourceConflict", err)
+		t.Fatalf("Apply(stale normalized no-op) error = %v, want ErrSourceConflict", err)
 	}
 }
 
-func TestPrepareReplaceMathExpressionStillRejectsNewNULPayload(t *testing.T) {
+func TestPrepareReplaceMathExpressionNormalizesNewNULPayload(t *testing.T) {
 	t.Parallel()
 
-	doc, err := Parse([]byte("$x$"))
+	source := []byte("$x$")
+	doc, err := Parse(source)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
@@ -52,7 +54,16 @@ func TestPrepareReplaceMathExpressionStillRejectsNewNULPayload(t *testing.T) {
 	if len(nodes) != 1 {
 		t.Fatalf("math node count = %d, want 1", len(nodes))
 	}
-	if _, err := doc.PrepareReplaceMathExpression(nodes[0].ID, []byte{0}); !errors.Is(err, ErrInvalidReplacement) {
-		t.Fatalf("PrepareReplaceMathExpression(new NUL) error = %v, want ErrInvalidReplacement", err)
+	change, err := doc.PrepareReplaceMathExpression(nodes[0].ID, []byte{0})
+	if err != nil {
+		t.Fatalf("PrepareReplaceMathExpression(new NUL) error = %v", err)
+	}
+	got, err := change.Apply(source)
+	if err != nil {
+		t.Fatalf("Apply(new NUL) error = %v", err)
+	}
+	want := []byte("$�$")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("normalized math replacement = % x (%q), want % x (%q)", got, got, want, want)
 	}
 }

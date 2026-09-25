@@ -26,6 +26,21 @@ func DelimiterRunsHaveModuloThreeConflict(openLength int, openCanClose bool, clo
 		(openLength+closeLength)%3 == 0 && closeLength%3 != 0
 }
 
+// DelimiterFlankingFromClasses applies the parser-owned CommonMark/GFM
+// flanking rules to already-classified boundary runes.
+func DelimiterFlankingFromClasses(
+	beforeWhitespace, beforePunctuation, afterWhitespace, afterPunctuation bool,
+	marker byte,
+) (bool, bool) {
+	return delimiterFlankingFromClasses(
+		beforeWhitespace,
+		beforePunctuation,
+		afterWhitespace,
+		afterPunctuation,
+		marker,
+	)
+}
+
 func delimiterFlankingFromClasses(beforeWhitespace, beforePunctuation, afterWhitespace, afterPunctuation bool, marker byte) (bool, bool) {
 	leftFlanking := !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation)
 	rightFlanking := !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation)
@@ -33,6 +48,11 @@ func delimiterFlankingFromClasses(beforeWhitespace, beforePunctuation, afterWhit
 		return leftFlanking && (!rightFlanking || beforePunctuation), rightFlanking && (!leftFlanking || afterPunctuation)
 	}
 	return leftFlanking, rightFlanking
+}
+
+// DelimiterPrecedingClass reports the parser-owned CommonMark class of the rune immediately before a delimiter run.
+func DelimiterPrecedingClass(source []byte, segment Range, position int) (bool, bool) {
+	return delimiterPrecedingClass(source, segment, position)
 }
 
 func delimiterPrecedingClass(source []byte, segment Range, position int) (bool, bool) {

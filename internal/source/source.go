@@ -21,6 +21,54 @@ func Sum(source []byte) Fingerprint {
 	return sha256.Sum256(source)
 }
 
+// NormalizeCommonMarkString applies mandatory CommonMark input preprocessing to a string.
+// CommonMark 0.31.2 section 2.3 requires every U+0000 byte to become U+FFFD.
+func NormalizeCommonMarkString(input string) string {
+	nulCount := 0
+	for index := 0; index < len(input); index++ {
+		if input[index] == 0 {
+			nulCount++
+		}
+	}
+	if nulCount == 0 {
+		return input
+	}
+
+	result := make([]byte, 0, len(input)+2*nulCount)
+	for index := 0; index < len(input); index++ {
+		if input[index] == 0 {
+			result = append(result, 0xef, 0xbf, 0xbd)
+			continue
+		}
+		result = append(result, input[index])
+	}
+	return string(result)
+}
+
+// NormalizeCommonMarkInput applies mandatory CommonMark input preprocessing to bytes.
+// The returned slice aliases input only when no replacement is required.
+func NormalizeCommonMarkInput(input []byte) []byte {
+	nulCount := 0
+	for _, value := range input {
+		if value == 0 {
+			nulCount++
+		}
+	}
+	if nulCount == 0 {
+		return input
+	}
+
+	result := make([]byte, 0, len(input)+2*nulCount)
+	for _, value := range input {
+		if value == 0 {
+			result = append(result, 0xef, 0xbf, 0xbd)
+			continue
+		}
+		result = append(result, value)
+	}
+	return result
+}
+
 // Range is a half-open byte range [Start, End).
 type Range struct {
 	Start int

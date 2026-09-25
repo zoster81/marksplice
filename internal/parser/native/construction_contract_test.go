@@ -38,7 +38,7 @@ func TestNativeConstructionProofAcceptsFrozenContract(t *testing.T) {
 	})
 
 	t.Run("inline hierarchy", func(t *testing.T) {
-		source := []byte("*before ``a`b`` after* **_inside_** *~~gone~~*")
+		source := []byte("*before ``a`b`` after* **_inside_** *~~gone~~* ~single~")
 		expected := []parser.ConstructionInlineExpectation{
 			inlineExpectation(source, "*before ``a`b`` after*", parser.KindEmphasis, '*', 1, -1),
 			inlineExpectation(source, "``a`b``", parser.KindCodeSpan, '`', 2, 0),
@@ -46,6 +46,7 @@ func TestNativeConstructionProofAcceptsFrozenContract(t *testing.T) {
 			inlineExpectation(source, "_inside_", parser.KindEmphasis, '_', 1, 2),
 			inlineExpectation(source, "*~~gone~~*", parser.KindEmphasis, '*', 1, -1),
 			inlineExpectation(source, "~~gone~~", parser.KindStrikethrough, '~', 2, 4),
+			inlineExpectation(source, "~single~", parser.KindStrikethrough, '~', 1, -1),
 		}
 		if err := backend.ValidateConstructionInlineHierarchy(source, expected, nil); err != nil {
 			t.Fatalf("ValidateConstructionInlineHierarchy() error = %v", err)

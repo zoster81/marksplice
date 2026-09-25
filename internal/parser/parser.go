@@ -94,6 +94,21 @@ type TableCellDetail struct {
 	TableAnchor int
 }
 
+// AutoLinkForm identifies the parser rule that recognized an autolink.
+// CommonMark angle-bracket autolinks and GFM extended autolinks have distinct
+// lexical ownership contracts even when they resolve to the same destination.
+type AutoLinkForm uint8
+
+const (
+	AutoLinkUnknown AutoLinkForm = iota
+	AutoLinkExplicitURI
+	AutoLinkExplicitEmail
+	AutoLinkExtendedWWW
+	AutoLinkExtendedURL
+	AutoLinkExtendedEmail
+	AutoLinkExtendedProtocol
+)
+
 // Node is a parser-independent semantic observation used by Marksplice internals.
 // DetailIndex is a 1-based index into the kind-specific detail slice in the same
 // DocumentObservations value; zero means that the node has no sparse detail.
@@ -118,6 +133,7 @@ type Node struct {
 	HasTitle             bool
 	Value                string
 	AutoLinkEmail        bool
+	AutoLinkForm         AutoLinkForm
 	TopLevel             bool
 }
 

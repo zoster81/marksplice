@@ -106,6 +106,13 @@ func delimiterRunConsumption(opener, closer delimiterRunState) int {
 	if opener.Marker != closer.Marker || !opener.CanOpen || !closer.CanClose || opener.remaining == 0 || closer.remaining == 0 {
 		return 0
 	}
+	if opener.Marker == '~' {
+		if opener.length != closer.length || opener.length < 1 || opener.length > 2 ||
+			opener.remaining != opener.length || closer.remaining != closer.length {
+			return 0
+		}
+		return opener.length
+	}
 	if DelimiterRunsHaveModuloThreeConflict(opener.length, opener.CanClose, closer.length, closer.CanOpen) {
 		return 0
 	}
@@ -179,13 +186,13 @@ func delimiterRunCategory(run delimiterRunState) int {
 
 func delimiterRunMatchFor(opener, closer delimiterRunState, openerIndex, closerIndex, level int) DelimiterRunMatch {
 	openingEnd := opener.Start + opener.remaining
-	closingEnd := closer.Start + closer.remaining
+	closingStart := closer.End - closer.remaining
 	return DelimiterRunMatch{
 		Marker:          opener.Marker,
 		Level:           level,
 		OpenerRun:       openerIndex,
 		CloserRun:       closerIndex,
 		OpeningConsumed: Range{Start: openingEnd - level, End: openingEnd},
-		ClosingConsumed: Range{Start: closingEnd - level, End: closingEnd},
+		ClosingConsumed: Range{Start: closingStart, End: closingStart + level},
 	}
 }

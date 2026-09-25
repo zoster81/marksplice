@@ -6,6 +6,36 @@ import (
 	"testing"
 )
 
+func TestNormalizeCommonMarkInputReplacesNULAndCopies(t *testing.T) {
+	t.Parallel()
+
+	input := []byte{'a', 0x00, 'b', 0x00, 'c'}
+	before := bytes.Clone(input)
+	got := NormalizeCommonMarkInput(input)
+	want := []byte("a�b�c")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("NormalizeCommonMarkInput() = % x (%q), want % x (%q)", got, got, want, want)
+	}
+	if !bytes.Equal(input, before) {
+		t.Fatalf("NormalizeCommonMarkInput() mutated caller input: got % x, want % x", input, before)
+	}
+	got[0] = 'X'
+	if input[0] != 'a' {
+		t.Fatal("NormalizeCommonMarkInput() result aliases caller input")
+	}
+}
+
+func TestNormalizeCommonMarkStringReplacesNUL(t *testing.T) {
+	t.Parallel()
+
+	input := "a\x00b\x00c"
+	got := NormalizeCommonMarkString(input)
+	want := "a�b�c"
+	if got != want {
+		t.Fatalf("NormalizeCommonMarkString() = %q, want %q", got, want)
+	}
+}
+
 func TestNewChangeSetRejectsInvalidRange(t *testing.T) {
 	t.Parallel()
 

@@ -52,6 +52,25 @@ func TestBareWWWContinuationReclaimsTrimmedSuffix(t *testing.T) {
 	}
 }
 
+func TestBareWWWContinuationFromSemanticValueAllowsReclaimedSuffix(t *testing.T) {
+	state, requiredOwnerEnd, ok := BareWWWContinuationFromSemanticValue("www.example.com*")
+	if !ok {
+		t.Fatal("semantic value rejected")
+	}
+	if requiredOwnerEnd != len("www.example.com*") {
+		t.Fatalf("required owner end = %d", requiredOwnerEnd)
+	}
+	if end, owner := state.Owner(); !owner || end != len("www.example.com") {
+		t.Fatalf("materialized owner = (%d, %t)", end, owner)
+	}
+	if !state.AppendByte(')') {
+		t.Fatal("expected latent owner continuation")
+	}
+	if end, owner := state.Owner(); !owner || end != requiredOwnerEnd {
+		t.Fatalf("reclaimed owner = (%d, %t), want %d", end, owner, requiredOwnerEnd)
+	}
+}
+
 func TestBareWWWContinuationFromAcceptedValue(t *testing.T) {
 	values := []string{
 		"www.example.com",

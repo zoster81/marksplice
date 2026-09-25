@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/zoster81/marksplice/internal/source"
 )
 
 type constructionBlockKind uint8
@@ -62,11 +64,54 @@ type constructionBlock struct {
 }
 
 func (b *DocumentBuilder) appendConstructionBlock(block constructionBlock) error {
+	block = normalizeConstructionBlockCommonMarkInput(block)
 	if err := validateConstructionBlockStandalone(block); err != nil {
 		return err
 	}
 	b.blocks = append(b.blocks, block)
 	return nil
+}
+
+func normalizeConstructionBlockCommonMarkInput(block constructionBlock) constructionBlock {
+	block.inlineGFM = source.NormalizeCommonMarkString(block.inlineGFM)
+	block.info = source.NormalizeCommonMarkString(block.info)
+	block.label = source.NormalizeCommonMarkString(block.label)
+	block.destination = source.NormalizeCommonMarkString(block.destination)
+	block.title = source.NormalizeCommonMarkString(block.title)
+
+	if len(block.items) != 0 {
+		block.items = append([]constructionListItem(nil), block.items...)
+		for index := range block.items {
+			block.items[index].inlineGFM = source.NormalizeCommonMarkString(block.items[index].inlineGFM)
+		}
+	}
+	if len(block.table.header) != 0 {
+		block.table.header = append([]string(nil), block.table.header...)
+		for index := range block.table.header {
+			block.table.header[index] = source.NormalizeCommonMarkString(block.table.header[index])
+		}
+	}
+	if len(block.table.alignments) != 0 {
+		block.table.alignments = append([]TableAlignment(nil), block.table.alignments...)
+	}
+	if len(block.table.rows) != 0 {
+		rows := block.table.rows
+		block.table.rows = make([][]string, len(rows))
+		for row := range rows {
+			block.table.rows[row] = append([]string(nil), rows[row]...)
+			for column := range block.table.rows[row] {
+				block.table.rows[row][column] = source.NormalizeCommonMarkString(block.table.rows[row][column])
+			}
+		}
+	}
+	if len(block.children) != 0 {
+		children := block.children
+		block.children = make([]constructionBlock, len(children))
+		for index := range children {
+			block.children[index] = normalizeConstructionBlockCommonMarkInput(children[index])
+		}
+	}
+	return block
 }
 
 func validateConstructionBlockStandalone(block constructionBlock) error {

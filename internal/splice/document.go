@@ -173,7 +173,12 @@ func newSpliceChangeSet(change source.ChangeSet) ChangeSet {
 }
 
 func (c ChangeSet) Apply(input []byte) ([]byte, error) {
-	return c.change.Apply(input)
+	normalizedInput := source.NormalizeCommonMarkInput(input)
+	result, err := c.change.Apply(normalizedInput)
+	if err != nil {
+		return nil, err
+	}
+	return source.NormalizeCommonMarkInput(result), nil
 }
 
 func (c ChangeSet) Patches() []source.Patch {
@@ -269,7 +274,7 @@ func parseWithBackend(input []byte, semanticParser parser.Backend) (*Document, e
 }
 
 func parseWithValidatedBackend(input []byte, semanticParser parser.Backend) (*Document, error) {
-	snapshot := append([]byte(nil), input...)
+	snapshot := source.NormalizeCommonMarkInput(append([]byte(nil), input...))
 	frontMatter, hasFrontMatter := source.MapLeadingFrontMatter(snapshot)
 	observed, err := semanticParser.ParseDocument(snapshot)
 	if err != nil {

@@ -29,6 +29,7 @@ type inlineSpan struct {
 	kind          parser.Kind
 	content       parser.Range
 	autoLinkEmail bool
+	autoLinkForm  parser.AutoLinkForm
 }
 
 type inlineParseResult struct {
@@ -277,6 +278,7 @@ func primaryInlineOwnerObservation(source []byte, owner inlineSpan) (parser.Node
 			Anchor:        owner.start,
 			Value:         string(source[owner.content.Start:owner.content.End]),
 			AutoLinkEmail: owner.autoLinkEmail,
+			AutoLinkForm:  owner.autoLinkForm,
 		}, true
 	default:
 		return parser.Node{}, false
@@ -514,6 +516,7 @@ func observedInlineSpan(segment, start, end int, node parser.Node) inlineSpan {
 		kind:          node.Kind,
 		content:       node.Range,
 		autoLinkEmail: node.AutoLinkEmail,
+		autoLinkForm:  node.AutoLinkForm,
 	}
 }
 
@@ -522,24 +525,29 @@ func scanExtendedAutolink(source []byte, start, segmentStart, limit int) (parser
 		return parser.Node{}, start, false
 	}
 	if end, ok := scanProtocolAutolink(source, start, limit); ok {
-		return bareAutolinkObservation(source, start, end, false), end, true
+		return extendedAutolinkObservation(source, start, end, false, parser.AutoLinkExtendedProtocol), end, true
 	}
 	if end, ok := scanExtendedURLAutolink(source, start, limit); ok {
-		return bareAutolinkObservation(source, start, end, false), end, true
+		form := parser.AutoLinkExtendedURL
+		if hasPrefixAt(source, start, end, "www.") {
+			form = parser.AutoLinkExtendedWWW
+		}
+		return extendedAutolinkObservation(source, start, end, false, form), end, true
 	}
 	if end, ok := scanExtendedEmailAutolink(source, start, limit); ok {
-		return bareAutolinkObservation(source, start, end, true), end, true
+		return extendedAutolinkObservation(source, start, end, true, parser.AutoLinkExtendedEmail), end, true
 	}
 	return parser.Node{}, start, false
 }
 
-func bareAutolinkObservation(source []byte, start, end int, email bool) parser.Node {
+func extendedAutolinkObservation(source []byte, start, end int, email bool, form parser.AutoLinkForm) parser.Node {
 	return parser.Node{
 		Kind:          parser.KindAutoLink,
 		Range:         parser.Range{Start: start, End: end},
 		Anchor:        start,
 		Value:         string(source[start:end]),
 		AutoLinkEmail: email,
+		AutoLinkForm:  form,
 	}
 }
 
@@ -846,10 +854,11 @@ func scanAngleAutolink(source []byte, start, limit int) (parser.Node, int, bool)
 	value := source[start+1 : end]
 	if validURIAutolink(value) {
 		return parser.Node{
-			Kind:   parser.KindAutoLink,
-			Range:  parser.Range{Start: start + 1, End: end},
-			Anchor: start,
-			Value:  string(value),
+			Kind:         parser.KindAutoLink,
+			Range:        parser.Range{Start: start + 1, End: end},
+			Anchor:       start,
+			Value:        string(value),
+			AutoLinkForm: parser.AutoLinkExplicitURI,
 		}, end + 1, true
 	}
 	if validEmailAutolink(value) {
@@ -859,6 +868,7 @@ func scanAngleAutolink(source []byte, start, limit int) (parser.Node, int, bool)
 			Anchor:        start,
 			Value:         string(value),
 			AutoLinkEmail: true,
+			AutoLinkForm:  parser.AutoLinkExplicitEmail,
 		}, end + 1, true
 	}
 	return parser.Node{}, start, false

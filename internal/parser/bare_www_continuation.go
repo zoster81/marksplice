@@ -57,21 +57,39 @@ func StartBareWWWContinuation() BareWWWContinuation {
 	}
 }
 
-// BareWWWContinuationFromAcceptedValue rebuilds continuation state from one
-// already-accepted bare "www." autolink semantic value.
-func BareWWWContinuationFromAcceptedValue(value string) (BareWWWContinuation, bool) {
+// BareWWWContinuationFromSemanticValue rebuilds continuation state from one
+// parser-accepted bare "www." autolink semantic value. The current lexical
+// owner may be shorter than value when later source bytes reclaimed a
+// temporarily trimmed suffix; requiredOwnerEnd reports the semantic owner end
+// that those later bytes must preserve.
+func BareWWWContinuationFromSemanticValue(value string) (state BareWWWContinuation, requiredOwnerEnd int, ok bool) {
 	const prefix = "www."
 	if !strings.HasPrefix(value, prefix) || len(value) == len(prefix) {
-		return BareWWWContinuation{}, false
+		return BareWWWContinuation{}, 0, false
 	}
-	state := StartBareWWWContinuation()
+	state = StartBareWWWContinuation()
 	for index := len(prefix); index < len(value); index++ {
 		if !state.AppendByte(value[index]) {
-			return BareWWWContinuation{}, false
+			return BareWWWContinuation{}, 0, false
 		}
 	}
-	end, ok := state.Owner()
-	if !ok || end != len(value) {
+	end, owner := state.Owner()
+	if !owner || end > len(value) {
+		return BareWWWContinuation{}, 0, false
+	}
+	return state, len(value), true
+}
+
+// BareWWWContinuationFromAcceptedValue rebuilds continuation state from one
+// accepted bare "www." autolink value whose ownership is already materialized
+// without requiring later source bytes.
+func BareWWWContinuationFromAcceptedValue(value string) (BareWWWContinuation, bool) {
+	state, requiredOwnerEnd, ok := BareWWWContinuationFromSemanticValue(value)
+	if !ok {
+		return BareWWWContinuation{}, false
+	}
+	end, owner := state.Owner()
+	if !owner || end != requiredOwnerEnd {
 		return BareWWWContinuation{}, false
 	}
 	return state, true

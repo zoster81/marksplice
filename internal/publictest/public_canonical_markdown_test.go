@@ -48,6 +48,24 @@ func TestCanonicalMarkdownBasicPolicyAndIdempotence(t *testing.T) {
 	}
 }
 
+func TestCanonicalMarkdownUsesCommonMarkNormalizedNULInput(t *testing.T) {
+	t.Parallel()
+
+	input := []byte{'a', 0x00, 'b', '\n'}
+	document, err := marksplice.Parse(input)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	canonical, err := document.CanonicalMarkdown()
+	if err != nil {
+		t.Fatalf("CanonicalMarkdown() error = %v", err)
+	}
+	want := []byte("a\uFFFDb\n")
+	if !bytes.Equal(canonical, want) {
+		t.Fatalf("CanonicalMarkdown() = % x (%q), want % x (%q)", canonical, canonical, want, want)
+	}
+}
+
 func TestCanonicalMarkdownKeepsAdjacentEmphasisSiblingsIdempotent(t *testing.T) {
 	t.Parallel()
 

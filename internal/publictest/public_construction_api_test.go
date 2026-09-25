@@ -148,7 +148,7 @@ func TestPublicDocumentBuilderWritesCanonicalSimpleBlockquote(t *testing.T) {
 		t.Fatalf("Markdown() = %q, want %q", got, want)
 	}
 
-	for _, inline := range []string{"", "line one\rline two", "# heading", "---", "- item", "contains\x00nul", string([]byte{0xff})} {
+	for _, inline := range []string{"", "line one\rline two", "# heading", "---", "- item", string([]byte{0xff})} {
 		var invalid marksplice.DocumentBuilder
 		if err := invalid.AppendBlockquote(inline); !errors.Is(err, marksplice.ErrInvalidConstruction) {
 			t.Fatalf("AppendBlockquote(%q) error = %v, want ErrInvalidConstruction", inline, err)
@@ -234,7 +234,6 @@ func TestPublicDocumentBuilderRejectsMergedOrInvalidUnorderedLists(t *testing.T)
 		{},
 		{""},
 		{"line one\nline two"},
-		{"contains\x00nul"},
 		{string([]byte{0xff})},
 		{"- nested"},
 		{"---"},
@@ -457,7 +456,6 @@ func TestPublicDocumentBuilderRejectsInvalidOrMergedTaskLists(t *testing.T) {
 		{},
 		{{InlineGFM: ""}},
 		{{InlineGFM: "line one\nline two"}},
-		{{InlineGFM: "contains\x00nul"}},
 		{{InlineGFM: string([]byte{0xff})}},
 	}
 	for _, items := range invalid {
@@ -574,11 +572,9 @@ func TestPublicDocumentBuilderRejectsInvalidFencedCode(t *testing.T) {
 	}{
 		{content: "line one\r\nline two"},
 		{content: "line one\rline two"},
-		{content: "contains\x00nul"},
 		{content: string([]byte{0xff})},
 		{content: "code", info: "go\nmeta"},
 		{content: "code", info: "go`meta"},
-		{content: "code", info: "contains\x00nul"},
 		{content: "code", info: string([]byte{0xff})},
 	}
 	for _, tt := range tests {
@@ -684,7 +680,7 @@ func TestPublicDocumentBuilderWritesCanonicalTitledReferenceDefinition(t *testin
 func TestPublicDocumentBuilderRejectsInvalidReferenceDefinitionTitle(t *testing.T) {
 	t.Parallel()
 
-	for _, title := range []string{"", "line\nbreak", "line\rbreak", "quote\"inside", "back\\slash", "contains\x00nul", string([]byte{0xff})} {
+	for _, title := range []string{"", "line\nbreak", "line\rbreak", "quote\"inside", "back\\slash", string([]byte{0xff})} {
 		var builder marksplice.DocumentBuilder
 		if err := builder.AppendReferenceDefinitionWithTitle("docs", "https://example.com", title); !errors.Is(err, marksplice.ErrInvalidConstruction) {
 			t.Fatalf("AppendReferenceDefinitionWithTitle(title=%q) error = %v, want ErrInvalidConstruction", title, err)
@@ -713,7 +709,6 @@ func TestPublicDocumentBuilderRejectsInvalidReferenceDefinition(t *testing.T) {
 		{label: "docs", destination: "line\nbreak"},
 		{label: "docs]", destination: "https://example.com"},
 		{label: "docs", destination: "https://example.com/a>b"},
-		{label: "docs", destination: "contains\x00nul"},
 		{label: string([]byte{0xff}), destination: "https://example.com"},
 	}
 	for _, tt := range tests {
@@ -892,7 +887,6 @@ func TestPublicDocumentBuilderRejectsInvalidTable(t *testing.T) {
 		{header: []string{"A\nB"}, rows: [][]string{{"one"}}},
 		{header: []string{"A|B"}, rows: [][]string{{"one"}}},
 		{header: []string{"A"}, rows: [][]string{{"line one\nline two"}}},
-		{header: []string{"A"}, rows: [][]string{{"contains\x00nul"}}},
 		{header: []string{"A"}, rows: [][]string{{string([]byte{0xff})}}},
 	}
 	for _, tt := range tests {
@@ -1162,6 +1156,41 @@ func TestPublicDocumentBuilderRejectsInvalidNestedListDepth(t *testing.T) {
 	}
 }
 
+func TestPublicDocumentBuilderNormalizesCommonMarkNULConstructionInputs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		add  func(*marksplice.DocumentBuilder) error
+	}{
+		{name: "paragraph", add: func(builder *marksplice.DocumentBuilder) error { return builder.AppendParagraph("a\x00b") }},
+		{name: "blockquote", add: func(builder *marksplice.DocumentBuilder) error { return builder.AppendBlockquote("a\x00b") }},
+		{name: "list", add: func(builder *marksplice.DocumentBuilder) error { return builder.AppendUnorderedList("a\x00b") }},
+		{name: "fenced code", add: func(builder *marksplice.DocumentBuilder) error { return builder.AppendFencedCode("a\x00b", "go\x00x") }},
+		{name: "reference definition", add: func(builder *marksplice.DocumentBuilder) error {
+			return builder.AppendReferenceDefinition("label", "https://example.test/a\x00b")
+		}},
+		{name: "table", add: func(builder *marksplice.DocumentBuilder) error {
+			return builder.AppendTable([]string{"a\x00b"}, []string{"c\x00d"})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var builder marksplice.DocumentBuilder
+			if err := tt.add(&builder); err != nil {
+				t.Fatalf("construction error = %v", err)
+			}
+			got, err := builder.Markdown()
+			if err != nil {
+				t.Fatalf("Markdown() error = %v", err)
+			}
+			if bytes.IndexByte(got, 0) >= 0 || !bytes.Contains(got, []byte("�")) {
+				t.Fatalf("Markdown() = % x (%q), want normalized U+FFFD and no NUL", got, got)
+			}
+		})
+	}
+}
+
 func TestPublicDocumentBuilderRejectsInvalidConstruction(t *testing.T) {
 	t.Parallel()
 
@@ -1176,7 +1205,6 @@ func TestPublicDocumentBuilderRejectsInvalidConstruction(t *testing.T) {
 		"",
 		"line one\r\nline two",
 		"line one\rline two",
-		"contains\x00nul",
 		string([]byte{0xff}),
 	}
 	for _, content := range invalidParagraph {

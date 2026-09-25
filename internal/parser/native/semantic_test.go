@@ -77,9 +77,9 @@ func TestWalkSemanticFoundationEvents(t *testing.T) {
 func TestWalkSemanticFoundationInlineTerminals(t *testing.T) {
 	t.Parallel()
 
-	source := []byte("escaped \\* &amp; `code` <https://example.com> <em>raw</em> ![alt](image.png)\n")
+	source := []byte("escaped \\* &amp; &nGt; &nLt; &#128; `code` <https://example.com> <em>raw</em> ![alt](image.png)\n")
 	events := collectSemanticEvents(t, source)
-	if !hasSemanticEvent(events, parser.SemanticText, func(event parser.SemanticEvent) bool { return event.Value == "escaped * & " }) {
+	if !hasSemanticEvent(events, parser.SemanticText, func(event parser.SemanticEvent) bool { return event.Value == "escaped * & ≫⃒ ≪⃒ \u0080 " }) {
 		t.Fatalf("decoded semantic text missing from %#v", events)
 	}
 	if !hasSemanticEvent(events, parser.SemanticCodeSpan, func(event parser.SemanticEvent) bool { return event.Value == "code" }) {
@@ -93,6 +93,43 @@ func TestWalkSemanticFoundationInlineTerminals(t *testing.T) {
 	}
 	if !hasSemanticEvent(events, parser.SemanticImage, func(event parser.SemanticEvent) bool { return event.Destination == "image.png" }) {
 		t.Fatalf("image semantic event missing from %#v", events)
+	}
+}
+
+func TestWalkSemanticStrikethroughUsesOwnedObjectBoundary(t *testing.T) {
+	t.Parallel()
+
+	const source = "~~www.example.com~.~.~~"
+	events := collectSemanticEvents(t, []byte(source))
+
+	var strikes []parser.SemanticEvent
+	for _, event := range events {
+		if event.Phase == parser.SemanticEnter && event.Kind == parser.SemanticStrikethrough {
+			strikes = append(strikes, event)
+		}
+	}
+	if len(strikes) != 2 {
+		t.Fatalf("strikethrough enters = %d, want 2: %#v", len(strikes), events)
+	}
+	if strikes[0].Range != (parser.Range{Start: 0, End: 23}) ||
+		strikes[0].ContentRange != (parser.Range{Start: 2, End: 21}) {
+		t.Fatalf("outer strikethrough = %#v", strikes[0])
+	}
+	if strikes[1].Range != (parser.Range{Start: 17, End: 20}) ||
+		strikes[1].ContentRange != (parser.Range{Start: 18, End: 19}) {
+		t.Fatalf("inner strikethrough = %#v", strikes[1])
+	}
+	if !hasSemanticEvent(events, parser.SemanticAutoLink, func(event parser.SemanticEvent) bool {
+		return event.AutoLinkForm == parser.AutoLinkExtendedWWW &&
+			event.Value == "www.example.com" &&
+			event.Destination == "http://www.example.com"
+	}) {
+		t.Fatalf("extended www autolink missing from %#v", events)
+	}
+	if !hasSemanticEvent(events, parser.SemanticText, func(event parser.SemanticEvent) bool {
+		return event.Value == "."
+	}) {
+		t.Fatalf("inner strike text missing from %#v", events)
 	}
 }
 
@@ -633,6 +670,37 @@ func TestSemanticTaskMarkerIsMetadataNotText(t *testing.T) {
 	}
 	if want := []bool{false, true}; !reflect.DeepEqual(checks, want) {
 		t.Fatalf("task checked states = %#v, want %#v", checks, want)
+	}
+}
+
+func TestSemanticAutoLinkFormDistinguishesCommonMarkAndGFMExtension(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source string
+		want   parser.AutoLinkForm
+	}{
+		{name: "explicit URI", source: "<https://example.com>\n", want: parser.AutoLinkExplicitURI},
+		{name: "explicit email", source: "<foo@bar.example.com>\n", want: parser.AutoLinkExplicitEmail},
+		{name: "extended www", source: "www.example.com\n", want: parser.AutoLinkExtendedWWW},
+		{name: "extended URL", source: "https://example.com/path\n", want: parser.AutoLinkExtendedURL},
+		{name: "extended email", source: "foo@bar.example.com\n", want: parser.AutoLinkExtendedEmail},
+		{name: "extended protocol", source: "mailto:foo@bar.example.com\n", want: parser.AutoLinkExtendedProtocol},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			events := collectSemanticEvents(t, []byte(tt.source))
+			links := semanticEventsOfKind(events, parser.SemanticAutoLink, parser.SemanticLeaf)
+			if len(links) != 1 {
+				t.Fatalf("autolink events = %d, want 1: %#v", len(links), events)
+			}
+			if links[0].AutoLinkForm != tt.want {
+				t.Fatalf("autolink form = %v, want %v: %#v", links[0].AutoLinkForm, tt.want, links[0])
+			}
+		})
 	}
 }
 

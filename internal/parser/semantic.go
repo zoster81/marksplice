@@ -89,6 +89,7 @@ type SemanticEvent struct {
 	HasTitle          bool
 	Label             string
 	AutoLinkEmail     bool
+	AutoLinkForm      AutoLinkForm
 	Ordered           bool
 	Start             int
 	Tight             bool

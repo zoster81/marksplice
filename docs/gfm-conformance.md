@@ -6,10 +6,10 @@ Status: source of truth for Marksplice's Markdown syntax profile, normative hier
 
 Marksplice exposes one Markdown syntax profile.
 
-- **CommonMark 0.31.2** is the normative base grammar.
-- The published **GitHub Flavored Markdown specification** adds explicit GFM extensions and corrections.
+- **CommonMark 0.31.2** is the sole normative base grammar.
+- The published **GitHub Flavored Markdown specification** is normative only for sections explicitly marked as GFM extensions.
 
-The published GFM document is based on an older CommonMark line. Inherited GFM core examples therefore do not override CommonMark 0.31.2. When the two sources disagree about base Markdown syntax, CommonMark 0.31.2 wins. GFM remains authoritative for explicit extensions such as tables, task-list items, strikethrough, and extended autolinks.
+The published GFM document is based on an older CommonMark line. Its inherited core sections and examples are therefore not a second base grammar and must not override, supplement, or “correct” CommonMark 0.31.2. GFM authority begins only where the specification explicitly marks behavior as an extension, such as tables, task-list items, strikethrough, extended autolinks, or tag filtering.
 
 Marksplice does not expose separate CommonMark/GFM modes. Another dialect or compatibility mode requires an explicit architecture decision; it must not appear implicitly through implementation quirks.
 
@@ -20,7 +20,7 @@ Reviewed Marksplice capabilities such as alerts, footnotes, mathematical source 
 When evidence disagrees, use this order:
 
 1. the approved official CommonMark 0.31.2 specification snapshot for base Markdown;
-2. the approved published GFM specification snapshot for explicit GFM extensions/corrections not superseded by CommonMark 0.31.2;
+2. the approved published GFM specification snapshot for behavior explicitly marked as a GFM extension;
 3. explicit reviewed Marksplice contracts for capabilities outside those specifications;
 4. focused and conformance tests implementing the applicable contract;
 5. official reference/current implementations such as the CommonMark reference implementation and `cmark-gfm`, plus GitHub-maintained guidance, as secondary compatibility/security evidence;
@@ -29,11 +29,21 @@ When evidence disagrees, use this order:
 
 A parser implementation is never its own normative source. A mismatch is something to classify against the applicable specification or reviewed Marksplice contract.
 
+### CommonMark character-reference authority
+
+CommonMark 0.31.2 section 2.5 defines entity and numeric character references as semantic character representations, not as a source-preprocessing rewrite. Source-preserving Markdown operations therefore retain spellings such as `AT&T` and `AT&amp;T` unless another requested transformation requires changing them; rendering consumes their CommonMark semantic value separately.
+
+For named references, CommonMark explicitly designates the WHATWG `entities.json` dataset as the authority for valid HTML5 entity names and corresponding code points. CommonMark recognizes only the semicolon-terminated form, even where HTML accepts a legacy semicolonless spelling. Marksplice must therefore validate the CommonMark shape before decoding and must not delegate recognition semantics blindly to a generic HTML unescaper.
+
+Numeric references follow the CommonMark digit bounds and Unicode-code-point semantics. U+0000, surrogate values, and values above U+10FFFF decode to U+FFFD. Valid C1 control code points remain those Unicode code points; HTML compatibility remappings such as `&#128;` to U+20AC are not CommonMark semantics.
+
+Entity-decoded characters cannot retroactively become Markdown structure, and entity references remain literal inside code spans and code blocks. HTML escaping is a later rendering concern and must not be confused with Markdown source normalization.
+
 ## Approved external snapshots
 
 Conformance tests read separately provisioned snapshots of the official CommonMark and GFM pages. The snapshots are not vendored because upstream specification material is separately licensed validation input.
 
-`internal/testutil/commonmarkspec` owns the approved CommonMark snapshot hash and extraction of its **652** numbered examples. `internal/testutil/gfmspec` owns the approved published-GFM snapshot hash, its **677** examples, and extension-section classification. The loaders fail closed if snapshot bytes change.
+`internal/testutil/commonmarkspec` owns the approved CommonMark snapshot hash and extraction of its **652** numbered examples. `internal/testutil/gfmspec` owns the approved published-GFM snapshot hash, its **677** examples, and extension-section classification. The loaders fail closed if snapshot bytes change. The full GFM corpus may be used as compatibility/regression input, but normative GFM assertions must be derived only from examples classified under explicit extension sections; inherited core examples remain subordinate to CommonMark 0.31.2.
 
 Set these environment variables to the approved HTML files:
 
@@ -70,7 +80,7 @@ go test ./internal/rendermarkdown -run '^TestPublishedGFMCanonicalSemanticRoundT
 
 Use exact anchored names. `go test -run` can succeed after selecting zero tests, so guessed filters are not conformance evidence.
 
-The parser-neutral gates verify snapshot identity and all applicable expected observations. The semantic-walk gates verify reviewed rendering semantics without using current output as their expected-value generator.
+The parser-neutral gates verify snapshot identity and all applicable expected observations. The semantic-walk gates verify reviewed rendering semantics without using current output as their expected-value generator. For the GFM snapshot, inherited core examples are broad compatibility/regression coverage only; failures or differences in those examples must be classified against CommonMark 0.31.2. Only examples belonging to explicitly marked GFM extension sections can establish GFM-specific normative behavior.
 
 ## HTML rendering conformance
 
@@ -78,7 +88,7 @@ Renderer conformance is separate from parser conformance and uses the specificat
 
 The CommonMark full-profile gate accounts for all **652** examples with GFM tag filtering disabled. A small, explicitly enumerated set of deliberate Marksplice-profile divergences is permitted only where a reviewed Marksplice contract intentionally differs, such as front-matter precedence or reviewed GFM behavior layered on the newer CommonMark base. Every other example must match expected HTML byte-for-byte.
 
-The GFM full-profile gate accounts for all **677** published examples and includes rendering-only `tagfilter`. Any deliberate profile divergence is explicitly named in the permanent test; there is no wildcard mismatch allowance.
+The GFM full-profile gate accounts for all **677** published examples and includes rendering-only `tagfilter` as a broad interoperability/regression surface. That full-document gate does not elevate inherited GFM core sections above CommonMark 0.31.2. GFM-specific normative conclusions come only from examples in explicitly marked extension sections. Any deliberate profile divergence is explicitly named in the permanent test; there is no wildcard mismatch allowance.
 
 `tagfilter` is not parser syntax, so it does not enter parser-neutral fixtures even though its HTML behavior is mandatory.
 

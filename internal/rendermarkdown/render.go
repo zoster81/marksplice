@@ -35,6 +35,7 @@ type frame struct {
 	checked                              bool
 	delimiter                            string
 	bareAutoLinkTail                     bool
+	canonicalInlineEvents                []parser.SemanticEvent
 	lastList                             listBoundary
 	lastDelimiterSibling                 inlineDelimiterSibling
 	lastTextSibling                      inlineTextSibling
@@ -116,18 +117,19 @@ type topLevelBlock struct {
 }
 
 type renderer struct {
-	writer         io.Writer
-	source         []byte
-	backend        Backend
-	stack          []frame
-	wroteBlock     bool
-	documentOpen   bool
-	topList        listBoundary
-	references     map[string]referenceTarget
-	referenceOrder []string
-	emittedRefs    map[string]struct{}
-	topBlocks      []topLevelBlock
-	ownedTopRanges []parser.Range
+	writer                io.Writer
+	source                []byte
+	backend               Backend
+	stack                 []frame
+	wroteBlock            bool
+	documentOpen          bool
+	topList               listBoundary
+	references            map[string]referenceTarget
+	referenceOrder        []string
+	emittedRefs           map[string]struct{}
+	topBlocks             []topLevelBlock
+	ownedTopRanges        []parser.Range
+	activeInlineHostIndex int
 }
 
 // Render streams deterministic canonical Markdown from one immutable source snapshot.
@@ -136,11 +138,12 @@ func Render(writer io.Writer, source []byte, backend Backend) error {
 		return ErrInvalidInput
 	}
 	r := &renderer{
-		writer:      writer,
-		source:      source,
-		backend:     backend,
-		references:  make(map[string]referenceTarget),
-		emittedRefs: make(map[string]struct{}),
+		writer:                writer,
+		source:                source,
+		backend:               backend,
+		references:            make(map[string]referenceTarget),
+		emittedRefs:           make(map[string]struct{}),
+		activeInlineHostIndex: -1,
 	}
 	return backend.WalkSemantic(source, r.visit)
 }
@@ -170,7 +173,11 @@ func (r *renderer) enter(event parser.SemanticEvent) error {
 		}
 		event.Label = label
 	}
+	if err := r.validateCanonicalInlineHostEnter(event.Kind); err != nil {
+		return err
+	}
 	current := frame{event: event}
+	r.captureActiveInlineHostEvent(event)
 	switch event.Kind {
 	case parser.SemanticDocument:
 		if r.documentOpen || len(r.stack) != 0 {
@@ -191,10 +198,12 @@ func (r *renderer) enter(event parser.SemanticEvent) error {
 		return fmt.Errorf("%w: unsupported enter kind %d", ErrInvalidInput, event.Kind)
 	}
 	r.stack = append(r.stack, current)
+	r.activateCanonicalInlineHost(event.Kind)
 	return nil
 }
 
 func (r *renderer) leaf(event parser.SemanticEvent) error {
+	r.captureActiveInlineHostEvent(event)
 	switch event.Kind {
 	case parser.SemanticText, parser.SemanticSoftBreak, parser.SemanticHardBreak, parser.SemanticCodeSpan,
 		parser.SemanticAutoLink, parser.SemanticRawHTML, parser.SemanticFootnoteReference:
@@ -284,9 +293,15 @@ func (r *renderer) leafBlock(event parser.SemanticEvent) error {
 }
 
 func (r *renderer) exit(event parser.SemanticEvent) error {
+	if !canonicalInlineRendererHost(event.Kind) {
+		r.captureActiveInlineHostEvent(event)
+	}
 	current, err := r.pop(event.Kind)
 	if err != nil {
 		return err
+	}
+	if canonicalInlineRendererHost(event.Kind) {
+		r.activeInlineHostIndex = -1
 	}
 	switch event.Kind {
 	case parser.SemanticDocument, parser.SemanticParagraph, parser.SemanticHeading:
@@ -317,9 +332,12 @@ func (r *renderer) exitDocument(current frame) error {
 		r.documentOpen = false
 		return nil
 	case parser.SemanticParagraph:
-		return r.appendBlock(string(current.inline)+"\n", current.event.Range)
+		return r.appendBlock(r.canonicalInlineHostValue(current)+"\n", current.event.Range)
 	case parser.SemanticHeading:
-		return r.appendBlock(renderHeading(current.event.Level, string(current.inline)), current.event.Range)
+		return r.appendBlock(
+			renderHeading(current.event.Level, r.canonicalInlineHostValue(current)),
+			current.event.Range,
+		)
 	default:
 		return fmt.Errorf("%w: unsupported document exit kind %d", ErrInvalidInput, current.event.Kind)
 	}
@@ -364,7 +382,7 @@ func (r *renderer) exitBlockContainer(current frame) error {
 func (r *renderer) exitTable(current frame) error {
 	switch current.event.Kind {
 	case parser.SemanticTableCell:
-		value := string(current.inline)
+		value := r.canonicalInlineHostValue(current)
 		if strings.ContainsAny(value, "\r\n") {
 			return fmt.Errorf("%w: multiline table cell", ErrInvalidInput)
 		}
@@ -541,9 +559,6 @@ func (r *renderer) appendEmphasisInline(current frame) error {
 	r.repairSeparatedThreeLevelEmphasis(&current)
 	r.repairThreeLevelEmphasisHostOpen(parent, &current)
 	r.reconcileFinalSharedEmphasisPair(&current)
-	r.repairSharedCloseThreeLevelEmphasis(&current)
-	r.repairMultiChildSameMarkerTopology(parent, &current)
-	r.repairSharedOpenCloseMultiChildTopology(&current)
 	r.repairDeepUniqueEmphasisChain(parent, &current)
 	start := len(parent.inline)
 	if err := r.appendInline(current.delimiter + string(current.inline) + current.delimiter); err != nil {
@@ -866,288 +881,6 @@ type threeLevelEmphasisSourceMarkers struct {
 type threeLevelEmphasisCandidate struct {
 	delimiter byte
 	inline    []byte
-}
-
-func (r *renderer) repairSharedCloseThreeLevelEmphasis(current *frame) {
-	child, ok := threeLevelEmphasisChild(current)
-	if !ok {
-		return
-	}
-	markers, ok := r.sharedCloseThreeLevelSourceMarkers(current, child)
-	if !ok {
-		return
-	}
-	expected := threeLevelEmphasisExpectedPairs(len(current.inline)+2, child)
-	if delimiterCandidateMatchesPhysicalRuns(
-		delimitedInlineCandidate(current.inline, current.delimiter[0]),
-		expected,
-	) {
-		return
-	}
-	inline, normalizedChild, normalized := r.restoreSharedCloseSourceTabs(current.inline, child)
-	if !normalized {
-		inline = append([]byte(nil), current.inline...)
-		normalizedChild = child
-	}
-	rewriteInlineSiblingMarker(inline, normalizedChild.outputStart, normalizedChild.outputEnd, 1, markers.child)
-	rewriteInlineSiblingMarker(
-		inline,
-		normalizedChild.onlyDirectChildOutputStart,
-		normalizedChild.onlyDirectChildOutputEnd,
-		1,
-		markers.leaf,
-	)
-	expected = threeLevelEmphasisExpectedPairs(len(inline)+2, normalizedChild)
-	if !delimiterCandidateMatchesPhysicalRuns(
-		delimitedInlineCandidate(inline, markers.outer),
-		expected,
-	) {
-		return
-	}
-	current.delimiter = string(markers.outer)
-	current.inline = inline
-}
-
-func (r *renderer) repairMultiChildSameMarkerTopology(parent *frame, current *frame) {
-	first, second, ok := multiChildSameMarkerChildren(current)
-	if !ok {
-		return
-	}
-	marker, ok := r.sourceMultiChildSameMarkerClose(parent, current, second)
-	if !ok {
-		return
-	}
-	expected := multiChildSameMarkerPairs(len(current.inline)+2, first, second)
-	currentCandidate := delimitedInlineCandidate(current.inline, marker)
-	if delimiterCandidateMatchesPhysicalRuns(currentCandidate, expected) {
-		return
-	}
-	trial := append([]byte(nil), current.inline...)
-	rewriteInlineSiblingMarker(trial, first.outputStart, first.outputEnd, 1, alternateEmphasisMarker(marker))
-	if !delimiterCandidateMatchesPhysicalRuns(delimitedInlineCandidate(trial, marker), expected) {
-		return
-	}
-	current.delimiter = string(marker)
-	current.inline = trial
-}
-
-func (r *renderer) repairSharedOpenCloseMultiChildTopology(current *frame) {
-	first, second, _, ok := r.sharedOpenCloseMultiChildSource(current)
-	if !ok {
-		return
-	}
-	pairs := sharedOpenCloseMultiChildPairs(len(current.inline)+2, first, second)
-	if delimiterCandidateMatchesPhysicalRuns(delimitedInlineCandidate(current.inline, current.delimiter[0]), pairs) {
-		return
-	}
-	for mask := 0; mask < 16; mask++ {
-		markers := [4]byte{'*', '*', '*', '*'}
-		for index := range markers {
-			if mask&(1<<index) != 0 {
-				markers[index] = '_'
-			}
-		}
-		trial := append([]byte(nil), current.inline...)
-		rewriteInlineSiblingMarker(trial, first.outputStart, first.outputEnd, 1, markers[1])
-		rewriteInlineSiblingMarker(trial, first.onlyDirectChildOutputStart, first.onlyDirectChildOutputEnd, 1, markers[2])
-		rewriteInlineSiblingMarker(trial, second.outputStart, second.outputEnd, 1, markers[3])
-		candidate := delimitedInlineCandidate(trial, markers[0])
-		if !delimiterCandidateMatchesPhysicalRuns(candidate, pairs) {
-			continue
-		}
-		current.delimiter = string(markers[0])
-		current.inline = trial
-		return
-	}
-}
-
-func (r *renderer) sharedOpenCloseMultiChildSource(current *frame) (inlineDelimiterSibling, inlineDelimiterSibling, byte, bool) {
-	first, second, ok := sharedOpenCloseMultiChildChildren(current)
-	if !ok || !sharedOpenCloseMultiChildRanges(current, first, second) {
-		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, 0, false
-	}
-	marker, ok := r.sharedOpenCloseMultiChildMarker(current, first, second)
-	if !ok || !r.sharedOpenCloseMultiChildRuns(current, first, second, marker) {
-		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, 0, false
-	}
-	return first, second, marker, true
-}
-
-func sharedOpenCloseMultiChildChildren(current *frame) (inlineDelimiterSibling, inlineDelimiterSibling, bool) {
-	if current == nil || delimiterWidth(current.event.Kind) != 1 ||
-		current.directEmphasisChildren != 2 || current.sameMarkerDirectEmphasisChildren != 2 ||
-		!current.firstDirectEmphasisChild.valid || !current.lastDirectEmphasisChild.valid {
-		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, false
-	}
-	first := current.firstDirectEmphasisChild
-	second := current.lastDirectEmphasisChild
-	if first.descendantDepth != 1 || first.directEmphasisChildren != 1 || !first.onlyDirectChildValid ||
-		second.descendantDepth != 0 || second.directEmphasisChildren != 0 ||
-		delimiterWidth(first.kind) != 1 || delimiterWidth(first.onlyDirectChildKind) != 1 ||
-		delimiterWidth(second.kind) != 1 {
-		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, false
-	}
-	return first, second, true
-}
-
-func sharedOpenCloseMultiChildRanges(current *frame, first, second inlineDelimiterSibling) bool {
-	return current != nil &&
-		first.sourceRange.Start == current.event.Range.Start+1 &&
-		second.sourceRange.End == current.event.Range.End-1 &&
-		first.sourceRange.Start+1 < first.onlyDirectChildSourceRange.Start &&
-		first.onlyDirectChildSourceRange.End < first.sourceRange.End-1
-}
-
-func (r *renderer) sharedOpenCloseMultiChildMarker(
-	current *frame,
-	first inlineDelimiterSibling,
-	second inlineDelimiterSibling,
-) (byte, bool) {
-	outer, outerOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
-	firstSource, firstOK := r.sourceEmphasisDelimiter(first.kind, first.sourceRange)
-	leafSource, leafOK := r.sourceEmphasisDelimiter(first.onlyDirectChildKind, first.onlyDirectChildSourceRange)
-	secondSource, secondOK := r.sourceEmphasisDelimiter(second.kind, second.sourceRange)
-	if !outerOK || !firstOK || !leafOK || !secondOK {
-		return 0, false
-	}
-	marker := outer[0]
-	return marker, marker == firstSource[0] && marker == leafSource[0] && marker == secondSource[0]
-}
-
-func (r *renderer) sharedOpenCloseMultiChildRuns(
-	current *frame,
-	first inlineDelimiterSibling,
-	second inlineDelimiterSibling,
-	marker byte,
-) bool {
-	outerOpen := sourceEmphasisRunAt(r.source, current.event.Range.Start, 1, marker)
-	firstOpen := sourceEmphasisRunAt(r.source, first.sourceRange.Start, 1, marker)
-	if !outerOpen.Valid(len(r.source)) || outerOpen != firstOpen {
-		return false
-	}
-	outerClose := sourceEmphasisRunAt(r.source, current.event.Range.End-1, 1, marker)
-	secondClose := sourceEmphasisRunAt(r.source, second.sourceRange.End-1, 1, marker)
-	return outerClose.Valid(len(r.source)) && outerClose == secondClose
-}
-
-func sharedOpenCloseMultiChildPairs(candidateLen int, first, second inlineDelimiterSibling) [][2]parser.Range {
-	return [][2]parser.Range{
-		{{Start: 0, End: 1}, {Start: candidateLen - 1, End: candidateLen}},
-		{{Start: 1 + first.outputStart, End: 2 + first.outputStart}, {Start: first.outputEnd, End: 1 + first.outputEnd}},
-		{{Start: 1 + first.onlyDirectChildOutputStart, End: 2 + first.onlyDirectChildOutputStart}, {Start: first.onlyDirectChildOutputEnd, End: 1 + first.onlyDirectChildOutputEnd}},
-		{{Start: 1 + second.outputStart, End: 2 + second.outputStart}, {Start: second.outputEnd, End: 1 + second.outputEnd}},
-	}
-}
-
-func multiChildSameMarkerChildren(
-	current *frame,
-) (inlineDelimiterSibling, inlineDelimiterSibling, bool) {
-	if current == nil || delimiterWidth(current.event.Kind) != 1 ||
-		current.directEmphasisChildren != 2 || current.sameMarkerDirectEmphasisChildren != 2 ||
-		current.emphasisDescendantDepth != 1 || !current.firstDirectEmphasisChild.valid ||
-		!current.lastDelimiterSibling.valid {
-		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, false
-	}
-	first := current.firstDirectEmphasisChild
-	second := current.lastDelimiterSibling
-	if first.descendantDepth != 0 || second.descendantDepth != 0 ||
-		first.directEmphasisChildren != 0 || second.directEmphasisChildren != 0 ||
-		delimiterWidth(first.kind) != 1 || delimiterWidth(second.kind) != 1 {
-		return inlineDelimiterSibling{}, inlineDelimiterSibling{}, false
-	}
-	return first, second, true
-}
-
-func (r *renderer) sourceMultiChildSameMarkerClose(
-	parent *frame,
-	current *frame,
-	second inlineDelimiterSibling,
-) (byte, bool) {
-	if parent == nil || delimiterWidth(parent.event.Kind) != 1 {
-		return 0, false
-	}
-	parentMarker, parentOK := r.sourceEmphasisDelimiter(parent.event.Kind, parent.event.Range)
-	currentMarker, currentOK := r.sourceEmphasisDelimiter(current.event.Kind, current.event.Range)
-	if !parentOK || !currentOK || parentMarker[0] != currentMarker[0] ||
-		second.sourceRange.End != current.event.Range.End-1 ||
-		current.event.Range.End != parent.event.Range.End-1 {
-		return 0, false
-	}
-	return currentMarker[0], true
-}
-
-func multiChildSameMarkerPairs(
-	candidateLen int,
-	first inlineDelimiterSibling,
-	second inlineDelimiterSibling,
-) [][2]parser.Range {
-	return [][2]parser.Range{
-		{{Start: 0, End: 1}, {Start: candidateLen - 1, End: candidateLen}},
-		{{Start: 1 + first.outputStart, End: 2 + first.outputStart}, {Start: first.outputEnd, End: 1 + first.outputEnd}},
-		{{Start: 1 + second.outputStart, End: 2 + second.outputStart}, {Start: second.outputEnd, End: 1 + second.outputEnd}},
-	}
-}
-
-func (r *renderer) restoreSharedCloseSourceTabs(
-	baseInline []byte,
-	child inlineDelimiterSibling,
-) ([]byte, inlineDelimiterSibling, bool) {
-	inline := append([]byte(nil), baseInline...)
-	changed := false
-	if child.sourceRange.Start > 0 && r.source[child.sourceRange.Start-1] == '\t' {
-		start := child.outputStart - 4
-		if restored, ok := restoreCanonicalTab(inline, start); ok {
-			inline = restored
-			child.outputStart -= 3
-			child.outputEnd -= 3
-			child.onlyDirectChildOutputStart -= 3
-			child.onlyDirectChildOutputEnd -= 3
-			changed = true
-		}
-	}
-	if child.onlyDirectChildValid && child.onlyDirectChildSourceRange.Start > 0 &&
-		r.source[child.onlyDirectChildSourceRange.Start-1] == '\t' {
-		start := child.onlyDirectChildOutputStart - 4
-		if restored, ok := restoreCanonicalTab(inline, start); ok {
-			inline = restored
-			child.outputEnd -= 3
-			child.onlyDirectChildOutputStart -= 3
-			child.onlyDirectChildOutputEnd -= 3
-			changed = true
-		}
-	}
-	return inline, child, changed
-}
-
-func threeLevelEmphasisChild(current *frame) (inlineDelimiterSibling, bool) {
-	if current == nil || current.directEmphasisChildren != 1 || !current.onlyDirectEmphasisChild.valid {
-		return inlineDelimiterSibling{}, false
-	}
-	child := current.onlyDirectEmphasisChild
-	if delimiterWidth(current.event.Kind) != 1 || delimiterWidth(child.kind) != 1 {
-		return inlineDelimiterSibling{}, false
-	}
-	if child.descendantDepth != 1 || child.directEmphasisChildren != 1 || !child.onlyDirectChildValid {
-		return inlineDelimiterSibling{}, false
-	}
-	if child.onlyDirectChildKind != parser.SemanticEmphasis {
-		return inlineDelimiterSibling{}, false
-	}
-	return child, true
-}
-
-func (r *renderer) sharedCloseThreeLevelSourceMarkers(
-	current *frame,
-	child inlineDelimiterSibling,
-) (threeLevelEmphasisSourceMarkers, bool) {
-	markers, ok := r.sourceThreeLevelEmphasisMarkers(current, child)
-	if !ok || markers.outer != markers.child || !sharedCloseEmphasisPairRanges(current, child) {
-		return threeLevelEmphasisSourceMarkers{}, false
-	}
-	if !r.sourceEmphasisCloseRunShared(current, child, markers.outer) {
-		return threeLevelEmphasisSourceMarkers{}, false
-	}
-	return markers, true
 }
 
 func sharedCloseEmphasisPairRanges(current *frame, child inlineDelimiterSibling) bool {
@@ -2482,11 +2215,15 @@ func (r *renderer) preserveFrameSourceEmphasisDelimiter(index int) {
 }
 
 func emphasisDelimiterEventsShareSourceRun(outer, inner parser.SemanticEvent, width int) bool {
-	if width <= 0 || outer.Range.Start > inner.Range.Start || inner.Range.End > outer.Range.End {
+	return emphasisDelimiterRangesShareSourceRun(outer.Range, inner.Range, width)
+}
+
+func emphasisDelimiterRangesShareSourceRun(outer, inner parser.Range, width int) bool {
+	if width <= 0 || outer.Start > inner.Start || inner.End > outer.End {
 		return false
 	}
-	openShared := outer.Range.Start+width == inner.Range.Start
-	closeShared := inner.Range.End == outer.Range.End-width
+	openShared := outer.Start+width == inner.Start
+	closeShared := inner.End == outer.End-width
 	return openShared || closeShared
 }
 
@@ -2546,20 +2283,28 @@ func (r *renderer) sourceEmphasisDelimiterUsable(event parser.SemanticEvent, del
 }
 
 func (r *renderer) sourceEmphasisDelimiter(kind parser.SemanticKind, range_ parser.Range) (string, bool) {
-	width := delimiterWidth(kind)
-	if width == 0 || !range_.Valid(len(r.source)) || range_.End-range_.Start < 2*width {
+	marker, ok := sourceEmphasisMarker(r.source, kind, range_)
+	if !ok {
 		return "", false
 	}
-	marker := r.source[range_.Start]
+	return strings.Repeat(string(marker), delimiterWidth(kind)), true
+}
+
+func sourceEmphasisMarker(source []byte, kind parser.SemanticKind, range_ parser.Range) (byte, bool) {
+	width := delimiterWidth(kind)
+	if width == 0 || !range_.Valid(len(source)) || range_.End-range_.Start < 2*width {
+		return 0, false
+	}
+	marker := source[range_.Start]
 	if marker != '*' && marker != '_' {
-		return "", false
+		return 0, false
 	}
 	for index := 0; index < width; index++ {
-		if r.source[range_.Start+index] != marker || r.source[range_.End-width+index] != marker {
-			return "", false
+		if source[range_.Start+index] != marker || source[range_.End-width+index] != marker {
+			return 0, false
 		}
 	}
-	return strings.Repeat(string(marker), width), true
+	return marker, true
 }
 
 func delimiterWidth(kind parser.SemanticKind) int {
@@ -2691,13 +2436,66 @@ func (r *renderer) strikethroughDelimiter() string {
 	return "~~"
 }
 
-func (r *renderer) inTableCell() bool {
-	for index := len(r.stack) - 1; index >= 0; index-- {
-		if r.stack[index].event.Kind == parser.SemanticTableCell {
-			return true
-		}
+func canonicalInlineRendererHost(kind parser.SemanticKind) bool {
+	switch kind {
+	case parser.SemanticParagraph, parser.SemanticHeading, parser.SemanticTableCell:
+		return true
+	default:
+		return false
 	}
-	return false
+}
+
+func (r *renderer) validateCanonicalInlineHostEnter(kind parser.SemanticKind) error {
+	if canonicalInlineRendererHost(kind) && r.activeInlineHostIndex >= 0 {
+		return fmt.Errorf("%w: nested canonical inline host %d", ErrInvalidInput, kind)
+	}
+	return nil
+}
+
+func (r *renderer) activateCanonicalInlineHost(kind parser.SemanticKind) {
+	if canonicalInlineRendererHost(kind) {
+		r.activeInlineHostIndex = len(r.stack) - 1
+	}
+}
+
+func (r *renderer) activeInlineHostFrame() *frame {
+	index := r.activeInlineHostIndex
+	if index < 0 || index >= len(r.stack) ||
+		!canonicalInlineRendererHost(r.stack[index].event.Kind) {
+		return nil
+	}
+	return &r.stack[index]
+}
+
+func (r *renderer) captureActiveInlineHostEvent(event parser.SemanticEvent) {
+	if current := r.activeInlineHostFrame(); current != nil {
+		current.canonicalInlineEvents = append(current.canonicalInlineEvents, event)
+	}
+}
+
+func (r *renderer) canonicalInlineHostValue(current frame) string {
+	legacy := string(current.inline)
+	if len(current.canonicalInlineEvents) == 0 {
+		return legacy
+	}
+	ast, err := buildCanonicalInlineAST(current.canonicalInlineEvents)
+	if err != nil {
+		return legacy
+	}
+	output, supported, err := canonicalInlineRenderHost(
+		ast,
+		canonicalInlineEmitContext{referenceLabels: r.backend},
+		current.event.Kind == parser.SemanticTableCell,
+	)
+	if err != nil || !supported {
+		return legacy
+	}
+	return string(output)
+}
+
+func (r *renderer) inTableCell() bool {
+	current := r.activeInlineHostFrame()
+	return current != nil && current.event.Kind == parser.SemanticTableCell
 }
 
 func (r *renderer) renderAutoLink(event parser.SemanticEvent) (string, bool) {

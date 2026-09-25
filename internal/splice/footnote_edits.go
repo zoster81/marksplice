@@ -11,6 +11,7 @@ import (
 // PrepareReplaceFootnoteDefinitionBody prepares a source-preserving replacement
 // of the conservative simple body span of one promoted footnote definition.
 func (d *Document) PrepareReplaceFootnoteDefinitionBody(id NodeID, replacement []byte) (ChangeSet, error) {
+	replacement = source.NormalizeCommonMarkInput(replacement)
 	target, err := d.targetNode(id, KindFootnoteDefinition)
 	if err != nil {
 		return ChangeSet{}, err
@@ -47,6 +48,7 @@ func (d *Document) PrepareReplaceFootnoteDefinitionBody(id NodeID, replacement [
 // PrepareRenameFootnote atomically renames one promoted definition and every
 // parser-proven reference occurrence bound to that definition.
 func (d *Document) PrepareRenameFootnote(id NodeID, replacement []byte) (ChangeSet, error) {
+	replacement = source.NormalizeCommonMarkInput(replacement)
 	target, err := d.targetNode(id, KindFootnoteDefinition)
 	if err != nil {
 		return ChangeSet{}, err
