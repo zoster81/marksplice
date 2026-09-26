@@ -301,12 +301,6 @@ func collectList(source []byte, lines []physicalLine, index int, first listMarke
 		item, next := collectListItem(source, lines, index, marker, first)
 		result.items = append(result.items, item)
 		index = next
-		if index >= len(lines) {
-			break
-		}
-		if marker2, ok := parseListMarker(source, lines[index]); !ok || !compatibleListMarker(first, marker2) || thematicAtLine(source, lines[index]) {
-			break
-		}
 	}
 	result.next = index
 	return result
