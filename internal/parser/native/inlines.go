@@ -519,8 +519,12 @@ func collectInlineSpans(source []byte, block inlineBlock) []inlineSpan {
 			}
 		}
 		if asciiAlphaNumeric(source[position]) && extendedAutolinkBoundary(source, segment.Start, position) {
-			if node, end, ok := scanExtendedAutolink(source, position, segment.Start, segment.End); ok {
-				spans = append(spans, observedInlineSpan(segmentIndex, position, end, node))
+			if end, form, ok := scanExtendedAutolinkEnd(source, position, segment.End); ok {
+				spans = append(spans, inlineSpan{
+					segment: segmentIndex, start: position, endSegment: segmentIndex, end: end,
+					kind: parser.KindAutoLink, content: parser.Range{Start: position, End: end},
+					autoLinkEmail: form == parser.AutoLinkExtendedEmail, autoLinkForm: form,
+				})
 				position = end
 				continue
 			}
@@ -572,20 +576,30 @@ func scanExtendedAutolink(source []byte, start, segmentStart, limit int) (parser
 	if !extendedAutolinkBoundary(source, segmentStart, start) {
 		return parser.Node{}, start, false
 	}
+	end, form, ok := scanExtendedAutolinkEnd(source, start, limit)
+	if !ok {
+		return parser.Node{}, start, false
+	}
+	return extendedAutolinkObservation(source, start, end, form == parser.AutoLinkExtendedEmail, form), end, true
+}
+
+// Owner discovery needs only a boundary and form. The observation layer copies
+// semantic values after ownership is resolved, avoiding discarded node strings.
+func scanExtendedAutolinkEnd(source []byte, start, limit int) (int, parser.AutoLinkForm, bool) {
 	if end, ok := scanProtocolAutolink(source, start, limit); ok {
-		return extendedAutolinkObservation(source, start, end, false, parser.AutoLinkExtendedProtocol), end, true
+		return end, parser.AutoLinkExtendedProtocol, true
 	}
 	if end, ok := scanExtendedURLAutolink(source, start, limit); ok {
 		form := parser.AutoLinkExtendedURL
 		if hasPrefixAt(source, start, end, "www.") {
 			form = parser.AutoLinkExtendedWWW
 		}
-		return extendedAutolinkObservation(source, start, end, false, form), end, true
+		return end, form, true
 	}
 	if end, ok := scanExtendedEmailAutolink(source, start, limit); ok {
-		return extendedAutolinkObservation(source, start, end, true, parser.AutoLinkExtendedEmail), end, true
+		return end, parser.AutoLinkExtendedEmail, true
 	}
-	return parser.Node{}, start, false
+	return start, parser.AutoLinkUnknown, false
 }
 
 func extendedAutolinkObservation(source []byte, start, end int, email bool, form parser.AutoLinkForm) parser.Node {
