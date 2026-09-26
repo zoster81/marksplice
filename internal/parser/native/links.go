@@ -47,15 +47,16 @@ func collectCompositeInlinesIndexed(source []byte, block inlineBlock, owners []i
 	composites := make([]compositeInline, 0)
 	for segmentIndex, segment := range block.segments {
 		exclusions := inlineExclusionsAt(primaryExclusions, segmentIndex)
-		for position := segment.Start; position < segment.End; position++ {
-			image := source[position] == '!' && position+1 < segment.End && source[position+1] == '['
-			if source[position] == '[' && imageMarkerOwnsBracket(source, segment, position) {
-				continue
+		for next := segment.Start; next < segment.End; {
+			position, image := nextCompositeOpening(source, segment, next)
+			if position == segment.End {
+				break
 			}
-			if source[position] != '[' && !image || inlineByteEscaped(source, segment.Start, position) {
-				continue
+			next = position + 1
+			if image {
+				next++
 			}
-			if inlineRangesContainPosition(exclusions, position) {
+			if inlineByteEscaped(source, segment.Start, position) || inlineRangesContainPosition(exclusions, position) {
 				continue
 			}
 			candidate, ok := scanDirectComposite(source, block, segmentIndex, segment, position, image, exclusions)
@@ -72,6 +73,18 @@ func collectCompositeInlinesIndexed(source []byte, block inlineBlock, owners []i
 
 func imageMarkerOwnsBracket(source []byte, segment parser.Range, position int) bool {
 	return position > segment.Start && source[position-1] == '!' && !inlineByteEscaped(source, segment.Start, position-1)
+}
+
+func nextCompositeOpening(source []byte, segment parser.Range, start int) (int, bool) {
+	relative := bytes.IndexByte(source[start:segment.End], '[')
+	if relative < 0 {
+		return segment.End, false
+	}
+	position := start + relative
+	if imageMarkerOwnsBracket(source, segment, position) {
+		return position - 1, true
+	}
+	return position, false
 }
 
 func sortCompositeInlines(composites []compositeInline) {
@@ -140,12 +153,16 @@ func collectReferenceComposites(source []byte, block inlineBlock, definitions re
 	composites := make([]compositeInline, 0)
 	for segmentIndex, segment := range block.segments {
 		exclusions := inlineExclusionsAt(primaryExclusions, segmentIndex)
-		for position := segment.Start; position < segment.End; position++ {
-			image := source[position] == '!' && position+1 < segment.End && source[position+1] == '['
-			if source[position] == '[' && imageMarkerOwnsBracket(source, segment, position) {
-				continue
+		for next := segment.Start; next < segment.End; {
+			position, image := nextCompositeOpening(source, segment, next)
+			if position == segment.End {
+				break
 			}
-			if source[position] != '[' && !image || inlineByteEscaped(source, segment.Start, position) {
+			next = position + 1
+			if image {
+				next++
+			}
+			if inlineByteEscaped(source, segment.Start, position) {
 				continue
 			}
 			if inlineRangesContainPosition(exclusions, position) || directStarts.hasAt(segmentIndex, position) {
