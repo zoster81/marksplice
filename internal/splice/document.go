@@ -88,8 +88,29 @@ type Range = source.Range
 
 // Node is the minimal Marksplice-owned structural view used by the feasibility slice.
 type Node struct {
-	// Group pointer-bearing data and scalar widths to keep hot node arrays compact.
+	// Keep identity, flags and source positions close; group other fields by width.
 	ID                        NodeID
+	SourceDetailIndex         uint32
+	Kind                      Kind
+	HeadingStyle              HeadingStyle
+	Checked                   bool
+	ListOrdered               bool
+	ListMarker                byte
+	ListHasParent             bool
+	ListHasChildren           bool
+	ListSubtreeComplete       bool
+	TableHeader               bool
+	Editable                  bool
+	MathStyle                 MathExpressionStyle
+	HasTitle                  bool
+	AutoLinkEmail             bool
+	FrontMatterFormat         FrontMatterFormat
+	FrontMatterStyle          source.FrontMatterValueStyle
+	HTMLQuote                 byte
+	TopLevel                  bool
+	Range                     Range
+	ContentRange              Range
+	Anchor                    int
 	HeadingText               string
 	ListParentID              NodeID
 	TableRowID                NodeID
@@ -103,8 +124,6 @@ type Node struct {
 	Value                     string
 	Key                       string
 	HTMLAttribute             string
-	Range                     Range
-	ContentRange              Range
 	Level                     int
 	ListParentAnchor          int
 	ListContainerAnchor       int
@@ -129,25 +148,6 @@ type Node struct {
 	TableHeaderCellStart      int
 	TableHeaderCellCount      int
 	TableCellRange            Range
-	Anchor                    int
-	SourceDetailIndex         uint32
-	Kind                      Kind
-	HeadingStyle              HeadingStyle
-	Checked                   bool
-	ListOrdered               bool
-	ListMarker                byte
-	ListHasParent             bool
-	ListHasChildren           bool
-	ListSubtreeComplete       bool
-	TableHeader               bool
-	Editable                  bool
-	MathStyle                 MathExpressionStyle
-	HasTitle                  bool
-	AutoLinkEmail             bool
-	FrontMatterFormat         FrontMatterFormat
-	FrontMatterStyle          source.FrontMatterValueStyle
-	HTMLQuote                 byte
-	TopLevel                  bool
 }
 
 // ChangeSet is a source-bound prepared mutation with private semantic provenance.
