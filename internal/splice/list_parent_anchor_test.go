@@ -5,7 +5,7 @@ import "testing"
 func TestListParentAnchorAfterPatchesUsesSourceOwnedByte(t *testing.T) {
 	t.Parallel()
 
-	item := Node{ListHasParent: true, ListParentAnchor: 10}
+	item := Node{list: &ListNodeData{ListHasParent: true, ListParentAnchor: 10}}
 	tests := []struct {
 		name    string
 		patches []patchTransform

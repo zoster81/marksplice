@@ -218,22 +218,22 @@ func validateTableCellReplacement(candidate []byte, target Node, original source
 }
 
 func validateListItemReplacement(candidateItems map[int]listItemCandidateMapping, target Node, replacementLength int) error {
-	candidateMapping, ok := candidateItems[target.ListItemLineRange.Start]
+	candidateMapping, ok := candidateItems[target.listData().ListItemLineRange.Start]
 	if !ok {
 		return ErrInvalidReplacement
 	}
 	mapping := candidateMapping.Mapping
 	delta := replacementLength - (target.ContentRange.End - target.ContentRange.Start)
-	expectedLine := Range{Start: target.ListItemLineRange.Start, End: target.ListItemLineRange.End + delta}
+	expectedLine := Range{Start: target.listData().ListItemLineRange.Start, End: target.listData().ListItemLineRange.End + delta}
 	expectedRange := Range{Start: target.Range.Start, End: target.Range.End + delta}
 	expectedContent := rangeWithLength(target.ContentRange.Start, replacementLength)
 	if mapping.LineRange != expectedLine || mapping.Range != expectedRange || mapping.ContentRange != expectedContent ||
-		mapping.Ordered != target.ListOrdered || mapping.Marker != target.ListMarker ||
-		candidateMapping.HasParent != target.ListHasParent || candidateMapping.HasChildren != target.ListHasChildren ||
-		candidateMapping.DirectChildCount != target.ListDirectChildCount {
+		mapping.Ordered != target.listData().ListOrdered || mapping.Marker != target.listData().ListMarker ||
+		candidateMapping.HasParent != target.listData().ListHasParent || candidateMapping.HasChildren != target.listData().ListHasChildren ||
+		candidateMapping.DirectChildCount != target.listData().ListDirectChildCount {
 		return ErrInvalidReplacement
 	}
-	if target.ListHasParent && candidateMapping.ParentAnchor != target.ListParentAnchor {
+	if target.listData().ListHasParent && candidateMapping.ParentAnchor != target.listData().ListParentAnchor {
 		return ErrInvalidReplacement
 	}
 	return nil

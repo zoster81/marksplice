@@ -47,13 +47,13 @@ func (b *listItemModelBuilder) collectItems() error {
 		if node.Kind != KindListItem || !node.Editable {
 			continue
 		}
-		if node.ListDirectChildCount < 0 || node.ListHasChildren != (node.ListDirectChildCount != 0) {
+		if node.listData().ListDirectChildCount < 0 || node.listData().ListHasChildren != (node.listData().ListDirectChildCount != 0) {
 			return fmt.Errorf("inconsistent supported list-item child metadata for %q", node.ID)
 		}
 		if _, exists := seenIDs[node.ID]; exists {
 			return fmt.Errorf("%w: %q", errDuplicateNodeID, node.ID)
 		}
-		lineStart := node.ListItemLineRange.Start
+		lineStart := node.listData().ListItemLineRange.Start
 		if previousOrdinal, exists := b.ordinalByLineStart[lineStart]; exists {
 			previous := b.nodes[b.itemIndexes[previousOrdinal]]
 			return fmt.Errorf("duplicate supported list-item line start %d for %q and %q", lineStart, previous.ID, node.ID)
@@ -65,11 +65,11 @@ func (b *listItemModelBuilder) collectItems() error {
 		seenIDs[node.ID] = ordinal
 		b.ordinalByLineStart[lineStart] = ordinal
 		b.itemIndexes = append(b.itemIndexes, index)
-		node.ListParentID = ""
-		node.ListChildStart = 0
-		node.ListChildCount = 0
-		node.ListSubtreeComplete = false
-		node.ListSubtreeEnd = node.ListItemLineRange.End
+		node.list.ListParentID = ""
+		node.list.ListChildStart = 0
+		node.list.ListChildCount = 0
+		node.list.ListSubtreeComplete = false
+		node.list.ListSubtreeEnd = node.listData().ListItemLineRange.End
 		lastLineStart = lineStart
 	}
 	return nil
@@ -78,15 +78,15 @@ func (b *listItemModelBuilder) collectItems() error {
 func (b *listItemModelBuilder) resolveParents() {
 	for ordinal, nodeIndex := range b.itemIndexes {
 		node := &b.nodes[nodeIndex]
-		if !node.ListHasParent {
+		if !node.listData().ListHasParent {
 			continue
 		}
-		parentOrdinal, ok := b.ordinalByLineStart[node.ListParentAnchor]
+		parentOrdinal, ok := b.ordinalByLineStart[node.listData().ListParentAnchor]
 		if !ok {
 			continue
 		}
 		parent := b.nodes[b.itemIndexes[parentOrdinal]]
-		node.ListParentID = parent.ID
+		node.list.ListParentID = parent.ID
 		b.parentOrdinals[ordinal] = parentOrdinal
 		b.supportedChildren[parentOrdinal]++
 	}
@@ -116,8 +116,8 @@ func (b *listItemModelBuilder) buildChildAdjacency() ([]NodeID, error) {
 		if childCursors[ordinal] != childOffsets[ordinal+1] {
 			return nil, fmt.Errorf("incomplete supported list-item child adjacency for %q", b.nodes[nodeIndex].ID)
 		}
-		b.nodes[nodeIndex].ListChildStart = childOffsets[ordinal]
-		b.nodes[nodeIndex].ListChildCount = b.supportedChildren[ordinal]
+		b.nodes[nodeIndex].list.ListChildStart = childOffsets[ordinal]
+		b.nodes[nodeIndex].list.ListChildCount = b.supportedChildren[ordinal]
 	}
 	return childIDs, nil
 }
@@ -138,7 +138,7 @@ func (b *listItemModelBuilder) resolveSubtrees() error {
 		ordinal := queue[len(queue)-1]
 		queue = queue[:len(queue)-1]
 		node := &b.nodes[b.itemIndexes[ordinal]]
-		node.ListSubtreeComplete = childrenComplete[ordinal] && b.supportedChildren[ordinal] == node.ListDirectChildCount
+		node.list.ListSubtreeComplete = childrenComplete[ordinal] && b.supportedChildren[ordinal] == node.listData().ListDirectChildCount
 		processed++
 
 		parentOrdinal := b.parentOrdinals[ordinal]
@@ -146,10 +146,10 @@ func (b *listItemModelBuilder) resolveSubtrees() error {
 			continue
 		}
 		parent := &b.nodes[b.itemIndexes[parentOrdinal]]
-		if node.ListSubtreeEnd > parent.ListSubtreeEnd {
-			parent.ListSubtreeEnd = node.ListSubtreeEnd
+		if node.listData().ListSubtreeEnd > parent.listData().ListSubtreeEnd {
+			parent.list.ListSubtreeEnd = node.listData().ListSubtreeEnd
 		}
-		if !node.ListSubtreeComplete {
+		if !node.listData().ListSubtreeComplete {
 			childrenComplete[parentOrdinal] = false
 		}
 		remainingChildren[parentOrdinal]--
@@ -164,7 +164,7 @@ func (b *listItemModelBuilder) resolveSubtrees() error {
 }
 
 func listItemSubtreeRange(item Node) Range {
-	return Range{Start: item.ListItemLineRange.Start, End: item.ListSubtreeEnd}
+	return Range{Start: item.listData().ListItemLineRange.Start, End: item.listData().ListSubtreeEnd}
 }
 
 type listItemSubtreeOwnership struct {
@@ -174,7 +174,7 @@ type listItemSubtreeOwnership struct {
 }
 
 func (d *Document) ownedListItemSubtree(root Node) (listItemSubtreeOwnership, error) {
-	if root.Kind != KindListItem || !root.Editable || !root.ListSubtreeComplete {
+	if root.Kind != KindListItem || !root.Editable || !root.listData().ListSubtreeComplete {
 		return listItemSubtreeOwnership{}, ErrInvalidReplacement
 	}
 	range_ := listItemSubtreeRange(root)
@@ -195,15 +195,15 @@ func (d *Document) listItemSubtreeIDs(root Node, subtreeRange Range) (map[NodeID
 		last := len(stack) - 1
 		node := stack[last]
 		stack = stack[:last]
-		if _, duplicate := ids[node.ID]; duplicate || !node.ListSubtreeComplete {
+		if _, duplicate := ids[node.ID]; duplicate || !node.listData().ListSubtreeComplete {
 			return nil, false
 		}
-		lineRange := node.ListItemLineRange
+		lineRange := node.listData().ListItemLineRange
 		if lineRange.Start < subtreeRange.Start || lineRange.End > subtreeRange.End {
 			return nil, false
 		}
 		children, ok := d.listItemChildIDSpan(node)
-		if !ok || len(children) != node.ListDirectChildCount {
+		if !ok || len(children) != node.listData().ListDirectChildCount {
 			return nil, false
 		}
 		ids[node.ID] = struct{}{}
@@ -222,8 +222,8 @@ func (d *Document) listItemChildIDSpan(parent Node) ([]NodeID, bool) {
 	if !validListItemChildSpanRequest(d, parent) {
 		return nil, false
 	}
-	start := parent.ListChildStart
-	count := parent.ListChildCount
+	start := parent.listData().ListChildStart
+	count := parent.listData().ListChildCount
 	if start > len(d.listChildIDs) || count > len(d.listChildIDs)-start {
 		return nil, false
 	}
@@ -236,24 +236,24 @@ func (d *Document) listItemChildIDSpan(parent Node) ([]NodeID, bool) {
 
 func validListItemChildSpanRequest(d *Document, parent Node) bool {
 	return d != nil && parent.Kind == KindListItem && parent.Editable &&
-		parent.ListChildStart >= 0 && parent.ListChildCount >= 0 && parent.ListChildCount <= parent.ListDirectChildCount
+		parent.listData().ListChildStart >= 0 && parent.listData().ListChildCount >= 0 && parent.listData().ListChildCount <= parent.listData().ListDirectChildCount
 }
 
 func (d *Document) validListItemChildren(parent Node, ids []NodeID) bool {
-	previousStart := parent.ListItemLineRange.Start
+	previousStart := parent.listData().ListItemLineRange.Start
 	for _, id := range ids {
 		child, ok := d.nodeByID(id)
 		if !ok || !validListItemChild(parent, child, previousStart) {
 			return false
 		}
-		previousStart = child.ListItemLineRange.Start
+		previousStart = child.listData().ListItemLineRange.Start
 	}
 	return true
 }
 
 func validListItemChild(parent, child Node, previousStart int) bool {
-	return child.Kind == KindListItem && child.Editable && child.ListParentID == parent.ID &&
-		child.ListParentAnchor == parent.ListItemLineRange.Start && child.ListItemLineRange.Start > previousStart
+	return child.Kind == KindListItem && child.Editable && child.listData().ListParentID == parent.ID &&
+		child.listData().ListParentAnchor == parent.listData().ListItemLineRange.Start && child.listData().ListItemLineRange.Start > previousStart
 }
 
 func (d *Document) promotedListItemCount() int {

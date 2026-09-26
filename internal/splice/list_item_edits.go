@@ -5,7 +5,7 @@ func (d *Document) completeListItemTarget(id NodeID) (Node, error) {
 	if err != nil {
 		return Node{}, err
 	}
-	if !target.ListSubtreeComplete {
+	if !target.listData().ListSubtreeComplete {
 		return Node{}, ErrInvalidTargetKind
 	}
 	return target, nil
@@ -76,7 +76,7 @@ func (d *Document) PrepareRemoveListItem(id NodeID) (ChangeSet, error) {
 	if len(candidateItems) != d.promotedListItemCount()-len(removedIDs) {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	if err := d.validateOriginalListItemsAfterPatch(candidate, candidateItems, removeRange, 0, removedIDs, listItemDirectChildCountDeltas(target.ListParentID, "")); err != nil {
+	if err := d.validateOriginalListItemsAfterPatch(candidate, candidateItems, removeRange, 0, removedIDs, listItemDirectChildCountDeltas(target.listData().ListParentID, "")); err != nil {
 		return ChangeSet{}, err
 	}
 	return change, nil
@@ -106,10 +106,10 @@ func (d *Document) prepareInsertListItem(id NodeID, fragment []byte, after bool)
 		return ChangeSet{}, err
 	}
 
-	insertAt := anchor.ListItemLineRange.Start
+	insertAt := anchor.listData().ListItemLineRange.Start
 	operation := "list item insertion before"
 	if after {
-		insertAt = anchor.ListSubtreeEnd
+		insertAt = anchor.listData().ListSubtreeEnd
 		operation = "list item insertion after"
 	}
 	patch := Range{Start: insertAt, End: insertAt}
@@ -124,7 +124,7 @@ func (d *Document) prepareInsertListItem(id NodeID, fragment []byte, after bool)
 	if len(candidateItems) != d.promotedListItemCount()+len(fragmentSubtree.IDs) {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	if err := d.validateOriginalListItemsAfterPatch(candidate, candidateItems, patch, len(fragment), nil, listItemDirectChildCountDeltas("", anchor.ListParentID)); err != nil {
+	if err := d.validateOriginalListItemsAfterPatch(candidate, candidateItems, patch, len(fragment), nil, listItemDirectChildCountDeltas("", anchor.listData().ListParentID)); err != nil {
 		return ChangeSet{}, err
 	}
 	transforms := []patchTransform{{Range: patch, ReplacementLength: len(fragment)}}
@@ -140,21 +140,21 @@ func (d *Document) PrepareAppendFirstListItemChild(id NodeID, content []byte, or
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if parent.ListHasChildren || parent.ListDirectChildCount != 0 || parent.ListSubtreeEnd != parent.ListItemLineRange.End {
+	if parent.listData().ListHasChildren || parent.listData().ListDirectChildCount != 0 || parent.listData().ListSubtreeEnd != parent.listData().ListItemLineRange.End {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
 	if err := validateNonEmptySingleLine(content); err != nil {
 		return ChangeSet{}, err
 	}
-	if !parent.ListItemLineRange.Valid(len(d.source)) || !parent.Range.Valid(len(d.source)) || !parent.ContentRange.Valid(len(d.source)) ||
-		parent.Range.Start < parent.ListItemLineRange.Start || parent.ContentRange.Start <= parent.Range.Start {
+	if !parent.listData().ListItemLineRange.Valid(len(d.source)) || !parent.Range.Valid(len(d.source)) || !parent.ContentRange.Valid(len(d.source)) ||
+		parent.Range.Start < parent.listData().ListItemLineRange.Start || parent.ContentRange.Start <= parent.Range.Start {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	eol, ok := physicalLineEndingBefore(d.source, parent.ListItemLineRange.End)
+	eol, ok := physicalLineEndingBefore(d.source, parent.listData().ListItemLineRange.End)
 	if !ok {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	prefix := d.source[parent.ListItemLineRange.Start:parent.Range.Start]
+	prefix := d.source[parent.listData().ListItemLineRange.Start:parent.Range.Start]
 	indent := parent.ContentRange.Start - parent.Range.Start
 	marker := []byte("- ")
 	if ordered {
@@ -181,7 +181,7 @@ func (d *Document) PrepareAppendListItemChild(id NodeID, fragment []byte) (Chang
 		return ChangeSet{}, ErrInvalidReplacement
 	}
 
-	insertAt := parent.ListSubtreeEnd
+	insertAt := parent.listData().ListSubtreeEnd
 	patch := Range{Start: insertAt, End: insertAt}
 	change, candidate, err := d.prepareCandidateChange(patch, fragment, "list item child append")
 	if err != nil {
@@ -191,7 +191,7 @@ func (d *Document) PrepareAppendListItemChild(id NodeID, fragment []byte) (Chang
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	insertedSubtree, err := candidateDocument.insertedListItemChildSubtree(fragment, insertAt, parent.ListItemLineRange.Start)
+	insertedSubtree, err := candidateDocument.insertedListItemChildSubtree(fragment, insertAt, parent.listData().ListItemLineRange.Start)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -268,14 +268,14 @@ func (d *Document) planListItemMove(id, anchorID NodeID, after bool) (listItemMo
 		moved:        moved,
 		anchor:       anchor,
 		movedSubtree: movedSubtree,
-		insertAt:     anchor.ListItemLineRange.Start,
+		insertAt:     anchor.listData().ListItemLineRange.Start,
 		operation:    "list item move before",
 	}
-	alreadyPlaced := movedSubtree.Range.End == anchor.ListItemLineRange.Start
+	alreadyPlaced := movedSubtree.Range.End == anchor.listData().ListItemLineRange.Start
 	if after {
-		plan.insertAt = anchor.ListSubtreeEnd
+		plan.insertAt = anchor.listData().ListSubtreeEnd
 		plan.operation = "list item move after"
-		alreadyPlaced = anchor.ListSubtreeEnd == movedSubtree.Range.Start
+		alreadyPlaced = anchor.listData().ListSubtreeEnd == movedSubtree.Range.Start
 	}
 	if alreadyPlaced && listItemsShareSemanticParent(moved, anchor) {
 		return plan, true, nil
@@ -298,7 +298,7 @@ func (d *Document) validateListItemMoveCandidate(candidate []byte, plan listItem
 		{Range: plan.movedSubtree.Range},
 		{Range: insertRange, ReplacementLength: len(plan.fragment)},
 	}
-	if err := d.validateOriginalListItemsAfterPatches(candidate, candidateItems, transforms, plan.movedSubtree.IDs, listItemDirectChildCountDeltas(plan.moved.ListParentID, plan.anchor.ListParentID)); err != nil {
+	if err := d.validateOriginalListItemsAfterPatches(candidate, candidateItems, transforms, plan.movedSubtree.IDs, listItemDirectChildCountDeltas(plan.moved.listData().ListParentID, plan.anchor.listData().ListParentID)); err != nil {
 		return err
 	}
 	return d.validateListItemSubtreePlacement(candidate, candidateItems, plan.movedSubtree, plan.movedOffset, plan.anchor, transforms)

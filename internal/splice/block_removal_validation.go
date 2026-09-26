@@ -128,11 +128,11 @@ func removalSurvivorSemanticSignature(node Node) removalSurvivorSignature {
 		level:                     node.Level,
 		headingStyle:              node.HeadingStyle,
 		checked:                   node.Checked,
-		listOrdered:               node.ListOrdered,
-		listMarker:                node.ListMarker,
-		listHasParent:             node.ListHasParent,
-		listHasChildren:           node.ListHasChildren,
-		listDirectChildCount:      node.ListDirectChildCount,
+		listOrdered:               node.listData().ListOrdered,
+		listMarker:                node.listData().ListMarker,
+		listHasParent:             node.listData().ListHasParent,
+		listHasChildren:           node.listData().ListHasChildren,
+		listDirectChildCount:      node.listData().ListDirectChildCount,
 		tableHeader:               nodeTable.TableHeader,
 		tableColumn:               nodeTable.TableColumn,
 		tableColumnCount:          nodeTable.TableColumnCount,
@@ -194,10 +194,10 @@ func sameRemovalListAnchors(original, candidate Node, patches []patchTransform) 
 	if original.Kind != KindListItem {
 		return true
 	}
-	if !sameShiftedRemovalAnchor(original.ListContainerAnchor, candidate.ListContainerAnchor, patches) {
+	if !sameShiftedRemovalAnchor(original.listData().ListContainerAnchor, candidate.listData().ListContainerAnchor, patches) {
 		return false
 	}
-	return !original.ListHasParent || sameShiftedRemovalAnchor(original.ListParentAnchor, candidate.ListParentAnchor, patches)
+	return !original.listData().ListHasParent || sameShiftedRemovalAnchor(original.listData().ListParentAnchor, candidate.listData().ListParentAnchor, patches)
 }
 
 func sameRemovalTableAnchors(original, candidate Node, patches []patchTransform) bool {

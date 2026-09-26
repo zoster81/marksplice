@@ -34,8 +34,11 @@ func (d *Document) Heading(id NodeID) (Heading, bool) {
 
 // ListItem returns typed detail for one promoted single-line list item.
 func (d *Document) ListItem(id NodeID) (ListItem, bool) {
-	node, err := d.promotedNode(id, splice.KindListItem, false)
-	if err != nil {
+	if d == nil || d.document == nil {
+		return ListItem{}, false
+	}
+	node, ok := d.document.ListNode(internalNodeID(id))
+	if !ok {
 		return ListItem{}, false
 	}
 	internalChildIDs, ok := d.document.ListItemChildIDs(node.ID)

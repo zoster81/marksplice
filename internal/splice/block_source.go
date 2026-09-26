@@ -6,8 +6,8 @@ func remapListItemSource(input []byte, node Node) (source.ListItemMapping, bool)
 	if node.Kind != KindListItem || !node.Editable {
 		return source.ListItemMapping{}, false
 	}
-	mapping, err := source.MapSingleLineListItem(input, node.ContentRange, node.ListOrdered, node.ListMarker)
-	if err != nil || mapping.Range != node.Range || mapping.LineRange != node.ListItemLineRange {
+	mapping, err := source.MapSingleLineListItem(input, node.ContentRange, node.listData().ListOrdered, node.listData().ListMarker)
+	if err != nil || mapping.Range != node.Range || mapping.LineRange != node.listData().ListItemLineRange {
 		return source.ListItemMapping{}, false
 	}
 	return mapping, true

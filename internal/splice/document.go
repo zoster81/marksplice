@@ -89,44 +89,32 @@ type Range = source.Range
 // Node is the minimal Marksplice-owned structural view used by the feasibility slice.
 type Node struct {
 	// Keep identity, flags and source positions close; group other fields by width.
-	ID                   NodeID
-	SourceDetailIndex    uint32
-	Kind                 Kind
-	HeadingStyle         HeadingStyle
-	Checked              bool
-	ListOrdered          bool
-	ListMarker           byte
-	ListHasParent        bool
-	ListHasChildren      bool
-	ListSubtreeComplete  bool
-	Editable             bool
-	MathStyle            MathExpressionStyle
-	HasTitle             bool
-	AutoLinkEmail        bool
-	FrontMatterFormat    FrontMatterFormat
-	FrontMatterStyle     source.FrontMatterValueStyle
-	HTMLQuote            byte
-	TopLevel             bool
-	Range                Range
-	ContentRange         Range
-	Anchor               int
-	HeadingText          string
-	ListParentID         NodeID
-	Destination          string
-	Label                string
-	Title                string
-	Value                string
-	Key                  string
-	HTMLAttribute        string
-	table                *TableNodeData
-	Level                int
-	ListParentAnchor     int
-	ListContainerAnchor  int
-	ListDirectChildCount int
-	ListChildStart       int
-	ListChildCount       int
-	ListSubtreeEnd       int
-	ListItemLineRange    Range
+	ID                NodeID
+	SourceDetailIndex uint32
+	Kind              Kind
+	HeadingStyle      HeadingStyle
+	Checked           bool
+	Editable          bool
+	MathStyle         MathExpressionStyle
+	HasTitle          bool
+	AutoLinkEmail     bool
+	FrontMatterFormat FrontMatterFormat
+	FrontMatterStyle  source.FrontMatterValueStyle
+	HTMLQuote         byte
+	TopLevel          bool
+	Range             Range
+	ContentRange      Range
+	Anchor            int
+	HeadingText       string
+	Destination       string
+	Label             string
+	Title             string
+	Value             string
+	Key               string
+	HTMLAttribute     string
+	table             *TableNodeData
+	list              *ListNodeData
+	Level             int
 }
 
 // TableNodeData holds source and adjacency data only for table, row, and cell nodes.
@@ -354,7 +342,7 @@ func documentFromObservations(snapshot []byte, observed parser.DocumentObservati
 
 	fingerprint := source.Sum(snapshot)
 	nodes := make([]Node, 0, len(observations)+len(frontMatter.Fields)+len(footnoteDefinitions)+len(mathExpressions))
-	fencedCapacity, blockquoteCapacity := sourceDetailCapacities(observations)
+	fencedCapacity, blockquoteCapacity, listCapacity := sourceDetailCapacities(observations)
 	mapper := nodeMapper{
 		snapshot:          snapshot,
 		fingerprint:       fingerprint,
@@ -364,6 +352,7 @@ func documentFromObservations(snapshot []byte, observed parser.DocumentObservati
 		fencedSources:     make([]fencedSourceDetail, 0, fencedCapacity),
 		blockquoteSources: make([]source.BlockquoteMapping, 0, blockquoteCapacity),
 		tableNodeData:     make([]TableNodeData, 0, len(parserDetails.tables)+len(parserDetails.tableRows)+len(parserDetails.tableCells)),
+		listNodeData:      make([]ListNodeData, 0, listCapacity),
 	}
 	footnoteSources := make([]source.FootnoteDefinitionMapping, 0, len(footnoteDefinitions))
 	if hasFrontMatter {
@@ -589,6 +578,10 @@ func unresolvedReferenceUsagesOutsideRange(usages []parser.UnresolvedReferenceUs
 }
 
 func cloneNode(node Node) Node {
+	if node.list != nil {
+		detail := *node.list
+		node.list = &detail
+	}
 	if node.table != nil {
 		detail := *node.table
 		detail.TableAlignments = append([]TableAlignment(nil), detail.TableAlignments...)

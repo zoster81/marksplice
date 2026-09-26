@@ -22,7 +22,7 @@ type parserNodeDetails struct {
 }
 
 // nodeMapper owns the temporary source-proof state for one document promotion.
-// Table data is allocated together; each node owns its entry after construction.
+// Kind-specific data is allocated together; each node owns its entry after construction.
 type nodeMapper struct {
 	snapshot          []byte
 	fingerprint       source.Fingerprint
@@ -32,6 +32,7 @@ type nodeMapper struct {
 	fencedSources     []fencedSourceDetail
 	blockquoteSources []source.BlockquoteMapping
 	tableNodeData     []TableNodeData
+	listNodeData      []ListNodeData
 }
 
 func (d parserNodeDetails) blockquote(observation parser.Node) (parser.BlockquoteDetail, error) {
@@ -89,16 +90,18 @@ func (d parserNodeDetails) tableCell(observation parser.Node) (parser.TableCellD
 	return detail, nil
 }
 
-func sourceDetailCapacities(observations []parser.Node) (fenced, blockquote int) {
+func sourceDetailCapacities(observations []parser.Node) (fenced, blockquote, list int) {
 	for _, observation := range observations {
 		switch observation.Kind {
+		case parser.KindListItem:
+			list++
 		case parser.KindFencedCode:
 			fenced++
 		case parser.KindBlockquote:
 			blockquote++
 		}
 	}
-	return fenced, blockquote
+	return fenced, blockquote, list
 }
 
 func (mapper *nodeMapper) nodeFromObservation(observation parser.Node) (Node, error) {
@@ -119,6 +122,7 @@ func (mapper *nodeMapper) nodeFromObservation(observation parser.Node) (Node, er
 	}
 
 	node := baseNodeFromObservation(kind, contentRange, observation)
+	mapper.mapListNodeData(observation, &node)
 	if kind == KindTable || kind == KindTableRow || kind == KindTableCell {
 		mapper.tableNodeData = append(mapper.tableNodeData, TableNodeData{})
 		node.table = &mapper.tableNodeData[len(mapper.tableNodeData)-1]
@@ -144,27 +148,20 @@ func parserKindUsesSparseDetail(kind parser.Kind) bool {
 
 func baseNodeFromObservation(kind Kind, contentRange Range, observation parser.Node) Node {
 	node := Node{
-		Kind:                 kind,
-		Range:                contentRange,
-		ContentRange:         contentRange,
-		Level:                observation.Level,
-		HeadingText:          observation.HeadingText,
-		Checked:              observation.Checked,
-		ListOrdered:          observation.Ordered,
-		ListMarker:           observation.Marker,
-		ListHasParent:        observation.HasListParent,
-		ListParentAnchor:     observation.ListParentAnchor,
-		ListContainerAnchor:  observation.ListContainerAnchor,
-		ListHasChildren:      observation.HasListChildren,
-		ListDirectChildCount: observation.ListDirectChildCount,
-		Anchor:               observation.Anchor,
-		Destination:          observation.Destination,
-		Label:                observation.Label,
-		Title:                observation.Title,
-		HasTitle:             observation.HasTitle,
-		Value:                observation.Value,
-		AutoLinkEmail:        observation.AutoLinkEmail,
-		TopLevel:             observation.TopLevel,
+		Kind:          kind,
+		Range:         contentRange,
+		ContentRange:  contentRange,
+		Level:         observation.Level,
+		HeadingText:   observation.HeadingText,
+		Checked:       observation.Checked,
+		Anchor:        observation.Anchor,
+		Destination:   observation.Destination,
+		Label:         observation.Label,
+		Title:         observation.Title,
+		HasTitle:      observation.HasTitle,
+		Value:         observation.Value,
+		AutoLinkEmail: observation.AutoLinkEmail,
+		TopLevel:      observation.TopLevel,
 	}
 	if kind == KindParagraph && observation.TopLevel {
 		node.Editable = true
@@ -255,9 +252,9 @@ func mapListItemNodeSource(snapshot []byte, observation parser.Node, contentRang
 	}
 	node.Range = mapping.Range
 	node.ContentRange = mapping.ContentRange
-	node.ListOrdered = mapping.Ordered
-	node.ListMarker = mapping.Marker
-	node.ListItemLineRange = mapping.LineRange
+	node.list.ListOrdered = mapping.Ordered
+	node.list.ListMarker = mapping.Marker
+	node.list.ListItemLineRange = mapping.LineRange
 	node.Editable = true
 	return nil
 }

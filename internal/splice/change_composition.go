@@ -218,7 +218,7 @@ func compositionOwnedRange(document *Document, node Node) Range {
 	input := document.source
 	switch node.Kind {
 	case KindListItem:
-		return node.ListItemLineRange
+		return node.listData().ListItemLineRange
 	case KindTableCell:
 		return node.tableData().TableCellRange
 	case KindTableRow:
@@ -251,9 +251,9 @@ func compositionNodeSemantic(document *Document, node Node, index int, indexes m
 		kind:                node.Kind,
 		survivor:            removalSurvivorSemanticSignature(node),
 		tableAlignments:     compositionTableAlignments(nodeTable.TableAlignments),
-		listSubtreeComplete: node.ListSubtreeComplete,
-		listChildCount:      node.ListChildCount,
-		listParent:          relativeNodeIndex(index, node.ListParentID, indexes),
+		listSubtreeComplete: node.listData().ListSubtreeComplete,
+		listChildCount:      node.listData().ListChildCount,
+		listParent:          relativeNodeIndex(index, node.listData().ListParentID, indexes),
 		table:               relativeNodeIndex(index, nodeTable.TableID, indexes),
 		row:                 relativeNodeIndex(index, nodeTable.TableRowID, indexes),
 		previousRow:         relativeNodeIndex(index, nodeTable.TablePreviousRowID, indexes),

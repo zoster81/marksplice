@@ -327,15 +327,16 @@ func validConstructionAlertMapping(ranges []splice.Range, marker splice.Range) b
 }
 
 func validateConstructionListItemExpectation(node splice.Node, want constructionExpectation) error {
+	list := node.ListData()
 	expectedRange := splice.Range{Start: want.list.markerStart, End: want.contentRange.End}
-	if node.Range != expectedRange || node.ContentRange != want.contentRange || node.ListItemLineRange != want.sourceRange ||
-		node.ListOrdered != want.list.ordered || node.ListMarker != want.list.marker || node.ListContainerAnchor != want.list.containerAnchor ||
-		node.ListHasParent != want.list.hasParent || node.ListHasChildren != (want.list.directChildren != 0) ||
-		node.ListDirectChildCount != want.list.directChildren || node.ListChildCount != want.list.directChildren ||
-		!node.ListSubtreeComplete || node.ListSubtreeEnd != want.list.subtreeEnd {
+	if node.Range != expectedRange || node.ContentRange != want.contentRange || list.ListItemLineRange != want.sourceRange ||
+		list.ListOrdered != want.list.ordered || list.ListMarker != want.list.marker || list.ListContainerAnchor != want.list.containerAnchor ||
+		list.ListHasParent != want.list.hasParent || list.ListHasChildren != (want.list.directChildren != 0) ||
+		list.ListDirectChildCount != want.list.directChildren || list.ListChildCount != want.list.directChildren ||
+		!list.ListSubtreeComplete || list.ListSubtreeEnd != want.list.subtreeEnd {
 		return fmt.Errorf("%w: generated list-item mapping changed", ErrInvalidConstruction)
 	}
-	if want.list.hasParent && node.ListParentAnchor != want.list.parentAnchor {
+	if want.list.hasParent && list.ListParentAnchor != want.list.parentAnchor {
 		return fmt.Errorf("%w: generated list-item parent changed", ErrInvalidConstruction)
 	}
 	return nil

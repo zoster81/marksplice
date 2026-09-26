@@ -133,11 +133,11 @@ func TestListItemHierarchyAccessFailsClosedOnCorruptAdjacency(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	items := nodesOfKind(doc.nodes, KindListItem)
-	if len(items) != 2 || items[0].ListChildCount != 1 {
+	if len(items) != 2 || items[0].listData().ListChildCount != 1 {
 		t.Fatalf("list-item model = %+v, want parent plus one child", items)
 	}
 	parent := items[0]
-	doc.listChildIDs[parent.ListChildStart] = NodeID("missing-child")
+	doc.listChildIDs[parent.listData().ListChildStart] = NodeID("missing-child")
 	if ids, ok := doc.ListItemChildIDs(parent.ID); ok || ids != nil {
 		t.Fatalf("ListItemChildIDs(corrupt) = %v, %v; want nil, false", ids, ok)
 	}
@@ -156,7 +156,7 @@ func TestCompactMutationIndexesFailClosedWhenCorrupt(t *testing.T) {
 	if len(listDoc.listItemIndexes) != 1 {
 		t.Fatalf("list-item index count = %d, want 1", len(listDoc.listItemIndexes))
 	}
-	lineStart := listDoc.nodes[listDoc.listItemIndexes[0]].ListItemLineRange.Start
+	lineStart := listDoc.nodes[listDoc.listItemIndexes[0]].listData().ListItemLineRange.Start
 	listDoc.listItemIndexes[0] = len(listDoc.nodes)
 	if _, ok := listDoc.listItemNodeAtLineStart(lineStart); ok {
 		t.Fatal("listItemNodeAtLineStart(corrupt index) ok = true, want false")
@@ -199,25 +199,25 @@ func TestParseBuildsSourceOrderedListItemHierarchyAndSubtreeMetadata(t *testing.
 		t.Fatalf("list-item count = %d, want 4", len(items))
 	}
 	parent := items[0]
-	if parent.ListParentID != "" || parent.ListChildCount != 2 || !parent.ListSubtreeComplete {
+	if parent.listData().ListParentID != "" || parent.listData().ListChildCount != 2 || !parent.listData().ListSubtreeComplete {
 		t.Fatalf("parent metadata = %+v, want root with two supported children and complete subtree", parent)
 	}
-	if parent.ListChildStart < 0 || parent.ListChildStart+parent.ListChildCount > len(doc.listChildIDs) {
-		t.Fatalf("parent child adjacency = start %d count %d over %d IDs", parent.ListChildStart, parent.ListChildCount, len(doc.listChildIDs))
+	if parent.listData().ListChildStart < 0 || parent.listData().ListChildStart+parent.listData().ListChildCount > len(doc.listChildIDs) {
+		t.Fatalf("parent child adjacency = start %d count %d over %d IDs", parent.listData().ListChildStart, parent.listData().ListChildCount, len(doc.listChildIDs))
 	}
-	children := doc.listChildIDs[parent.ListChildStart : parent.ListChildStart+parent.ListChildCount]
+	children := doc.listChildIDs[parent.listData().ListChildStart : parent.listData().ListChildStart+parent.listData().ListChildCount]
 	if children[0] != items[1].ID || children[1] != items[2].ID {
 		t.Fatalf("parent child IDs = %v, want %q/%q", children, items[1].ID, items[2].ID)
 	}
 	for _, child := range items[1:3] {
-		if child.ListParentID != parent.ID || !child.ListSubtreeComplete {
+		if child.listData().ListParentID != parent.ID || !child.listData().ListSubtreeComplete {
 			t.Fatalf("child metadata = %+v, want parent %q and complete subtree", child, parent.ID)
 		}
 	}
-	if parent.ListSubtreeEnd != items[2].ListItemLineRange.End {
-		t.Fatalf("parent subtree end = %d, want %d", parent.ListSubtreeEnd, items[2].ListItemLineRange.End)
+	if parent.listData().ListSubtreeEnd != items[2].listData().ListItemLineRange.End {
+		t.Fatalf("parent subtree end = %d, want %d", parent.listData().ListSubtreeEnd, items[2].listData().ListItemLineRange.End)
 	}
-	if items[3].ListParentID != "" || !items[3].ListSubtreeComplete {
+	if items[3].listData().ListParentID != "" || !items[3].listData().ListSubtreeComplete {
 		t.Fatalf("leaf metadata = %+v, want independent complete root", items[3])
 	}
 }
