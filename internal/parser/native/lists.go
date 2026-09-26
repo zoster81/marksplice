@@ -27,11 +27,6 @@ type listSource struct {
 	next  int
 }
 
-type parsedListItem struct {
-	source listItemSource
-	child  blockParseResult
-}
-
 type listItemCollector struct {
 	item            listItemSource
 	pendingBlank    []physicalLine
@@ -165,8 +160,8 @@ func parseListSemantic(source []byte, lines []physicalLine, index int, capture *
 	}
 	collected := collectList(source, lines, index, first)
 	if capture == nil {
-		items, loose := parseListItems(source, collected.items)
-		result := assembleList(source, items, loose)
+		loose := parseListItems(source, collected.items)
+		result := assembleList(source, collected.items, loose)
 		if len(collected.items) != 0 {
 			result.trailingBlank = collected.items[len(collected.items)-1].trailingBlank
 		}
@@ -188,7 +183,6 @@ func parseCapturedList(source []byte, collected listSource, first listMarker, ca
 		Start:   start,
 		Marker:  first.marker,
 	}, parser.Range{})
-	parsed := make([]parsedListItem, len(collected.items))
 	loose := false
 	for index, item := range collected.items {
 		itemRange := semanticListItemSourceRange(item)
@@ -206,42 +200,41 @@ func parseCapturedList(source []byte, collected listSource, first listMarker, ca
 			}
 			capture.update(itemIndex, func(event *parser.SemanticEvent) { event.ContentRange = contentRange })
 		}
-		parsed[index] = parsedListItem{source: item, child: child}
+		collected.items[index].child = child
+		collected.items[index].childReady = true
 		if child.blankBetweenRoots || item.separatedAfter || referenceResidualMakesListLoose(child.roots) {
 			loose = true
 		}
 	}
 	capture.update(listIndex, func(event *parser.SemanticEvent) { event.Tight = !loose })
-	result := assembleList(source, parsed, loose)
+	result := assembleList(source, collected.items, loose)
 	if len(collected.items) != 0 {
 		result.trailingBlank = collected.items[len(collected.items)-1].trailingBlank
 	}
 	return result, collected.next, true
 }
 
-func parseListItems(source []byte, items []listItemSource) ([]parsedListItem, bool) {
-	parsed := make([]parsedListItem, len(items))
+func parseListItems(source []byte, items []listItemSource) bool {
 	loose := false
-	for index, item := range items {
-		child := item.child
+	for index := range items {
+		item := &items[index]
 		if !item.childReady {
-			child = parseBlockLines(source, item.lines, false)
+			item.child = parseBlockLines(source, item.lines, false)
+			item.childReady = true
 		}
-		parsed[index] = parsedListItem{source: item, child: child}
-		if child.blankBetweenRoots || item.separatedAfter || referenceResidualMakesListLoose(child.roots) {
+		if item.child.blankBetweenRoots || item.separatedAfter || referenceResidualMakesListLoose(item.child.roots) {
 			loose = true
 		}
 	}
-	return parsed, loose
+	return loose
 }
 
-func assembleList(source []byte, items []parsedListItem, loose bool) blockParseResult {
+func assembleList(source []byte, items []listItemSource, loose bool) blockParseResult {
 	result := blockParseResult{nodes: make([]parser.Node, 0, len(items)*2)}
 	containerAnchor := 0
 	hasContainerAnchor := false
-	for itemIndex, parsed := range items {
-		item := parsed.source
-		child := parsed.child
+	for itemIndex, item := range items {
+		child := item.child
 		if !loose {
 			child.nodes = suppressTightListParagraphs(child.nodes, child.roots)
 		}
