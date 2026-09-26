@@ -42,11 +42,19 @@ func (a Alert) MarkerRange() Range { return a.markerRange }
 // whose first inner physical line is one exact reviewed GitHub alert marker and whose
 // remaining owned source contains at least one non-empty body segment.
 func (d *Document) Alert(id NodeID) (Alert, bool) {
-	node, err := d.promotedNode(id, splice.KindBlockquote, true)
-	if err != nil {
+	if d == nil || d.document == nil {
 		return Alert{}, false
 	}
-	return d.alertFromBlockquoteNode(node)
+	metadata, ok := d.document.AlertMetadata(internalNodeID(id))
+	if !ok {
+		return Alert{}, false
+	}
+	return Alert{
+		id:          id,
+		kind:        publicAlertKind(metadata.Kind),
+		sourceRange: Range{Start: metadata.Range.Start, End: metadata.Range.End},
+		markerRange: Range{Start: metadata.MarkerRange.Start, End: metadata.MarkerRange.End},
+	}, true
 }
 
 // Alerts returns all recognized top-level GitHub alerts in source order.
@@ -61,11 +69,7 @@ func (d *Document) Alerts() []Alert {
 		if !ok || summary.Kind != splice.KindBlockquote || !summary.TopLevel || !summary.Editable {
 			continue
 		}
-		node, ok := d.document.Node(summary.ID)
-		if !ok {
-			continue
-		}
-		alert, ok := d.alertFromBlockquoteNode(node)
+		alert, ok := d.Alert(publicNodeID(summary.ID))
 		if ok {
 			alerts = append(alerts, alert)
 		}
@@ -77,57 +81,14 @@ func (d *Document) Alerts() []Alert {
 // Marker-only blank lines are represented by valid empty ranges and lazy continuation
 // lines retain their source-proven blockquote inner ranges.
 func (d *Document) AlertBodyRanges(id NodeID) ([]Range, bool) {
-	node, err := d.promotedNode(id, splice.KindBlockquote, true)
-	if err != nil {
+	if d == nil || d.document == nil {
 		return nil, false
 	}
-	if _, ok := d.alertFromBlockquoteNode(node); !ok {
-		return nil, false
-	}
-	mapping, ok := d.document.BlockquoteSource(node.ID)
+	ranges, ok := d.document.AlertBodyRanges(internalNodeID(id))
 	if !ok {
 		return nil, false
 	}
-	return publicRanges(mapping.ContentRanges[1:]), true
-}
-
-func (d *Document) alertFromBlockquoteNode(node splice.Node) (Alert, bool) {
-	mapping, ok := d.document.BlockquoteSource(node.ID)
-	if !ok {
-		return Alert{}, false
-	}
-	ranges := mapping.ContentRanges
-	if len(ranges) < 2 {
-		return Alert{}, false
-	}
-	markerRange := Range{Start: ranges[0].Start, End: ranges[0].End}
-	marker, ok := d.SourceRange(markerRange)
-	if !ok {
-		return Alert{}, false
-	}
-	kind := alertKindFromMarker(marker)
-	if kind == AlertKindUnknown || !alertHasBody(ranges[1:]) {
-		return Alert{}, false
-	}
-	return Alert{
-		id:          publicNodeID(node.ID),
-		kind:        kind,
-		sourceRange: Range{Start: mapping.LineRange.Start, End: mapping.LineRange.End},
-		markerRange: markerRange,
-	}, true
-}
-
-func alertHasBody(ranges []splice.Range) bool {
-	for _, range_ := range ranges {
-		if range_.Start < range_.End {
-			return true
-		}
-	}
-	return false
-}
-
-func alertKindFromMarker(marker []byte) AlertKind {
-	return publicAlertKind(source.AlertKindFromMarker(marker))
+	return publicRanges(ranges), true
 }
 
 func publicAlertKind(kind source.AlertKind) AlertKind {
