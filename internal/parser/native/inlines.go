@@ -134,35 +134,68 @@ func analyzeInlineBlocks(source []byte, blocks []inlineBlock, definitions []refe
 	return analyses
 }
 
+// Ordinary parsing consumes heading/math ownership while each analysis is live.
+// Only the compact observation slices survive until the final assembly; rendering
+// keeps its full analyses through analyzeInlineBlocks for semantic projection.
+func parseDocumentInlineFacts(source []byte, blocks blockParseResult) (inlineParseResult, []parser.MathExpressionObservation) {
+	definitions := basicReferenceDefinitions(blocks.references)
+	headings := headingNodeStartIndex(blocks.nodes)
+	results := make([]inlineParseResult, len(blocks.inlines))
+	hasMath := bytes.IndexByte(source, '$') >= 0
+	var dollarMath []parser.MathExpressionObservation
+	for index, block := range blocks.inlines {
+		analysis := analyzeInlineBlock(source, block, definitions)
+		completeBackendHeading(source, blocks.nodes, headings, analysis)
+		if hasMath {
+			dollarMath = appendNativeInlineDollarMath(source, analysis, dollarMath)
+		}
+		results[index] = analysis.parsed
+	}
+	inline := mergeInlineResults(len(results), len(blocks.nodes), func(index int) inlineParseResult { return results[index] })
+	if !hasMath {
+		return inline, []parser.MathExpressionObservation{}
+	}
+	return inline, completeNativeMathObservations(source, blocks.nodes, inline.nodes, dollarMath)
+}
+
 func mergeInlineAnalyses(analyses []inlineAnalysis, additionalNodeCapacity int) inlineParseResult {
-	if len(analyses) == 0 {
+	return mergeInlineResults(len(analyses), additionalNodeCapacity, func(index int) inlineParseResult { return analyses[index].parsed })
+}
+
+func mergeInlineResults(count, additionalNodeCapacity int, parsedAt func(int) inlineParseResult) inlineParseResult {
+	if count == 0 {
 		return inlineParseResult{}
 	}
-	if len(analyses) == 1 {
-		return analyses[0].parsed
+	if count == 1 {
+		return parsedAt(0)
 	}
 	nodeCount, usageCount, unresolvedCount := 0, 0, 0
-	for _, analysis := range analyses {
-		nodeCount += len(analysis.parsed.nodes)
-		usageCount += len(analysis.parsed.usages)
-		unresolvedCount += len(analysis.parsed.unresolved)
+	for index := 0; index < count; index++ {
+		parsed := parsedAt(index)
+		nodeCount += len(parsed.nodes)
+		usageCount += len(parsed.usages)
+		unresolvedCount += len(parsed.unresolved)
 	}
 	result := inlineParseResult{
 		nodes:      make([]parser.Node, 0, nodeCount+max(0, additionalNodeCapacity)),
 		usages:     make([]parser.LinkUsage, 0, usageCount),
 		unresolved: make([]parser.UnresolvedReferenceUsage, 0, unresolvedCount),
 	}
-	for _, analysis := range analyses {
-		appendInlineAnalysis(&result, analysis)
+	for index := 0; index < count; index++ {
+		appendInlineResult(&result, parsedAt(index))
 	}
 	sortInlineParseResult(&result)
 	return result
 }
 
 func appendInlineAnalysis(result *inlineParseResult, analysis inlineAnalysis) {
-	result.nodes = append(result.nodes, analysis.parsed.nodes...)
-	result.usages = append(result.usages, analysis.parsed.usages...)
-	result.unresolved = append(result.unresolved, analysis.parsed.unresolved...)
+	appendInlineResult(result, analysis.parsed)
+}
+
+func appendInlineResult(result *inlineParseResult, parsed inlineParseResult) {
+	result.nodes = append(result.nodes, parsed.nodes...)
+	result.usages = append(result.usages, parsed.usages...)
+	result.unresolved = append(result.unresolved, parsed.unresolved...)
 }
 
 func sortInlineParseResult(result *inlineParseResult) {

@@ -22,43 +22,33 @@ type headingTerminal struct {
 	kind    headingTerminalKind
 }
 
-func completeBackendBlockFacts(source []byte, nodes []parser.Node, analyses []inlineAnalysis) {
-	byStart := inlineAnalysisStartIndex(analyses)
-	for index := range nodes {
-		if nodes[index].Kind != parser.KindHeading {
-			continue
+func headingNodeStartIndex(nodes []parser.Node) map[int]int {
+	var index map[int]int
+	for nodeIndex := range nodes {
+		if nodes[nodeIndex].Kind == parser.KindHeading {
+			if index == nil {
+				index = make(map[int]int)
+			}
+			index[nodes[nodeIndex].Range.Start] = nodeIndex
 		}
-		analysis, ok := headingInlineAnalysis(nodes[index].Range, analyses, byStart)
-		if !ok {
-			nodes[index].HeadingText = ""
-			continue
-		}
-		nodes[index].HeadingText = nativeHeadingSemanticText(source, analysis)
-	}
-}
-
-func inlineAnalysisStartIndex(analyses []inlineAnalysis) map[int]int {
-	index := make(map[int]int, len(analyses))
-	for analysisIndex, analysis := range analyses {
-		if len(analysis.block.segments) == 0 || analysis.block.tableCell {
-			continue
-		}
-		index[analysis.block.segments[0].Start] = analysisIndex
 	}
 	return index
 }
 
-func headingInlineAnalysis(range_ parser.Range, analyses []inlineAnalysis, byStart map[int]int) (inlineAnalysis, bool) {
-	index, ok := byStart[range_.Start]
-	if !ok || index < 0 || index >= len(analyses) {
-		return inlineAnalysis{}, false
+func completeBackendHeading(source []byte, nodes []parser.Node, byStart map[int]int, analysis inlineAnalysis) {
+	if len(analysis.block.segments) == 0 || analysis.block.tableCell {
+		return
 	}
-	analysis := analyses[index]
+	index, ok := byStart[analysis.block.segments[0].Start]
+	if !ok {
+		return
+	}
+	node := &nodes[index]
+	node.HeadingText = ""
 	last := analysis.block.segments[len(analysis.block.segments)-1]
-	if last.Start >= range_.End || last.End < range_.End {
-		return inlineAnalysis{}, false
+	if last.Start < node.Range.End && last.End >= node.Range.End {
+		node.HeadingText = nativeHeadingSemanticText(source, analysis)
 	}
-	return analysis, true
 }
 
 func nativeHeadingSemanticText(source []byte, analysis inlineAnalysis) string {

@@ -11,11 +11,15 @@ func nativeMathExpressionObservations(source []byte, blocks blockParseResult, an
 	if bytes.IndexByte(source, '$') < 0 {
 		return []parser.MathExpressionObservation{}
 	}
+	return completeNativeMathObservations(source, blocks.nodes, inlineNodes, nativeInlineDollarMathObservations(source, analyses))
+}
+
+func completeNativeMathObservations(source []byte, blockNodes, inlineNodes []parser.Node, dollarMath []parser.MathExpressionObservation) []parser.MathExpressionObservation {
 	inline := mergeNativeMathExpressions(
-		nativeInlineDollarMathObservations(source, analyses),
+		dollarMath,
 		nativeInlineBacktickMathObservations(source, inlineNodes),
 	)
-	return mergeNativeMathExpressions(inline, nativeBlockDollarMathObservations(source, blocks.nodes))
+	return mergeNativeMathExpressions(inline, nativeBlockDollarMathObservations(source, blockNodes))
 }
 
 func mergeNativeMathExpressions(left, right []parser.MathExpressionObservation) []parser.MathExpressionObservation {
@@ -42,10 +46,14 @@ func nativeMathBefore(left, right parser.MathExpressionObservation) bool {
 func nativeInlineDollarMathObservations(source []byte, analyses []inlineAnalysis) []parser.MathExpressionObservation {
 	result := make([]parser.MathExpressionObservation, 0)
 	for _, analysis := range analyses {
-		boundaries := nativeDelimiterTextBoundaries(analysis.block, analysis.delimiters.matches)
-		result = append(result, scanNativeInlineDollarRuns(source, analysis.block, analysis.relationshipExclusions, boundaries)...)
+		result = appendNativeInlineDollarMath(source, analysis, result)
 	}
 	return result
+}
+
+func appendNativeInlineDollarMath(source []byte, analysis inlineAnalysis, result []parser.MathExpressionObservation) []parser.MathExpressionObservation {
+	boundaries := nativeDelimiterTextBoundaries(analysis.block, analysis.delimiters.matches)
+	return append(result, scanNativeInlineDollarRuns(source, analysis.block, analysis.relationshipExclusions, boundaries)...)
 }
 
 func nativeDelimiterTextBoundaries(block inlineBlock, matches []delimiterMatch) [][]int {

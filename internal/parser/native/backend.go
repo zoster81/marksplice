@@ -20,10 +20,7 @@ func New() *Backend {
 // ParseDocument returns parser-independent observations from one native block/inline pass.
 func (*Backend) ParseDocument(source []byte) (parser.DocumentObservations, error) {
 	blocks := parseBlockLines(source, physicalLines(source), true)
-	analyses := analyzeInlineBlocks(source, blocks.inlines, blocks.references)
-	completeBackendBlockFacts(source, blocks.nodes, analyses)
-	inline := mergeInlineAnalyses(analyses, len(blocks.nodes))
-	mathExpressions := nativeMathExpressionObservations(source, blocks, analyses, inline.nodes)
+	inline, mathExpressions := parseDocumentInlineFacts(source, blocks)
 	nodes := removeNativeMathGFMConflicts(mergeDocumentNodes(blocks.nodes, inline.nodes), mathExpressions)
 	footnoteDefinitions, footnoteReferences, footnoteUsages := nativeFootnoteObservations(source, blocks)
 	nodes, usages, unresolved := reconcileNativeFootnotes(
