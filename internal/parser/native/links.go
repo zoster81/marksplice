@@ -48,14 +48,14 @@ func collectCompositeInlinesIndexed(source []byte, block inlineBlock, owners []i
 	for segmentIndex, segment := range block.segments {
 		exclusions := inlineExclusionsAt(primaryExclusions, segmentIndex)
 		for position := segment.Start; position < segment.End; position++ {
-			if inlineRangesContainPosition(exclusions, position) {
-				continue
-			}
 			image := source[position] == '!' && position+1 < segment.End && source[position+1] == '['
 			if source[position] == '[' && imageMarkerOwnsBracket(source, segment, position) {
 				continue
 			}
 			if source[position] != '[' && !image || inlineByteEscaped(source, segment.Start, position) {
+				continue
+			}
+			if inlineRangesContainPosition(exclusions, position) {
 				continue
 			}
 			candidate, ok := scanDirectComposite(source, block, segmentIndex, segment, position, image, exclusions)
@@ -141,14 +141,14 @@ func collectReferenceComposites(source []byte, block inlineBlock, definitions re
 	for segmentIndex, segment := range block.segments {
 		exclusions := inlineExclusionsAt(primaryExclusions, segmentIndex)
 		for position := segment.Start; position < segment.End; position++ {
-			if inlineRangesContainPosition(exclusions, position) || directStarts.hasAt(segmentIndex, position) {
-				continue
-			}
 			image := source[position] == '!' && position+1 < segment.End && source[position+1] == '['
 			if source[position] == '[' && imageMarkerOwnsBracket(source, segment, position) {
 				continue
 			}
 			if source[position] != '[' && !image || inlineByteEscaped(source, segment.Start, position) {
+				continue
+			}
+			if inlineRangesContainPosition(exclusions, position) || directStarts.hasAt(segmentIndex, position) {
 				continue
 			}
 			candidate, ok := scanReferenceComposite(source, block, segmentIndex, position, image, primaryExclusions, definitions)
