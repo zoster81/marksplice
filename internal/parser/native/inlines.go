@@ -179,8 +179,13 @@ func mergeInlineResults(count, additionalNodeCapacity int, parsedAt func(int) in
 		usageCount += len(parsed.usages)
 		unresolvedCount += len(parsed.unresolved)
 	}
+	// Without inline nodes, document assembly reuses the block slice directly.
+	capacity := nodeCount
+	if nodeCount != 0 {
+		capacity += max(0, additionalNodeCapacity)
+	}
 	result := inlineParseResult{
-		nodes:      make([]parser.Node, 0, nodeCount+max(0, additionalNodeCapacity)),
+		nodes:      make([]parser.Node, 0, capacity),
 		usages:     make([]parser.LinkUsage, 0, usageCount),
 		unresolved: make([]parser.UnresolvedReferenceUsage, 0, unresolvedCount),
 	}
