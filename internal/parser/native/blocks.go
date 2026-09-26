@@ -45,6 +45,26 @@ type blockParseResult struct {
 	lastLeafParagraph bool
 }
 
+// appendChildContent consumes the child's auxiliary arrays. Its caller owns both
+// results and must not modify the child after merging it into the parent.
+func (result *blockParseResult) appendChildContent(child blockParseResult) {
+	result.blockquoteDetails = appendOwnedSlice(result.blockquoteDetails, child.blockquoteDetails)
+	result.fencedCodeDetails = appendOwnedSlice(result.fencedCodeDetails, child.fencedCodeDetails)
+	result.tableDetails = appendOwnedSlice(result.tableDetails, child.tableDetails)
+	result.tableRowDetails = appendOwnedSlice(result.tableRowDetails, child.tableRowDetails)
+	result.tableCellDetails = appendOwnedSlice(result.tableCellDetails, child.tableCellDetails)
+	result.semantic = appendOwnedSlice(result.semantic, child.semantic)
+	result.inlines = appendOwnedSlice(result.inlines, child.inlines)
+	result.references = appendOwnedSlice(result.references, child.references)
+}
+
+func appendOwnedSlice[T any](destination, incoming []T) []T {
+	if cap(destination) == 0 && len(incoming) != 0 {
+		return incoming
+	}
+	return append(destination, incoming...)
+}
+
 type fenceOpening struct {
 	anchor int
 	indent int
@@ -251,15 +271,8 @@ func parseBlockquoteLeaf(result *blockParseResult, source []byte, lines []physic
 		result.nodes = append(result.nodes, quoted.node)
 		result.blockquoteDetails = append(result.blockquoteDetails, detail)
 	}
-	result.nodes = append(result.nodes, child.nodes...)
-	result.blockquoteDetails = append(result.blockquoteDetails, child.blockquoteDetails...)
-	result.fencedCodeDetails = append(result.fencedCodeDetails, child.fencedCodeDetails...)
-	result.tableDetails = append(result.tableDetails, child.tableDetails...)
-	result.tableRowDetails = append(result.tableRowDetails, child.tableRowDetails...)
-	result.tableCellDetails = append(result.tableCellDetails, child.tableCellDetails...)
-	result.semantic = append(result.semantic, child.semantic...)
-	result.inlines = append(result.inlines, child.inlines...)
-	result.references = append(result.references, child.references...)
+	result.nodes = appendOwnedSlice(result.nodes, child.nodes)
+	result.appendChildContent(child)
 	result.lastLeafParagraph = child.lastLeafParagraph
 	recordRoot(result, rootBlock{kind: rootBlockOther}, blankBeforeRoot)
 	return quoted.next, true
@@ -282,15 +295,8 @@ func parseStructuralBlock(result *blockParseResult, source []byte, lines []physi
 		return index + 1, false, true
 	}
 	if list, next, ok := parseListSemantic(source, lines, index, capture, parent); ok {
-		result.nodes = append(result.nodes, list.nodes...)
-		result.blockquoteDetails = append(result.blockquoteDetails, list.blockquoteDetails...)
-		result.fencedCodeDetails = append(result.fencedCodeDetails, list.fencedCodeDetails...)
-		result.tableDetails = append(result.tableDetails, list.tableDetails...)
-		result.tableRowDetails = append(result.tableRowDetails, list.tableRowDetails...)
-		result.tableCellDetails = append(result.tableCellDetails, list.tableCellDetails...)
-		result.semantic = append(result.semantic, list.semantic...)
-		result.inlines = append(result.inlines, list.inlines...)
-		result.references = append(result.references, list.references...)
+		result.nodes = appendOwnedSlice(result.nodes, list.nodes)
+		result.appendChildContent(list)
 		result.lastLeafParagraph = list.lastLeafParagraph
 		recordRoots(result, list.roots, blankBeforeRoot)
 		return next, list.trailingBlank, true
