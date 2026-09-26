@@ -8,6 +8,9 @@ import (
 )
 
 func nativeMathExpressionObservations(source []byte, blocks blockParseResult, analyses []inlineAnalysis, inlineNodes []parser.Node) []parser.MathExpressionObservation {
+	if bytes.IndexByte(source, '$') < 0 {
+		return []parser.MathExpressionObservation{}
+	}
 	inline := mergeNativeMathExpressions(
 		nativeInlineDollarMathObservations(source, analyses),
 		nativeInlineBacktickMathObservations(source, inlineNodes),

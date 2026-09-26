@@ -179,6 +179,9 @@ func sortInlineParseResult(result *inlineParseResult) {
 }
 
 func analyzeInlineBlock(source []byte, block inlineBlock, definitions referenceDefinitionIndex) inlineAnalysis {
+	if !hasInlineSyntax(source, block) {
+		return inlineAnalysis{block: block}
+	}
 	runs := collectBacktickRuns(source, block)
 	spans := collectInlineSpans(source, block)
 	owners, barriers := resolvePrimaryInlineOwners(source, block, runs, nextSameLengthRuns(runs), spans)
@@ -205,6 +208,17 @@ func analyzeInlineBlock(source []byte, block inlineBlock, definitions referenceD
 			unresolved: unresolvedReferenceUsages(source, block, relationshipExclusions, delimiters.matches, definitions),
 		},
 	}
+}
+
+func hasInlineSyntax(source []byte, block inlineBlock) bool {
+	// Every observable inline form requires one of these source bytes. Escapes
+	// and entities still belong to semantic text projection, not inline owners.
+	for _, segment := range block.segments {
+		if bytes.ContainsAny(source[segment.Start:segment.End], "`<[*_~.:@") {
+			return true
+		}
+	}
+	return false
 }
 
 func sortInlineNodes(nodes []parser.Node) {
