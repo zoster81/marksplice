@@ -2,6 +2,7 @@ package native
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -32,7 +33,7 @@ func labelBasedExtendedDomain(domain []byte) bool {
 			return false
 		}
 		for _, value := range label {
-			if !(value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z' || value >= '0' && value <= '9' || value == '-' || value == '_') {
+			if strings.IndexByte("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", value) < 0 {
 				return false
 			}
 			if value == '_' && index >= len(labels)-2 {
