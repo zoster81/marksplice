@@ -121,6 +121,10 @@ func assertReadSurfaces(t testing.TB, document *marksplice.Document, source []by
 		t.Fatalf("QueryNodes() error = %v", err)
 	}
 	for _, match := range matches {
+		node, ok := document.Node(match.Node().ID())
+		if !ok || node != match.Node() {
+			t.Fatalf("Node(%v) disagrees with query result", match.Node().ID())
+		}
 		if !match.Range().Valid(len(source)) {
 			t.Fatalf("query range %v invalid for source length %d", match.Range(), len(source))
 		}

@@ -504,6 +504,18 @@ func (d *Document) NodeSummaryAt(index int) (NodeSummary, bool) {
 	return summarizeNode(node), true
 }
 
+// NodeSummary returns lightweight structural data by snapshot-local identity.
+func (d *Document) NodeSummary(id NodeID) (NodeSummary, bool) {
+	if d == nil {
+		return NodeSummary{}, false
+	}
+	node, ok := d.nodeByID(id)
+	if !ok {
+		return NodeSummary{}, false
+	}
+	return summarizeNode(node), true
+}
+
 // Node returns one snapshot-local structural node by ID.
 func (d *Document) Node(id NodeID) (Node, bool) {
 	node, ok := d.nodeByID(id)

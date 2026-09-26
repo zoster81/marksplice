@@ -142,11 +142,14 @@ func (d *Document) Nodes() []Node {
 
 // Node returns one node summary by snapshot-local ID.
 func (d *Document) Node(id NodeID) (Node, bool) {
-	node, ok := d.internalNode(id)
+	if d == nil || d.document == nil {
+		return Node{}, false
+	}
+	summary, ok := d.document.NodeSummary(internalNodeID(id))
 	if !ok {
 		return Node{}, false
 	}
-	return publicNode(node)
+	return publicNodeSummary(summary)
 }
 
 // SourceRange returns a copy of one valid byte range from the immutable source snapshot.
@@ -198,10 +201,6 @@ func (d *Document) promotedNodeKinds(id NodeID, requireTopLevel bool, expected .
 		}
 	}
 	return splice.Node{}, ErrInvalidTargetKind
-}
-
-func publicNode(node splice.Node) (Node, bool) {
-	return publicNodeSummary(splice.NodeSummary{ID: node.ID, Kind: node.Kind, TopLevel: node.TopLevel, Editable: node.Editable})
 }
 
 func publicNodeSummary(summary splice.NodeSummary) (Node, bool) {

@@ -34,6 +34,18 @@ func BenchmarkTableReadScaling(b *testing.B) {
 			b.Fatalf("unexpected table: rows=%d cells=%d", len(rows), len(cells))
 		}
 		b.Run(fmt.Sprintf("%dRows", rowCount), func(b *testing.B) {
+			b.Run("NodeSummaries", func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					for _, id := range cells {
+						value, ok := document.Node(id)
+						if !ok {
+							b.Fatal("missing cell summary")
+						}
+						benchmarkTableReadSink = int(value.Kind())
+					}
+				}
+			})
 			b.Run("Table", func(b *testing.B) {
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {

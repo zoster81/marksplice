@@ -81,6 +81,9 @@ func TestDocumentQuerySummaryPrimitivesAreNilSafe(t *testing.T) {
 	if _, ok := document.NodeSummaryAt(0); ok {
 		t.Fatal("nil document NodeSummaryAt(0) ok = true")
 	}
+	if _, ok := document.NodeSummary(""); ok {
+		t.Fatal("nil document NodeSummary(zero ID) ok = true")
+	}
 	if _, _, ok := document.NodeSelectionAt(0); ok {
 		t.Fatal("nil document NodeSelectionAt(0) ok = true")
 	}
