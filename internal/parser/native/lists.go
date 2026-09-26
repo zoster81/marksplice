@@ -18,8 +18,7 @@ type listItemSource struct {
 	lines          []physicalLine
 	separatedAfter bool
 	trailingBlank  bool
-	child          blockParseResult
-	childReady     bool
+	child          *blockParseResult
 }
 
 type listSource struct {
@@ -184,6 +183,7 @@ func parseCapturedList(source []byte, collected listSource, first listMarker, ca
 		Marker:  first.marker,
 	}, parser.Range{})
 	loose := false
+	children := allocateListChildStorage(collected.items)
 	for index, item := range collected.items {
 		itemRange := semanticListItemSourceRange(item)
 		itemIndex := capture.add(listIndex, parser.SemanticEvent{
@@ -200,8 +200,10 @@ func parseCapturedList(source []byte, collected listSource, first listMarker, ca
 			}
 			capture.update(itemIndex, func(event *parser.SemanticEvent) { event.ContentRange = contentRange })
 		}
-		collected.items[index].child = child
-		collected.items[index].childReady = true
+		if collected.items[index].child == nil {
+			collected.items[index].child = &children[index]
+		}
+		*collected.items[index].child = child
 		if child.blankBetweenRoots || item.separatedAfter || referenceResidualMakesListLoose(child.roots) {
 			loose = true
 		}
@@ -216,11 +218,14 @@ func parseCapturedList(source []byte, collected listSource, first listMarker, ca
 
 func parseListItems(source []byte, items []listItemSource) bool {
 	loose := false
+	// Collection grows only the lightweight source records. Child results have
+	// a known final count here and each item owns its distinct entry.
+	children := allocateListChildStorage(items)
 	for index := range items {
 		item := &items[index]
-		if !item.childReady {
-			item.child = parseBlockLines(source, item.lines, false)
-			item.childReady = true
+		if item.child == nil {
+			children[index] = parseBlockLines(source, item.lines, false)
+			item.child = &children[index]
 		}
 		if item.child.blankBetweenRoots || item.separatedAfter || referenceResidualMakesListLoose(item.child.roots) {
 			loose = true
@@ -229,12 +234,21 @@ func parseListItems(source []byte, items []listItemSource) bool {
 	return loose
 }
 
+func allocateListChildStorage(items []listItemSource) []blockParseResult {
+	for _, item := range items {
+		if item.child == nil {
+			return make([]blockParseResult, len(items))
+		}
+	}
+	return nil
+}
+
 func assembleList(source []byte, items []listItemSource, loose bool) blockParseResult {
 	result := blockParseResult{nodes: make([]parser.Node, 0, len(items)*2)}
 	containerAnchor := 0
 	hasContainerAnchor := false
 	for itemIndex, item := range items {
-		child := item.child
+		child := *item.child
 		if !loose {
 			child.nodes = suppressTightListParagraphs(child.nodes, child.roots)
 		}
@@ -351,7 +365,7 @@ func newListItemCollector(source []byte, line physicalLine, marker listMarker) l
 
 func (collector *listItemCollector) appendBlank(line physicalLine) {
 	collector.pendingBlank = append(collector.pendingBlank, line)
-	collector.item.childReady = false
+	collector.item.child = nil
 }
 
 func (collector *listItemCollector) consumeIndented(source []byte, line physicalLine, columns int, marker, listStyle listMarker) bool {
@@ -368,7 +382,7 @@ func (collector *listItemCollector) consumeIndented(source []byte, line physical
 	}
 	line = stripIndentColumns(source, line, marker.contentIndent)
 	collector.item.lines = append(collector.item.lines, line)
-	collector.item.childReady = false
+	collector.item.child = nil
 	collector.hasContent = true
 	collector.nestedTailEmpty = blankNestedListLine(source, line)
 	return false
@@ -403,13 +417,16 @@ func (collector *listItemCollector) consumeLazy(source []byte, line physicalLine
 	if !lazyParagraphContinuation(source, line) {
 		return false
 	}
-	collector.item.child = parseBlockLines(source, collector.item.lines, false)
-	collector.item.childReady = true
-	if !collector.item.child.lastLeafParagraph {
+	child := parseBlockLines(source, collector.item.lines, false)
+	if !child.lastLeafParagraph {
+		// Retain a completed probe only when collection stops without changing
+		// its lines. Accepted continuations invalidate that parse result.
+		collector.item.child = new(blockParseResult)
+		*collector.item.child = child
 		return false
 	}
 	collector.item.lines = append(collector.item.lines, line)
-	collector.item.childReady = false
+	collector.item.child = nil
 	collector.hasContent = true
 	collector.nestedTailEmpty = false
 	return true
