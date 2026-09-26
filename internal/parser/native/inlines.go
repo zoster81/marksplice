@@ -689,41 +689,25 @@ func scanExtendedDomainEnd(source []byte, start, limit int) (int, bool) {
 }
 
 func validExtendedDomain(domain []byte) bool {
-	if len(domain) == 0 || bytes.IndexByte(domain, '.') < 0 {
-		return false
-	}
-	labels := bytes.Split(domain, []byte{'.'})
-	for _, label := range labels {
-		if !validExtendedDomainLabel(label) {
-			return false
+	labelStart, lastTwoStart := 0, 0
+	lastUnderscore := -1
+	for index, b := range domain {
+		if b == '.' {
+			if index == labelStart {
+				return false
+			}
+			lastTwoStart, labelStart = labelStart, index+1
+			continue
 		}
-	}
-	return validExtendedDomainTail(labels)
-}
-
-func validExtendedDomainLabel(label []byte) bool {
-	if len(label) == 0 {
-		return false
-	}
-	for _, b := range label {
 		if !asciiLetter(b) && !asciiDigit(b) && b != '_' && b != '-' {
 			return false
 		}
-	}
-	return true
-}
-
-func validExtendedDomainTail(labels [][]byte) bool {
-	lastTwo := labels
-	if len(lastTwo) > 2 {
-		lastTwo = lastTwo[len(lastTwo)-2:]
-	}
-	for _, label := range lastTwo {
-		if bytes.IndexByte(label, '_') >= 0 {
-			return false
+		if b == '_' {
+			lastUnderscore = index
 		}
 	}
-	return true
+	// Require two nonempty labels; underscores are allowed only before them.
+	return labelStart > 0 && labelStart < len(domain) && lastUnderscore < lastTwoStart
 }
 
 func extendedDomainByte(b byte) bool {
