@@ -19,8 +19,8 @@ func TestTableRowModelAndRemovalPreserveTableStructure(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("table row count = %d, want 2", len(rows))
 	}
-	if rows[0].TableAnchor != rows[1].TableAnchor || rows[0].TableColumnCount != 2 || rows[1].TableColumnCount != 2 {
-		t.Fatalf("row table/column facts = anchor %d/%d columns %d/%d", rows[0].TableAnchor, rows[1].TableAnchor, rows[0].TableColumnCount, rows[1].TableColumnCount)
+	if rows[0].TableData().TableAnchor != rows[1].TableData().TableAnchor || rows[0].TableData().TableColumnCount != 2 || rows[1].TableData().TableColumnCount != 2 {
+		t.Fatalf("row table/column facts = anchor %d/%d columns %d/%d", rows[0].TableData().TableAnchor, rows[1].TableData().TableAnchor, rows[0].TableData().TableColumnCount, rows[1].TableData().TableColumnCount)
 	}
 	if got := string(source[rows[0].Range.Start:rows[0].Range.End]); got != "| one | two |\r\n" {
 		t.Fatalf("first row bytes = %q", got)
@@ -62,7 +62,7 @@ func TestTableRowModelAndRemovalPreserveTableStructure(t *testing.T) {
 	}
 	headerCells := 0
 	for _, node := range reparsed.nodes {
-		if node.Kind == KindTableCell && node.Editable && node.TableHeader {
+		if node.Kind == KindTableCell && node.Editable && node.TableData().TableHeader {
 			headerCells++
 		}
 	}
@@ -218,7 +218,7 @@ func TestAlignedTableRowReplacementPreservesSemanticAlignments(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	rows := internalTableRows(doc)
-	if len(rows) != 2 || !slices.Equal(rows[0].TableAlignments, []TableAlignment{TableAlignmentLeft, TableAlignmentRight}) {
+	if len(rows) != 2 || !slices.Equal(rows[0].TableData().TableAlignments, []TableAlignment{TableAlignmentLeft, TableAlignmentRight}) {
 		t.Fatalf("aligned rows = %+v, want left/right semantics", rows)
 	}
 	change, err := doc.PrepareReplaceTableRow(rows[0].ID, []byte("| changed | value |\n"))
@@ -238,8 +238,8 @@ func TestAlignedTableRowReplacementPreservesSemanticAlignments(t *testing.T) {
 		t.Fatalf("Parse(replaced) error = %v", err)
 	}
 	for index, row := range internalTableRows(reparsed) {
-		if !slices.Equal(row.TableAlignments, []TableAlignment{TableAlignmentLeft, TableAlignmentRight}) {
-			t.Fatalf("row %d alignments = %v, want left/right", index, row.TableAlignments)
+		if !slices.Equal(row.TableData().TableAlignments, []TableAlignment{TableAlignmentLeft, TableAlignmentRight}) {
+			t.Fatalf("row %d alignments = %v, want left/right", index, row.TableData().TableAlignments)
 		}
 	}
 }

@@ -61,10 +61,10 @@ func (b *tableRowModelBuilder) collectRows() error {
 		if row.Kind != KindTableRow || !row.Editable {
 			continue
 		}
-		anchor := row.TableRowAnchor
-		tableAnchor := row.TableAnchor
+		anchor := row.tableData().TableRowAnchor
+		tableAnchor := row.tableData().TableAnchor
 		lineStart := row.Range.Start
-		if anchor < 0 || anchor != row.TableRowSourceAnchor || lineStart < 0 || lineStart <= lastRowStart {
+		if anchor < 0 || anchor != row.tableData().TableRowSourceAnchor || lineStart < 0 || lineStart <= lastRowStart {
 			return fmt.Errorf("invalid promoted table-row anchor %d after %d", anchor, lastRowStart)
 		}
 		if tableAnchor < 0 || tableAnchor > anchor || tableAnchor < lastTableAnchor {
@@ -73,12 +73,12 @@ func (b *tableRowModelBuilder) collectRows() error {
 		if previous, exists := b.rowOrdinalByAnchor[anchor]; exists {
 			return fmt.Errorf("duplicate promoted table-row anchor %d for ordinals %d and %d", anchor, previous, len(b.rowIndexes))
 		}
-		row.TablePreviousRowID = ""
-		row.TableNextRowID = ""
+		row.table.TablePreviousRowID = ""
+		row.table.TableNextRowID = ""
 		if previousIndex, exists := lastRowIndexByTable[tableAnchor]; exists {
 			previous := &b.nodes[previousIndex]
-			row.TablePreviousRowID = previous.ID
-			previous.TableNextRowID = row.ID
+			row.table.TablePreviousRowID = previous.ID
+			previous.table.TableNextRowID = row.ID
 		} else {
 			b.firstRowIndexByTable[tableAnchor] = index
 		}
@@ -103,8 +103,8 @@ func (b *tableRowModelBuilder) resolveCellMembership() error {
 			continue
 		}
 		b.cellIndexes = append(b.cellIndexes, index)
-		cell.TableRowID = ""
-		if cell.TableHeader {
+		cell.table.TableRowID = ""
+		if cell.tableData().TableHeader {
 			if err := b.resolveHeaderCell(cell, lastHeaderColumns); err != nil {
 				return err
 			}
@@ -118,41 +118,41 @@ func (b *tableRowModelBuilder) resolveCellMembership() error {
 }
 
 func (b *tableRowModelBuilder) resolveHeaderCell(cell *Node, lastColumns map[int]int) error {
-	rowIndex, hasPromotedRows := b.firstRowIndexByTable[cell.TableAnchor]
+	rowIndex, hasPromotedRows := b.firstRowIndexByTable[cell.tableData().TableAnchor]
 	if !hasPromotedRows {
 		return nil
 	}
-	previousColumn, hasPrevious := lastColumns[cell.TableAnchor]
+	previousColumn, hasPrevious := lastColumns[cell.tableData().TableAnchor]
 	if !hasPrevious {
 		previousColumn = -1
 	}
 	row := &b.nodes[rowIndex]
-	if cell.TableColumn < 0 || cell.TableColumn >= row.TableColumnCount || cell.TableColumn <= previousColumn {
-		return fmt.Errorf("invalid promoted table-header column %d for table anchor %d", cell.TableColumn, cell.TableAnchor)
+	if cell.tableData().TableColumn < 0 || cell.tableData().TableColumn >= row.tableData().TableColumnCount || cell.tableData().TableColumn <= previousColumn {
+		return fmt.Errorf("invalid promoted table-header column %d for table anchor %d", cell.tableData().TableColumn, cell.tableData().TableAnchor)
 	}
-	b.headerCellCounts[cell.TableAnchor]++
-	lastColumns[cell.TableAnchor] = cell.TableColumn
+	b.headerCellCounts[cell.tableData().TableAnchor]++
+	lastColumns[cell.tableData().TableAnchor] = cell.tableData().TableColumn
 	return nil
 }
 
 func (b *tableRowModelBuilder) resolveBodyCell(cell *Node, lastColumns []int) error {
-	ordinal, ok := b.rowOrdinalByAnchor[cell.TableRowAnchor]
+	ordinal, ok := b.rowOrdinalByAnchor[cell.tableData().TableRowAnchor]
 	if !ok {
 		return nil
 	}
 	row := &b.nodes[b.rowIndexes[ordinal]]
-	if cell.TableAnchor != row.TableAnchor {
-		return fmt.Errorf("promoted table cell %q belongs to table anchor %d, want %d", cell.ID, cell.TableAnchor, row.TableAnchor)
+	if cell.tableData().TableAnchor != row.tableData().TableAnchor {
+		return fmt.Errorf("promoted table cell %q belongs to table anchor %d, want %d", cell.ID, cell.tableData().TableAnchor, row.tableData().TableAnchor)
 	}
-	if cell.TableColumn < 0 || cell.TableColumn >= row.TableColumnCount || cell.TableColumn <= lastColumns[ordinal] {
-		return fmt.Errorf("invalid promoted table-cell column %d for row %q", cell.TableColumn, row.ID)
+	if cell.tableData().TableColumn < 0 || cell.tableData().TableColumn >= row.tableData().TableColumnCount || cell.tableData().TableColumn <= lastColumns[ordinal] {
+		return fmt.Errorf("invalid promoted table-cell column %d for row %q", cell.tableData().TableColumn, row.ID)
 	}
-	if cell.TableCellRange.Start < row.ContentRange.Start || cell.TableCellRange.End > row.ContentRange.End {
+	if cell.tableData().TableCellRange.Start < row.ContentRange.Start || cell.tableData().TableCellRange.End > row.ContentRange.End {
 		return fmt.Errorf("promoted table cell %q escapes row %q", cell.ID, row.ID)
 	}
-	cell.TableRowID = row.ID
+	cell.table.TableRowID = row.ID
 	b.bodyCellCounts[ordinal]++
-	lastColumns[ordinal] = cell.TableColumn
+	lastColumns[ordinal] = cell.tableData().TableColumn
 	return nil
 }
 
@@ -162,18 +162,18 @@ func (b *tableRowModelBuilder) assignAdjacencyRanges() (int, int) {
 	for ordinal, rowIndex := range b.rowIndexes {
 		row := &b.nodes[rowIndex]
 		b.bodyCellStarts[ordinal] = bodyTotal
-		row.TableRowCellStart = bodyTotal
-		row.TableRowCellCount = b.bodyCellCounts[ordinal]
+		row.table.TableRowCellStart = bodyTotal
+		row.table.TableRowCellCount = b.bodyCellCounts[ordinal]
 		bodyTotal += b.bodyCellCounts[ordinal]
 
-		headerStart, exists := b.headerCellStarts[row.TableAnchor]
+		headerStart, exists := b.headerCellStarts[row.tableData().TableAnchor]
 		if !exists {
 			headerStart = headerTotal
-			b.headerCellStarts[row.TableAnchor] = headerStart
-			headerTotal += b.headerCellCounts[row.TableAnchor]
+			b.headerCellStarts[row.tableData().TableAnchor] = headerStart
+			headerTotal += b.headerCellCounts[row.tableData().TableAnchor]
 		}
-		row.TableHeaderCellStart = headerStart
-		row.TableHeaderCellCount = b.headerCellCounts[row.TableAnchor]
+		row.table.TableHeaderCellStart = headerStart
+		row.table.TableHeaderCellCount = b.headerCellCounts[row.tableData().TableAnchor]
 	}
 	return bodyTotal, headerTotal
 }
@@ -191,7 +191,7 @@ func (b *tableRowModelBuilder) collectAdjacency(bodyTotal, headerTotal int) ([]N
 		if cell.Kind != KindTableCell || !cell.Editable {
 			continue
 		}
-		if cell.TableHeader {
+		if cell.tableData().TableHeader {
 			if err := b.appendHeaderCellID(headerIDs, headerCursors, cell); err != nil {
 				return nil, nil, err
 			}
@@ -208,24 +208,24 @@ func (b *tableRowModelBuilder) collectAdjacency(bodyTotal, headerTotal int) ([]N
 }
 
 func (b *tableRowModelBuilder) appendHeaderCellID(ids []NodeID, cursors map[int]int, cell *Node) error {
-	start, ok := b.headerCellStarts[cell.TableAnchor]
+	start, ok := b.headerCellStarts[cell.tableData().TableAnchor]
 	if !ok {
 		return nil
 	}
-	cursor := cursors[cell.TableAnchor]
-	if cursor >= start+b.headerCellCounts[cell.TableAnchor] {
+	cursor := cursors[cell.tableData().TableAnchor]
+	if cursor >= start+b.headerCellCounts[cell.tableData().TableAnchor] {
 		return fmt.Errorf("inconsistent table-header cell adjacency for %q", cell.ID)
 	}
 	ids[cursor] = cell.ID
-	cursors[cell.TableAnchor] = cursor + 1
+	cursors[cell.tableData().TableAnchor] = cursor + 1
 	return nil
 }
 
 func (b *tableRowModelBuilder) appendBodyCellID(ids []NodeID, cursors []int, cell *Node) error {
-	if cell.TableRowID == "" {
+	if cell.tableData().TableRowID == "" {
 		return nil
 	}
-	ordinal, ok := b.rowOrdinalByAnchor[cell.TableRowAnchor]
+	ordinal, ok := b.rowOrdinalByAnchor[cell.tableData().TableRowAnchor]
 	if !ok || cursors[ordinal] >= b.bodyCellStarts[ordinal]+b.bodyCellCounts[ordinal] {
 		return fmt.Errorf("inconsistent table-row cell adjacency for %q", cell.ID)
 	}
@@ -260,7 +260,7 @@ func (d *Document) TableRowCellIDs(id NodeID) ([]NodeID, bool) {
 		if !ok || !validBodyTableRowCell(row, cell, previousColumn) {
 			return nil, false
 		}
-		previousColumn = cell.TableColumn
+		previousColumn = cell.tableData().TableColumn
 	}
 	return append([]NodeID(nil), ids...), true
 }
@@ -274,24 +274,24 @@ func (d *Document) TableRowNeighborIDs(id NodeID) (NodeID, NodeID, bool) {
 	if !ok || row.Kind != KindTableRow || !row.Editable {
 		return "", "", false
 	}
-	if row.TablePreviousRowID != "" && !d.validTableRowNeighbor(row, row.TablePreviousRowID, true) {
+	if row.tableData().TablePreviousRowID != "" && !d.validTableRowNeighbor(row, row.tableData().TablePreviousRowID, true) {
 		return "", "", false
 	}
-	if row.TableNextRowID != "" && !d.validTableRowNeighbor(row, row.TableNextRowID, false) {
+	if row.tableData().TableNextRowID != "" && !d.validTableRowNeighbor(row, row.tableData().TableNextRowID, false) {
 		return "", "", false
 	}
-	return row.TablePreviousRowID, row.TableNextRowID, true
+	return row.tableData().TablePreviousRowID, row.tableData().TableNextRowID, true
 }
 
 func (d *Document) validTableRowNeighbor(row Node, neighborID NodeID, previous bool) bool {
 	neighbor, ok := d.nodeByID(neighborID)
-	if !ok || neighbor.Kind != KindTableRow || !neighbor.Editable || neighbor.TableAnchor != row.TableAnchor || neighbor.ID == row.ID {
+	if !ok || neighbor.Kind != KindTableRow || !neighbor.Editable || neighbor.tableData().TableAnchor != row.tableData().TableAnchor || neighbor.ID == row.ID {
 		return false
 	}
 	if previous {
-		return neighbor.Range.Start < row.Range.Start && neighbor.TableNextRowID == row.ID
+		return neighbor.Range.Start < row.Range.Start && neighbor.tableData().TableNextRowID == row.ID
 	}
-	return neighbor.Range.Start > row.Range.Start && neighbor.TablePreviousRowID == row.ID
+	return neighbor.Range.Start > row.Range.Start && neighbor.tableData().TablePreviousRowID == row.ID
 }
 
 // TableRowHeaderCellIDs returns the promoted non-empty header-cell identities for the table that owns one promoted body row.
@@ -306,7 +306,7 @@ func (d *Document) TableRowHeaderCellIDs(id NodeID) ([]NodeID, bool) {
 		if !ok || !validHeaderTableRowCell(row, cell, previousColumn) {
 			return nil, false
 		}
-		previousColumn = cell.TableColumn
+		previousColumn = cell.tableData().TableColumn
 	}
 	return append([]NodeID(nil), ids...), true
 }
@@ -319,10 +319,10 @@ func (d *Document) tableRowCellAdjacency(id NodeID, header bool) (Node, []NodeID
 	if !ok || row.Kind != KindTableRow || !row.Editable {
 		return Node{}, nil, false
 	}
-	start, count := row.TableRowCellStart, row.TableRowCellCount
+	start, count := row.tableData().TableRowCellStart, row.tableData().TableRowCellCount
 	ids := d.tableCellIDs
 	if header {
-		start, count = row.TableHeaderCellStart, row.TableHeaderCellCount
+		start, count = row.tableData().TableHeaderCellStart, row.tableData().TableHeaderCellCount
 		ids = d.tableHeaderCellIDs
 	}
 	if start < 0 || count < 0 || start > len(ids) || count > len(ids)-start {
@@ -332,9 +332,11 @@ func (d *Document) tableRowCellAdjacency(id NodeID, header bool) (Node, []NodeID
 }
 
 func validBodyTableRowCell(row, cell Node, previousColumn int) bool {
-	return cell.Kind == KindTableCell && cell.Editable && !cell.TableHeader && cell.TableRowID == row.ID && cell.TableAnchor == row.TableAnchor && cell.TableColumn > previousColumn
+	cellTable := cell.tableData()
+	return cell.Kind == KindTableCell && cell.Editable && !cellTable.TableHeader && cellTable.TableRowID == row.ID && cellTable.TableAnchor == row.tableData().TableAnchor && cellTable.TableColumn > previousColumn
 }
 
 func validHeaderTableRowCell(row, cell Node, previousColumn int) bool {
-	return cell.Kind == KindTableCell && cell.Editable && cell.TableHeader && cell.TableRowID == "" && cell.TableAnchor == row.TableAnchor && cell.TableColumn >= 0 && cell.TableColumn < row.TableColumnCount && cell.TableColumn > previousColumn
+	cellTable := cell.tableData()
+	return cell.Kind == KindTableCell && cell.Editable && cellTable.TableHeader && cellTable.TableRowID == "" && cellTable.TableAnchor == row.tableData().TableAnchor && cellTable.TableColumn >= 0 && cellTable.TableColumn < row.tableData().TableColumnCount && cellTable.TableColumn > previousColumn
 }

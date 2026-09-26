@@ -206,7 +206,7 @@ func validateTableCellReplacement(candidate []byte, target Node, original source
 		if detailErr != nil {
 			return ErrInvalidReplacement
 		}
-		if detail.Header != target.TableHeader || detail.Column != target.TableColumn {
+		if detail.Header != target.tableData().TableHeader || detail.Column != target.tableData().TableColumn {
 			continue
 		}
 		mapping, err := source.MapTableCell(candidate, Range{Start: observation.Range.Start, End: observation.Range.End}, detail.Column)

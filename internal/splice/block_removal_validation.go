@@ -119,10 +119,11 @@ type removalSurvivorSignature struct {
 
 func sameRemovalSurvivorSemantics(original, candidate Node) bool {
 	return removalSurvivorSemanticSignature(candidate) == removalSurvivorSemanticSignature(original) &&
-		slices.Equal(candidate.TableAlignments, original.TableAlignments)
+		slices.Equal(candidate.tableData().TableAlignments, original.tableData().TableAlignments)
 }
 
 func removalSurvivorSemanticSignature(node Node) removalSurvivorSignature {
+	nodeTable := node.tableData()
 	return removalSurvivorSignature{
 		level:                     node.Level,
 		headingStyle:              node.HeadingStyle,
@@ -132,14 +133,14 @@ func removalSurvivorSemanticSignature(node Node) removalSurvivorSignature {
 		listHasParent:             node.ListHasParent,
 		listHasChildren:           node.ListHasChildren,
 		listDirectChildCount:      node.ListDirectChildCount,
-		tableHeader:               node.TableHeader,
-		tableColumn:               node.TableColumn,
-		tableColumnCount:          node.TableColumnCount,
-		tableBodyRowCount:         node.TableBodyRowCount,
-		tablePromotedRowCount:     node.TablePromotedRowCount,
-		tableOwnedHeaderCellCount: node.TableOwnedHeaderCellCount,
-		tableRowCellCount:         node.TableRowCellCount,
-		tableHeaderCellCount:      node.TableHeaderCellCount,
+		tableHeader:               nodeTable.TableHeader,
+		tableColumn:               nodeTable.TableColumn,
+		tableColumnCount:          nodeTable.TableColumnCount,
+		tableBodyRowCount:         nodeTable.TableBodyRowCount,
+		tablePromotedRowCount:     nodeTable.TablePromotedRowCount,
+		tableOwnedHeaderCellCount: nodeTable.TableOwnedHeaderCellCount,
+		tableRowCellCount:         nodeTable.TableRowCellCount,
+		tableHeaderCellCount:      nodeTable.TableHeaderCellCount,
 		destination:               node.Destination,
 		label:                     node.Label,
 		title:                     node.Title,
@@ -203,14 +204,14 @@ func sameRemovalTableAnchors(original, candidate Node, patches []patchTransform)
 	if original.Kind != KindTable && original.Kind != KindTableRow && original.Kind != KindTableCell {
 		return true
 	}
-	if !sameShiftedRemovalAnchor(original.TableAnchor, candidate.TableAnchor, patches) {
+	if !sameShiftedRemovalAnchor(original.tableData().TableAnchor, candidate.tableData().TableAnchor, patches) {
 		return false
 	}
-	if original.Kind != KindTable && !sameShiftedRemovalAnchor(original.TableRowAnchor, candidate.TableRowAnchor, patches) {
+	if original.Kind != KindTable && !sameShiftedRemovalAnchor(original.tableData().TableRowAnchor, candidate.tableData().TableRowAnchor, patches) {
 		return false
 	}
-	return original.Kind != KindTable || original.TableBodyRowCount == 0 ||
-		sameShiftedRemovalAnchor(original.TableLastBodyRowAnchor, candidate.TableLastBodyRowAnchor, patches)
+	return original.Kind != KindTable || original.tableData().TableBodyRowCount == 0 ||
+		sameShiftedRemovalAnchor(original.tableData().TableLastBodyRowAnchor, candidate.tableData().TableLastBodyRowAnchor, patches)
 }
 
 func sameRemovalInlineAnchor(original, candidate Node, patches []patchTransform) bool {

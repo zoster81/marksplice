@@ -30,11 +30,11 @@ func mapTableNodeSource(snapshot []byte, observation parser.Node, parserDetails 
 	}
 	node.Range = mapping.Range
 	node.ContentRange = mapping.Range
-	node.TableAnchor = detail.Anchor
-	node.TableColumnCount = detail.ColumnCount
-	node.TableAlignments = append([]TableAlignment(nil), detail.Alignments...)
-	node.TableBodyRowCount = detail.BodyRowCount
-	node.TableLastBodyRowAnchor = detail.LastBodyRowAnchor
+	node.table.TableAnchor = detail.Anchor
+	node.table.TableColumnCount = detail.ColumnCount
+	node.table.TableAlignments = append([]TableAlignment(nil), detail.Alignments...)
+	node.table.TableBodyRowCount = detail.BodyRowCount
+	node.table.TableLastBodyRowAnchor = detail.LastBodyRowAnchor
 	if _, exists := tableSources[detail.Anchor]; exists {
 		return fmt.Errorf("map table source: duplicate table anchor %d", detail.Anchor)
 	}

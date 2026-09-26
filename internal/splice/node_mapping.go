@@ -21,6 +21,19 @@ type parserNodeDetails struct {
 	tableCells  []parser.TableCellDetail
 }
 
+// nodeMapper owns the temporary source-proof state for one document promotion.
+// Table data is allocated together; each node owns its entry after construction.
+type nodeMapper struct {
+	snapshot          []byte
+	fingerprint       source.Fingerprint
+	details           parserNodeDetails
+	tableRows         map[int]tableRowSourceResult
+	tableSources      map[int]source.TableMapping
+	fencedSources     []fencedSourceDetail
+	blockquoteSources []source.BlockquoteMapping
+	tableNodeData     []TableNodeData
+}
+
 func (d parserNodeDetails) blockquote(observation parser.Node) (parser.BlockquoteDetail, error) {
 	if !observation.TopLevel || observation.DetailIndex == 0 || uint64(observation.DetailIndex) > uint64(len(d.blockquotes)) {
 		return parser.BlockquoteDetail{}, fmt.Errorf("blockquote parser detail index is invalid")
@@ -88,12 +101,12 @@ func sourceDetailCapacities(observations []parser.Node) (fenced, blockquote int)
 	return fenced, blockquote
 }
 
-func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observation parser.Node, parserDetails parserNodeDetails, tableRows map[int]tableRowSourceResult, tableSources map[int]source.TableMapping, fencedSources *[]fencedSourceDetail, blockquoteSources *[]source.BlockquoteMapping) (Node, error) {
+func (mapper *nodeMapper) nodeFromObservation(observation parser.Node) (Node, error) {
 	if !parserKindUsesSparseDetail(observation.Kind) && observation.DetailIndex != 0 {
 		return Node{}, fmt.Errorf("semantic node kind %d has unexpected parser detail index", observation.Kind)
 	}
 	if observation.Kind == parser.KindRawHTML {
-		return nodeFromRawHTMLObservation(snapshot, fingerprint, observation)
+		return nodeFromRawHTMLObservation(mapper.snapshot, mapper.fingerprint, observation)
 	}
 	kind, err := mapKind(observation.Kind)
 	if err != nil {
@@ -101,18 +114,22 @@ func nodeFromObservation(snapshot []byte, fingerprint source.Fingerprint, observ
 	}
 
 	contentRange := Range{Start: observation.Range.Start, End: observation.Range.End}
-	if !contentRange.Valid(len(snapshot)) {
-		return Node{}, fmt.Errorf("semantic node range [%d,%d) is outside source length %d", contentRange.Start, contentRange.End, len(snapshot))
+	if !contentRange.Valid(len(mapper.snapshot)) {
+		return Node{}, fmt.Errorf("semantic node range [%d,%d) is outside source length %d", contentRange.Start, contentRange.End, len(mapper.snapshot))
 	}
 
 	node := baseNodeFromObservation(kind, contentRange, observation)
-	if err := mapBlockNodeSource(snapshot, observation, contentRange, parserDetails, tableRows, tableSources, fencedSources, blockquoteSources, &node); err != nil {
+	if kind == KindTable || kind == KindTableRow || kind == KindTableCell {
+		mapper.tableNodeData = append(mapper.tableNodeData, TableNodeData{})
+		node.table = &mapper.tableNodeData[len(mapper.tableNodeData)-1]
+	}
+	if err := mapper.mapBlockNodeSource(observation, contentRange, &node); err != nil {
 		return Node{}, err
 	}
-	if err := mapInlineNodeSource(snapshot, observation, contentRange, &node); err != nil {
+	if err := mapInlineNodeSource(mapper.snapshot, observation, contentRange, &node); err != nil {
 		return Node{}, err
 	}
-	node.ID = makeNodeID(fingerprint, kind, node.Range)
+	node.ID = makeNodeID(mapper.fingerprint, kind, node.Range)
 	return node, nil
 }
 
@@ -155,26 +172,26 @@ func baseNodeFromObservation(kind Kind, contentRange Range, observation parser.N
 	return node
 }
 
-func mapBlockNodeSource(snapshot []byte, observation parser.Node, contentRange Range, parserDetails parserNodeDetails, tableRows map[int]tableRowSourceResult, tableSources map[int]source.TableMapping, fencedSources *[]fencedSourceDetail, blockquoteSources *[]source.BlockquoteMapping, node *Node) error {
+func (mapper *nodeMapper) mapBlockNodeSource(observation parser.Node, contentRange Range, node *Node) error {
 	switch node.Kind {
 	case KindHeading:
-		return mapHeadingNodeSource(snapshot, observation, contentRange, node)
+		return mapHeadingNodeSource(mapper.snapshot, observation, contentRange, node)
 	case KindTask:
-		return mapTaskNodeSource(snapshot, observation, node)
+		return mapTaskNodeSource(mapper.snapshot, observation, node)
 	case KindListItem:
-		return mapListItemNodeSource(snapshot, observation, contentRange, node)
+		return mapListItemNodeSource(mapper.snapshot, observation, contentRange, node)
 	case KindTableCell:
-		return mapTableCellNodeSource(snapshot, observation, contentRange, parserDetails, tableRows, node)
+		return mapTableCellNodeSource(mapper.snapshot, observation, contentRange, mapper.details, mapper.tableRows, node)
 	case KindTableRow:
-		return mapTableRowNodeSource(snapshot, observation, parserDetails, tableRows, node)
+		return mapTableRowNodeSource(mapper.snapshot, observation, mapper.details, mapper.tableRows, node)
 	case KindTable:
-		return mapTableNodeSource(snapshot, observation, parserDetails, tableSources, node)
+		return mapTableNodeSource(mapper.snapshot, observation, mapper.details, mapper.tableSources, node)
 	case KindFencedCode:
-		return mapFencedCodeNodeSource(snapshot, observation, contentRange, parserDetails, fencedSources, node)
+		return mapFencedCodeNodeSource(mapper.snapshot, observation, contentRange, mapper.details, &mapper.fencedSources, node)
 	case KindThematicBreak:
-		return mapThematicBreakNodeSource(snapshot, observation, contentRange, node)
+		return mapThematicBreakNodeSource(mapper.snapshot, observation, contentRange, node)
 	case KindBlockquote:
-		return mapBlockquoteNodeSource(snapshot, observation, parserDetails, blockquoteSources, node)
+		return mapBlockquoteNodeSource(mapper.snapshot, observation, mapper.details, &mapper.blockquoteSources, node)
 	default:
 		return nil
 	}
@@ -254,16 +271,16 @@ func mapTableRowNodeSource(snapshot []byte, observation parser.Node, parserDetai
 	if err != nil {
 		return fmt.Errorf("map table row source: %w", err)
 	}
-	node.TableRowAnchor = detail.RowAnchor
-	node.TableAnchor = detail.TableAnchor
-	node.TableColumnCount = detail.ColumnCount
-	node.TableAlignments = append([]TableAlignment(nil), detail.Alignments...)
+	node.table.TableRowAnchor = detail.RowAnchor
+	node.table.TableAnchor = detail.TableAnchor
+	node.table.TableColumnCount = detail.ColumnCount
+	node.table.TableAlignments = append([]TableAlignment(nil), detail.Alignments...)
 	if !editable || detail.ColumnCount <= 0 || len(mapping.Cells) != detail.ColumnCount || len(detail.Alignments) != detail.ColumnCount {
 		return nil
 	}
 	node.Range = mapping.LineRange
 	node.ContentRange = mapping.Range
-	node.TableRowSourceAnchor = mapping.Anchor
+	node.table.TableRowSourceAnchor = mapping.Anchor
 	node.Editable = true
 	return nil
 }
@@ -273,16 +290,16 @@ func mapTableCellNodeSource(snapshot []byte, observation parser.Node, contentRan
 	if err != nil {
 		return fmt.Errorf("map table cell source: %w", err)
 	}
-	node.TableHeader = detail.Header
-	node.TableColumn = detail.Column
-	node.TableRowAnchor = detail.RowAnchor
-	node.TableAnchor = detail.TableAnchor
+	node.table.TableHeader = detail.Header
+	node.table.TableColumn = detail.Column
+	node.table.TableRowAnchor = detail.RowAnchor
+	node.table.TableAnchor = detail.TableAnchor
 	mapping, editable, err := mapTableCellSource(snapshot, detail, contentRange, tableRows)
 	if err != nil {
 		return fmt.Errorf("map table cell source: %w", err)
 	}
 	if editable {
-		node.TableCellRange = mapping.Range
+		node.table.TableCellRange = mapping.Range
 		node.Editable = true
 	}
 	return nil

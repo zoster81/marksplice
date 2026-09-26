@@ -20,13 +20,13 @@ func TestTableRowCellIdentityModelBuildsSupportedAdjacency(t *testing.T) {
 	columns := []int{0, 2}
 	for index, id := range ids {
 		cell, ok := doc.nodeByID(id)
-		if !ok || cell.TableHeader || cell.TableRowID != rows[0].ID || cell.TableColumn != columns[index] {
+		if !ok || cell.TableData().TableHeader || cell.TableData().TableRowID != rows[0].ID || cell.TableData().TableColumn != columns[index] {
 			t.Fatalf("cell %d = %+v, %v; want row %q column %d", index, cell, ok, rows[0].ID, columns[index])
 		}
 	}
 	for _, node := range doc.nodes {
-		if node.Kind == KindTableCell && node.Editable && node.TableHeader && node.TableRowID != "" {
-			t.Fatalf("header cell %q unexpectedly has row ID %q", node.ID, node.TableRowID)
+		if node.Kind == KindTableCell && node.Editable && node.TableData().TableHeader && node.TableData().TableRowID != "" {
+			t.Fatalf("header cell %q unexpectedly has row ID %q", node.ID, node.TableData().TableRowID)
 		}
 	}
 }
@@ -44,8 +44,8 @@ func TestTableRowCellIdentityModelAllowsContainerRelativeRowAnchor(t *testing.T)
 		t.Fatalf("row count = %d, want 1", len(rows))
 	}
 	row := rows[0]
-	if row.TableRowAnchor <= row.Range.Start || row.TableRowAnchor >= row.ContentRange.End {
-		t.Fatalf("semantic row anchor = %d, physical row = %v; want anchor inside indented physical row", row.TableRowAnchor, row.Range)
+	if row.TableData().TableRowAnchor <= row.Range.Start || row.TableData().TableRowAnchor >= row.ContentRange.End {
+		t.Fatalf("semantic row anchor = %d, physical row = %v; want anchor inside indented physical row", row.TableData().TableRowAnchor, row.Range)
 	}
 	ids, ok := doc.TableRowCellIDs(row.ID)
 	if !ok || len(ids) != 2 {
@@ -61,7 +61,7 @@ func TestTableRowCellIdentityModelAllowsNoPromotedCells(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	rows := internalTableRows(doc)
-	if len(rows) != 1 || rows[0].TableColumnCount != 2 {
+	if len(rows) != 1 || rows[0].TableData().TableColumnCount != 2 {
 		t.Fatalf("rows = %+v, want one two-column body row", rows)
 	}
 	ids, ok := doc.TableRowCellIDs(rows[0].ID)
@@ -82,13 +82,13 @@ func TestResolveTableRowCellsLeavesUnpromotedParentUnresolved(t *testing.T) {
 	if cellIndex < 0 {
 		t.Fatal("body table cell not found")
 	}
-	nodes[cellIndex].TableRowAnchor = len(doc.source) + 10
-	nodes[cellIndex].TableRowID = "stale"
+	nodes[cellIndex].table.TableRowAnchor = len(doc.source) + 10
+	nodes[cellIndex].table.TableRowID = "stale"
 	if _, err := resolveTableRowCells(nodes); err != nil {
 		t.Fatalf("resolveTableRowCells(unpromoted parent) error = %v", err)
 	}
-	if nodes[cellIndex].TableRowID != "" {
-		t.Fatalf("unresolved body cell row ID = %q, want empty", nodes[cellIndex].TableRowID)
+	if nodes[cellIndex].TableData().TableRowID != "" {
+		t.Fatalf("unresolved body cell row ID = %q, want empty", nodes[cellIndex].TableData().TableRowID)
 	}
 }
 
@@ -104,7 +104,7 @@ func TestResolveTableRowCellsRejectsCorruptSourceRelations(t *testing.T) {
 			name: "row anchor mismatches physical line",
 			mutate: func(nodes []Node) {
 				index := firstTableRowIndex(nodes)
-				nodes[index].TableRowAnchor++
+				nodes[index].table.TableRowAnchor++
 			},
 		},
 		{
@@ -112,7 +112,7 @@ func TestResolveTableRowCellsRejectsCorruptSourceRelations(t *testing.T) {
 			mutate: func(nodes []Node) {
 				rowIndex := firstTableRowIndex(nodes)
 				cellIndex := firstBodyTableCellIndex(nodes)
-				nodes[cellIndex].TableColumn = nodes[rowIndex].TableColumnCount
+				nodes[cellIndex].table.TableColumn = nodes[rowIndex].TableData().TableColumnCount
 			},
 		},
 		{
@@ -120,7 +120,7 @@ func TestResolveTableRowCellsRejectsCorruptSourceRelations(t *testing.T) {
 			mutate: func(nodes []Node) {
 				rowIndex := firstTableRowIndex(nodes)
 				cellIndex := firstBodyTableCellIndex(nodes)
-				nodes[cellIndex].TableCellRange.Start = nodes[rowIndex].ContentRange.Start - 1
+				nodes[cellIndex].table.TableCellRange.Start = nodes[rowIndex].ContentRange.Start - 1
 			},
 		},
 	}
@@ -152,13 +152,13 @@ func TestTableRowCellIDsFailsClosedOnCorruptAdjacency(t *testing.T) {
 			name: "range out of bounds",
 			mutate: func(doc *Document, row Node) {
 				index := doc.nodeIndex[row.ID]
-				doc.nodes[index].TableRowCellStart = len(doc.tableCellIDs) + 1
+				doc.nodes[index].table.TableRowCellStart = len(doc.tableCellIDs) + 1
 			},
 		},
 		{
 			name: "missing cell identity",
 			mutate: func(doc *Document, row Node) {
-				doc.tableCellIDs[row.TableRowCellStart] = "missing"
+				doc.tableCellIDs[row.TableData().TableRowCellStart] = "missing"
 			},
 		},
 		{
@@ -169,13 +169,13 @@ func TestTableRowCellIDsFailsClosedOnCorruptAdjacency(t *testing.T) {
 				if !ok || len(otherIDs) == 0 {
 					panic("second row cells unavailable")
 				}
-				doc.tableCellIDs[row.TableRowCellStart] = otherIDs[0]
+				doc.tableCellIDs[row.TableData().TableRowCellStart] = otherIDs[0]
 			},
 		},
 		{
 			name: "cell source order reversed",
 			mutate: func(doc *Document, row Node) {
-				start := row.TableRowCellStart
+				start := row.TableData().TableRowCellStart
 				doc.tableCellIDs[start], doc.tableCellIDs[start+1] = doc.tableCellIDs[start+1], doc.tableCellIDs[start]
 			},
 		},
@@ -230,8 +230,8 @@ func TestTableRowModelBuildsSameTableNeighborsAndHeaderAdjacency(t *testing.T) {
 	}
 	for index, column := range []int{0, 2} {
 		cell, ok := doc.nodeByID(headerIDs[index])
-		if !ok || !cell.TableHeader || cell.TableAnchor != rows[0].TableAnchor || cell.TableColumn != column {
-			t.Fatalf("header cell %d = %+v, %v; want table anchor %d column %d", index, cell, ok, rows[0].TableAnchor, column)
+		if !ok || !cell.TableData().TableHeader || cell.TableData().TableAnchor != rows[0].TableData().TableAnchor || cell.TableData().TableColumn != column {
+			t.Fatalf("header cell %d = %+v, %v; want table anchor %d column %d", index, cell, ok, rows[0].TableData().TableAnchor, column)
 		}
 	}
 	sameHeaderIDs, ok := doc.TableRowHeaderCellIDs(rows[1].ID)
@@ -256,7 +256,7 @@ func TestResolveTableRowCellsRejectsMismatchedTableMembership(t *testing.T) {
 	if cellIndex < 0 {
 		t.Fatal("body table cell not found")
 	}
-	nodes[cellIndex].TableAnchor++
+	nodes[cellIndex].table.TableAnchor++
 	if _, err := resolveTableRowCells(nodes); err == nil {
 		t.Fatal("resolveTableRowCells(mismatched table anchor) error = nil, want fail-closed error")
 	}
@@ -276,7 +276,7 @@ func TestTableRowNavigationFailsClosedOnCorruptModel(t *testing.T) {
 	}
 
 	firstIndex := doc.nodeIndex[rows[0].ID]
-	doc.nodes[firstIndex].TableNextRowID = rows[2].ID
+	doc.nodes[firstIndex].table.TableNextRowID = rows[2].ID
 	if previous, next, ok := doc.TableRowNeighborIDs(rows[0].ID); ok || previous != "" || next != "" {
 		t.Fatalf("corrupt neighbors = %q/%q, %v; want empty/empty, false", previous, next, ok)
 	}
@@ -287,10 +287,10 @@ func TestTableRowNavigationFailsClosedOnCorruptModel(t *testing.T) {
 	}
 	rows = internalTableRows(doc)
 	first := rows[0]
-	if first.TableHeaderCellCount < 2 {
-		t.Fatalf("header cell count = %d, want at least 2", first.TableHeaderCellCount)
+	if first.TableData().TableHeaderCellCount < 2 {
+		t.Fatalf("header cell count = %d, want at least 2", first.TableData().TableHeaderCellCount)
 	}
-	start := first.TableHeaderCellStart
+	start := first.TableData().TableHeaderCellStart
 	doc.tableHeaderCellIDs[start], doc.tableHeaderCellIDs[start+1] = doc.tableHeaderCellIDs[start+1], doc.tableHeaderCellIDs[start]
 	if ids, ok := doc.TableRowHeaderCellIDs(first.ID); ok || ids != nil {
 		t.Fatalf("corrupt header adjacency = %v, %v; want nil, false", ids, ok)
@@ -308,7 +308,7 @@ func firstTableRowIndex(nodes []Node) int {
 
 func firstBodyTableCellIndex(nodes []Node) int {
 	for index, node := range nodes {
-		if node.Kind == KindTableCell && node.Editable && !node.TableHeader {
+		if node.Kind == KindTableCell && node.Editable && !node.TableData().TableHeader {
 			return index
 		}
 	}

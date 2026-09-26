@@ -57,7 +57,7 @@ func (b *tableOwnerModelBuilder) collectTables() error {
 		if table.Kind != KindTable || !table.Editable {
 			continue
 		}
-		anchor := table.TableAnchor
+		anchor := table.tableData().TableAnchor
 		mapping, mapped := b.tableSources[anchor]
 		if err := validatePromotedTable(table, mapping, mapped, lastAnchor); err != nil {
 			return err
@@ -74,20 +74,21 @@ func (b *tableOwnerModelBuilder) collectTables() error {
 }
 
 func validatePromotedTable(table *Node, mapping source.TableMapping, mapped bool, lastAnchor int) error {
-	anchor := table.TableAnchor
+	tableTable := table.tableData()
+	anchor := tableTable.TableAnchor
 	if table.ID == "" || anchor < 0 || !mapped || anchor != table.Range.Start || mapping.Range != table.Range ||
-		anchor <= lastAnchor || table.TableColumnCount <= 0 || len(table.TableAlignments) != table.TableColumnCount || table.TableBodyRowCount < 0 ||
-		len(mapping.Delimiter.Cells) != table.TableColumnCount {
+		anchor <= lastAnchor || tableTable.TableColumnCount <= 0 || len(tableTable.TableAlignments) != tableTable.TableColumnCount || tableTable.TableBodyRowCount < 0 ||
+		len(mapping.Delimiter.Cells) != tableTable.TableColumnCount {
 		return fmt.Errorf("invalid promoted table at anchor %d", anchor)
 	}
 	return nil
 }
 
 func resetTableAdjacency(table *Node) {
-	table.TablePromotedRowStart = 0
-	table.TablePromotedRowCount = 0
-	table.TableOwnedHeaderCellStart = 0
-	table.TableOwnedHeaderCellCount = 0
+	table.table.TablePromotedRowStart = 0
+	table.table.TablePromotedRowCount = 0
+	table.table.TableOwnedHeaderCellStart = 0
+	table.table.TableOwnedHeaderCellCount = 0
 }
 
 func (b *tableOwnerModelBuilder) resolveOwnership() error {
@@ -95,37 +96,37 @@ func (b *tableOwnerModelBuilder) resolveOwnership() error {
 		node := &b.nodes[index]
 		switch node.Kind {
 		case KindTableRow:
-			node.TableID = ""
-			ordinal, ok := b.tableOrdinalByAnchor[node.TableAnchor]
+			node.table.TableID = ""
+			ordinal, ok := b.tableOrdinalByAnchor[node.tableData().TableAnchor]
 			if !ok {
 				continue
 			}
 			table := &b.nodes[b.tableIndexes[ordinal]]
-			mapping, ok := b.tableSources[table.TableAnchor]
-			if !ok || node.TableRowAnchor <= mapping.Delimiter.Range.Start || node.TableRowAnchor >= table.Range.End {
-				return fmt.Errorf("table row anchor %d escapes table %q", node.TableRowAnchor, table.ID)
+			mapping, ok := b.tableSources[table.tableData().TableAnchor]
+			if !ok || node.tableData().TableRowAnchor <= mapping.Delimiter.Range.Start || node.tableData().TableRowAnchor >= table.Range.End {
+				return fmt.Errorf("table row anchor %d escapes table %q", node.tableData().TableRowAnchor, table.ID)
 			}
 			b.semanticRowCounts[ordinal]++
-			b.lastSemanticRow[ordinal] = node.TableRowAnchor
+			b.lastSemanticRow[ordinal] = node.tableData().TableRowAnchor
 			if node.Editable {
-				node.TableID = table.ID
+				node.table.TableID = table.ID
 				b.promotedRowCounts[ordinal]++
 			}
 		case KindTableCell:
-			node.TableID = ""
+			node.table.TableID = ""
 			if !node.Editable {
 				continue
 			}
-			ordinal, ok := b.tableOrdinalByAnchor[node.TableAnchor]
+			ordinal, ok := b.tableOrdinalByAnchor[node.tableData().TableAnchor]
 			if !ok {
 				continue
 			}
 			table := &b.nodes[b.tableIndexes[ordinal]]
-			if node.TableColumn < 0 || node.TableColumn >= table.TableColumnCount {
-				return fmt.Errorf("table cell %q column %d escapes table %q", node.ID, node.TableColumn, table.ID)
+			if node.tableData().TableColumn < 0 || node.tableData().TableColumn >= table.tableData().TableColumnCount {
+				return fmt.Errorf("table cell %q column %d escapes table %q", node.ID, node.tableData().TableColumn, table.ID)
 			}
-			node.TableID = table.ID
-			if node.TableHeader {
+			node.table.TableID = table.ID
+			if node.tableData().TableHeader {
 				b.headerCellCounts[ordinal]++
 			}
 		}
@@ -136,17 +137,17 @@ func (b *tableOwnerModelBuilder) resolveOwnership() error {
 func (b *tableOwnerModelBuilder) validateSemanticRows() error {
 	for ordinal, tableIndex := range b.tableIndexes {
 		table := &b.nodes[tableIndex]
-		if b.semanticRowCounts[ordinal] != table.TableBodyRowCount {
-			return fmt.Errorf("table %q semantic body-row count %d disagrees with observed %d", table.ID, table.TableBodyRowCount, b.semanticRowCounts[ordinal])
+		if b.semanticRowCounts[ordinal] != table.tableData().TableBodyRowCount {
+			return fmt.Errorf("table %q semantic body-row count %d disagrees with observed %d", table.ID, table.tableData().TableBodyRowCount, b.semanticRowCounts[ordinal])
 		}
-		if table.TableBodyRowCount == 0 {
-			if table.TableLastBodyRowAnchor != 0 {
-				return fmt.Errorf("table %q has unexpected last body-row anchor %d", table.ID, table.TableLastBodyRowAnchor)
+		if table.tableData().TableBodyRowCount == 0 {
+			if table.tableData().TableLastBodyRowAnchor != 0 {
+				return fmt.Errorf("table %q has unexpected last body-row anchor %d", table.ID, table.tableData().TableLastBodyRowAnchor)
 			}
 			continue
 		}
-		if b.lastSemanticRow[ordinal] != table.TableLastBodyRowAnchor {
-			return fmt.Errorf("table %q last body-row anchor %d disagrees with observed %d", table.ID, table.TableLastBodyRowAnchor, b.lastSemanticRow[ordinal])
+		if b.lastSemanticRow[ordinal] != table.tableData().TableLastBodyRowAnchor {
+			return fmt.Errorf("table %q last body-row anchor %d disagrees with observed %d", table.ID, table.tableData().TableLastBodyRowAnchor, b.lastSemanticRow[ordinal])
 		}
 	}
 	return nil
@@ -157,11 +158,11 @@ func (b *tableOwnerModelBuilder) assignAdjacencyRanges() (int, int) {
 	headerTotal := 0
 	for ordinal, tableIndex := range b.tableIndexes {
 		table := &b.nodes[tableIndex]
-		table.TablePromotedRowStart = rowTotal
-		table.TablePromotedRowCount = b.promotedRowCounts[ordinal]
+		table.table.TablePromotedRowStart = rowTotal
+		table.table.TablePromotedRowCount = b.promotedRowCounts[ordinal]
 		rowTotal += b.promotedRowCounts[ordinal]
-		table.TableOwnedHeaderCellStart = headerTotal
-		table.TableOwnedHeaderCellCount = b.headerCellCounts[ordinal]
+		table.table.TableOwnedHeaderCellStart = headerTotal
+		table.table.TableOwnedHeaderCellCount = b.headerCellCounts[ordinal]
 		headerTotal += b.headerCellCounts[ordinal]
 	}
 	return rowTotal, headerTotal
@@ -187,20 +188,20 @@ func (b *tableOwnerModelBuilder) tableAdjacencyCursors() ([]int, []int) {
 	headerCursors := make([]int, len(b.tableIndexes))
 	for ordinal, tableIndex := range b.tableIndexes {
 		table := &b.nodes[tableIndex]
-		rowCursors[ordinal] = table.TablePromotedRowStart
-		headerCursors[ordinal] = table.TableOwnedHeaderCellStart
+		rowCursors[ordinal] = table.tableData().TablePromotedRowStart
+		headerCursors[ordinal] = table.tableData().TableOwnedHeaderCellStart
 	}
 	return rowCursors, headerCursors
 }
 
 func (b *tableOwnerModelBuilder) collectNodeAdjacency(node *Node, rowIDs, headerIDs []NodeID, rowCursors, headerCursors []int) error {
-	ordinal, ok := b.tableOrdinalByAnchor[node.TableAnchor]
+	ordinal, ok := b.tableOrdinalByAnchor[node.tableData().TableAnchor]
 	if !ok {
 		return nil
 	}
 	table := &b.nodes[b.tableIndexes[ordinal]]
-	if node.Kind == KindTableRow && node.Editable && node.TableID == table.ID {
-		limit := table.TablePromotedRowStart + table.TablePromotedRowCount
+	if node.Kind == KindTableRow && node.Editable && node.tableData().TableID == table.ID {
+		limit := table.tableData().TablePromotedRowStart + table.tableData().TablePromotedRowCount
 		if rowCursors[ordinal] >= limit {
 			return fmt.Errorf("inconsistent table-row adjacency for %q", node.ID)
 		}
@@ -208,8 +209,8 @@ func (b *tableOwnerModelBuilder) collectNodeAdjacency(node *Node, rowIDs, header
 		rowCursors[ordinal]++
 		return nil
 	}
-	if node.Kind == KindTableCell && node.Editable && node.TableHeader && node.TableID == table.ID {
-		limit := table.TableOwnedHeaderCellStart + table.TableOwnedHeaderCellCount
+	if node.Kind == KindTableCell && node.Editable && node.tableData().TableHeader && node.tableData().TableID == table.ID {
+		limit := table.tableData().TableOwnedHeaderCellStart + table.tableData().TableOwnedHeaderCellCount
 		if headerCursors[ordinal] >= limit {
 			return fmt.Errorf("inconsistent table-header adjacency for %q", node.ID)
 		}
@@ -222,8 +223,8 @@ func (b *tableOwnerModelBuilder) collectNodeAdjacency(node *Node, rowIDs, header
 func (b *tableOwnerModelBuilder) validateAdjacencyCursors(rowCursors, headerCursors []int) error {
 	for ordinal, tableIndex := range b.tableIndexes {
 		table := &b.nodes[tableIndex]
-		if rowCursors[ordinal] != table.TablePromotedRowStart+table.TablePromotedRowCount ||
-			headerCursors[ordinal] != table.TableOwnedHeaderCellStart+table.TableOwnedHeaderCellCount {
+		if rowCursors[ordinal] != table.tableData().TablePromotedRowStart+table.tableData().TablePromotedRowCount ||
+			headerCursors[ordinal] != table.tableData().TableOwnedHeaderCellStart+table.tableData().TableOwnedHeaderCellCount {
 			return fmt.Errorf("incomplete table adjacency for %q", table.ID)
 		}
 	}
@@ -239,7 +240,7 @@ func (d *Document) TableRowIDs(id NodeID) ([]NodeID, bool) {
 	previousStart := -1
 	for _, rowID := range ids {
 		row, ok := d.nodeByID(rowID)
-		if !ok || row.Kind != KindTableRow || !row.Editable || row.TableID != table.ID || row.TableAnchor != table.TableAnchor || row.Range.Start <= previousStart {
+		if !ok || row.Kind != KindTableRow || !row.Editable || row.tableData().TableID != table.ID || row.tableData().TableAnchor != table.tableData().TableAnchor || row.Range.Start <= previousStart {
 			return nil, false
 		}
 		previousStart = row.Range.Start
@@ -256,10 +257,10 @@ func (d *Document) TableHeaderCellIDs(id NodeID) ([]NodeID, bool) {
 	previousColumn := -1
 	for _, cellID := range ids {
 		cell, ok := d.nodeByID(cellID)
-		if !ok || cell.Kind != KindTableCell || !cell.Editable || !cell.TableHeader || cell.TableID != table.ID || cell.TableAnchor != table.TableAnchor || cell.TableColumn <= previousColumn || cell.TableColumn >= table.TableColumnCount {
+		if !ok || cell.Kind != KindTableCell || !cell.Editable || !cell.tableData().TableHeader || cell.tableData().TableID != table.ID || cell.tableData().TableAnchor != table.tableData().TableAnchor || cell.tableData().TableColumn <= previousColumn || cell.tableData().TableColumn >= table.tableData().TableColumnCount {
 			return nil, false
 		}
-		previousColumn = cell.TableColumn
+		previousColumn = cell.tableData().TableColumn
 	}
 	return append([]NodeID(nil), ids...), true
 }
@@ -272,10 +273,10 @@ func (d *Document) tableOwnedAdjacency(id NodeID, header bool) (Node, []NodeID, 
 	if !ok || table.Kind != KindTable || !table.Editable {
 		return Node{}, nil, false
 	}
-	start, count := table.TablePromotedRowStart, table.TablePromotedRowCount
+	start, count := table.tableData().TablePromotedRowStart, table.tableData().TablePromotedRowCount
 	ids := d.tableRowIDs
 	if header {
-		start, count = table.TableOwnedHeaderCellStart, table.TableOwnedHeaderCellCount
+		start, count = table.tableData().TableOwnedHeaderCellStart, table.tableData().TableOwnedHeaderCellCount
 		ids = d.tableOwnedHeaderCellIDs
 	}
 	if start < 0 || count < 0 || start > len(ids) || count > len(ids)-start {

@@ -72,10 +72,18 @@ func (d *Document) Task(id NodeID) (Task, bool) {
 	}, true
 }
 
+func (d *Document) promotedTableNode(id NodeID, expected splice.Kind) (splice.TableNode, bool) {
+	if d == nil || d.document == nil {
+		return splice.TableNode{}, false
+	}
+	node, ok := d.document.TableNode(internalNodeID(id))
+	return node, ok && node.Kind == expected
+}
+
 // TableCell returns typed detail for one promoted non-empty GFM table cell.
 func (d *Document) TableCell(id NodeID) (TableCell, bool) {
-	node, err := d.promotedNode(id, splice.KindTableCell, false)
-	if err != nil {
+	node, ok := d.promotedTableNode(id, splice.KindTableCell)
+	if !ok {
 		return TableCell{}, false
 	}
 	return TableCell{
@@ -116,8 +124,8 @@ func (d *Document) TableRowHeaderCellIDs(rowID NodeID) ([]NodeID, bool) {
 
 // Table returns typed detail for one promoted GFM table.
 func (d *Document) Table(id NodeID) (Table, bool) {
-	node, err := d.promotedNode(id, splice.KindTable, false)
-	if err != nil || node.TableColumnCount <= 0 || node.TableBodyRowCount < 0 || len(node.TableAlignments) != node.TableColumnCount {
+	node, ok := d.promotedTableNode(id, splice.KindTable)
+	if !ok || node.TableColumnCount <= 0 || node.TableBodyRowCount < 0 || len(node.TableAlignments) != node.TableColumnCount {
 		return Table{}, false
 	}
 	return Table{
@@ -157,8 +165,8 @@ func (d *Document) TableHeaderCellIDs(tableID NodeID) ([]NodeID, bool) {
 // TableAlignments returns one semantic alignment per source-proven table column.
 // The returned slice is caller-owned.
 func (d *Document) TableAlignments(tableID NodeID) ([]TableAlignment, bool) {
-	node, err := d.promotedNode(tableID, splice.KindTable, false)
-	if err != nil {
+	node, ok := d.promotedTableNode(tableID, splice.KindTable)
+	if !ok {
 		return nil, false
 	}
 	return publicTableAlignments(node.TableAlignments, node.TableColumnCount)
@@ -167,8 +175,8 @@ func (d *Document) TableAlignments(tableID NodeID) ([]TableAlignment, bool) {
 // TableRowAlignments returns the semantic column alignments for the table that owns one promoted body row.
 // The returned slice has exactly TableRow.ColumnCount entries and is caller-owned.
 func (d *Document) TableRowAlignments(rowID NodeID) ([]TableAlignment, bool) {
-	node, err := d.promotedNode(rowID, splice.KindTableRow, false)
-	if err != nil {
+	node, ok := d.promotedTableNode(rowID, splice.KindTableRow)
+	if !ok {
 		return nil, false
 	}
 	return publicTableAlignments(node.TableAlignments, node.TableColumnCount)
@@ -176,8 +184,8 @@ func (d *Document) TableRowAlignments(rowID NodeID) ([]TableAlignment, bool) {
 
 // TableRow returns typed detail for one promoted GFM table body row.
 func (d *Document) TableRow(id NodeID) (TableRow, bool) {
-	node, err := d.promotedNode(id, splice.KindTableRow, false)
-	if err != nil {
+	node, ok := d.promotedTableNode(id, splice.KindTableRow)
+	if !ok {
 		return TableRow{}, false
 	}
 	previousID, nextID, ok := d.document.TableRowNeighborIDs(node.ID)

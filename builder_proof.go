@@ -467,8 +467,8 @@ func validateConstructionFootnoteDefinitionExpectation(document *splice.Document
 func validateConstructionTableExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
 	mapping, ok := document.TableSource(node.ID)
 	if !ok || !node.Editable || node.Range != want.sourceRange || node.ContentRange != want.sourceRange ||
-		node.TableAnchor != want.sourceRange.Start || node.TableColumnCount != want.table.columnCount ||
-		node.TableBodyRowCount != want.table.bodyRowCount || !slices.Equal(node.TableAlignments, want.table.alignments) ||
+		node.TableData().TableAnchor != want.sourceRange.Start || node.TableData().TableColumnCount != want.table.columnCount ||
+		node.TableData().TableBodyRowCount != want.table.bodyRowCount || !slices.Equal(node.TableData().TableAlignments, want.table.alignments) ||
 		mapping.Range != want.sourceRange || len(mapping.Header.Cells) != want.table.columnCount ||
 		len(mapping.Delimiter.Cells) != want.table.columnCount || len(mapping.DelimiterAlignments) != want.table.columnCount {
 		return fmt.Errorf("%w: generated table mapping changed", ErrInvalidConstruction)
@@ -479,8 +479,8 @@ func validateConstructionTableExpectation(document *splice.Document, node splice
 func validateConstructionTableRowExpectation(document *splice.Document, node splice.Node, want constructionExpectation) error {
 	mapping, ok := document.TableRowSource(node.ID)
 	if !ok || node.Range != want.sourceRange || node.ContentRange != want.contentRange ||
-		node.TableRowAnchor != want.contentRange.Start || node.TableAnchor != want.tableRow.tableAnchor || node.TableColumnCount != want.tableRow.columnCount ||
-		!slices.Equal(node.TableAlignments, want.tableRow.alignments) ||
+		node.TableData().TableRowAnchor != want.contentRange.Start || node.TableData().TableAnchor != want.tableRow.tableAnchor || node.TableData().TableColumnCount != want.tableRow.columnCount ||
+		!slices.Equal(node.TableData().TableAlignments, want.tableRow.alignments) ||
 		mapping.Range != want.contentRange || mapping.LineRange != want.sourceRange || len(mapping.Cells) != len(want.tableRow.cellRanges) {
 		return fmt.Errorf("%w: generated table-row mapping changed", ErrInvalidConstruction)
 	}

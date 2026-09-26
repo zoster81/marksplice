@@ -89,49 +89,54 @@ type Range = source.Range
 // Node is the minimal Marksplice-owned structural view used by the feasibility slice.
 type Node struct {
 	// Keep identity, flags and source positions close; group other fields by width.
-	ID                        NodeID
-	SourceDetailIndex         uint32
-	Kind                      Kind
-	HeadingStyle              HeadingStyle
-	Checked                   bool
-	ListOrdered               bool
-	ListMarker                byte
-	ListHasParent             bool
-	ListHasChildren           bool
-	ListSubtreeComplete       bool
+	ID                   NodeID
+	SourceDetailIndex    uint32
+	Kind                 Kind
+	HeadingStyle         HeadingStyle
+	Checked              bool
+	ListOrdered          bool
+	ListMarker           byte
+	ListHasParent        bool
+	ListHasChildren      bool
+	ListSubtreeComplete  bool
+	Editable             bool
+	MathStyle            MathExpressionStyle
+	HasTitle             bool
+	AutoLinkEmail        bool
+	FrontMatterFormat    FrontMatterFormat
+	FrontMatterStyle     source.FrontMatterValueStyle
+	HTMLQuote            byte
+	TopLevel             bool
+	Range                Range
+	ContentRange         Range
+	Anchor               int
+	HeadingText          string
+	ListParentID         NodeID
+	Destination          string
+	Label                string
+	Title                string
+	Value                string
+	Key                  string
+	HTMLAttribute        string
+	table                *TableNodeData
+	Level                int
+	ListParentAnchor     int
+	ListContainerAnchor  int
+	ListDirectChildCount int
+	ListChildStart       int
+	ListChildCount       int
+	ListSubtreeEnd       int
+	ListItemLineRange    Range
+}
+
+// TableNodeData holds source and adjacency data only for table, row, and cell nodes.
+type TableNodeData struct {
 	TableHeader               bool
-	Editable                  bool
-	MathStyle                 MathExpressionStyle
-	HasTitle                  bool
-	AutoLinkEmail             bool
-	FrontMatterFormat         FrontMatterFormat
-	FrontMatterStyle          source.FrontMatterValueStyle
-	HTMLQuote                 byte
-	TopLevel                  bool
-	Range                     Range
-	ContentRange              Range
-	Anchor                    int
-	HeadingText               string
-	ListParentID              NodeID
 	TableRowID                NodeID
 	TableAlignments           []TableAlignment
 	TableID                   NodeID
 	TablePreviousRowID        NodeID
 	TableNextRowID            NodeID
-	Destination               string
-	Label                     string
-	Title                     string
-	Value                     string
-	Key                       string
-	HTMLAttribute             string
-	Level                     int
-	ListParentAnchor          int
-	ListContainerAnchor       int
-	ListDirectChildCount      int
-	ListChildStart            int
-	ListChildCount            int
-	ListSubtreeEnd            int
-	ListItemLineRange         Range
 	TableColumn               int
 	TableRowAnchor            int
 	TableRowSourceAnchor      int
@@ -148,6 +153,47 @@ type Node struct {
 	TableHeaderCellStart      int
 	TableHeaderCellCount      int
 	TableCellRange            Range
+}
+
+// Empty table metadata is shared only as an immutable internal read view.
+// Construction writes always use a node's private, individually owned entry.
+var emptyTableNodeData TableNodeData
+
+func (node Node) tableData() *TableNodeData {
+	if node.table == nil {
+		return &emptyTableNodeData
+	}
+	return node.table
+}
+
+// TableData returns table metadata by value. It is zero for other node kinds;
+// the alignment slice has the same ownership as the node returned by Document.
+func (node Node) TableData() TableNodeData {
+	return *node.tableData()
+}
+
+// TableNode is detached metadata for one promoted table, row, or cell. It omits
+// unrelated common-node fields and keeps variable-length results caller-owned.
+type TableNode struct {
+	ID           NodeID
+	Kind         Kind
+	Range        Range
+	ContentRange Range
+	TableNodeData
+}
+
+// TableNode returns a promoted table-family view without cloning a complete Node.
+func (d *Document) TableNode(id NodeID) (TableNode, bool) {
+	if d == nil {
+		return TableNode{}, false
+	}
+	node, ok := d.nodeByID(id)
+	if !ok || !node.Editable || node.table == nil {
+		return TableNode{}, false
+	}
+	data := *node.table
+	data.TableAlignments = append([]TableAlignment(nil), data.TableAlignments...)
+	return TableNode{ID: node.ID, Kind: node.Kind, Range: node.Range, ContentRange: node.ContentRange, TableNodeData: data}, true
 }
 
 // ChangeSet is a source-bound prepared mutation with private semantic provenance.
@@ -308,11 +354,17 @@ func documentFromObservations(snapshot []byte, observed parser.DocumentObservati
 
 	fingerprint := source.Sum(snapshot)
 	nodes := make([]Node, 0, len(observations)+len(frontMatter.Fields)+len(footnoteDefinitions)+len(mathExpressions))
-	tableRows := make(map[int]tableRowSourceResult, len(parserDetails.tableRows))
-	tableSources := make(map[int]source.TableMapping, len(parserDetails.tables))
 	fencedCapacity, blockquoteCapacity := sourceDetailCapacities(observations)
-	fencedSources := make([]fencedSourceDetail, 0, fencedCapacity)
-	blockquoteSources := make([]source.BlockquoteMapping, 0, blockquoteCapacity)
+	mapper := nodeMapper{
+		snapshot:          snapshot,
+		fingerprint:       fingerprint,
+		details:           parserDetails,
+		tableRows:         make(map[int]tableRowSourceResult, len(parserDetails.tableRows)),
+		tableSources:      make(map[int]source.TableMapping, len(parserDetails.tables)),
+		fencedSources:     make([]fencedSourceDetail, 0, fencedCapacity),
+		blockquoteSources: make([]source.BlockquoteMapping, 0, blockquoteCapacity),
+		tableNodeData:     make([]TableNodeData, 0, len(parserDetails.tables)+len(parserDetails.tableRows)+len(parserDetails.tableCells)),
+	}
 	footnoteSources := make([]source.FootnoteDefinitionMapping, 0, len(footnoteDefinitions))
 	if hasFrontMatter {
 		nodes = append(nodes, frontMatterNodes(fingerprint, frontMatter)...)
@@ -322,7 +374,7 @@ func documentFromObservations(snapshot []byte, observed parser.DocumentObservati
 		if hasFrontMatter && rangesOverlap(frontMatter.Range, observationRange) {
 			continue
 		}
-		node, err := nodeFromObservation(snapshot, fingerprint, observation, parserDetails, tableRows, tableSources, &fencedSources, &blockquoteSources)
+		node, err := mapper.nodeFromObservation(observation)
 		if err != nil {
 			return nil, err
 		}
@@ -336,11 +388,11 @@ func documentFromObservations(snapshot []byte, observed parser.DocumentObservati
 	if err != nil {
 		return nil, fmt.Errorf("resolve list item model: %w", err)
 	}
-	tableModel, err := resolveTableRowCellsWithCapacity(nodes, len(tableRows), len(tableSources))
+	tableModel, err := resolveTableRowCellsWithCapacity(nodes, len(mapper.tableRows), len(mapper.tableSources))
 	if err != nil {
 		return nil, fmt.Errorf("resolve table row cells: %w", err)
 	}
-	tableOwnerModel, err := resolveTables(nodes, tableSources)
+	tableOwnerModel, err := resolveTables(nodes, mapper.tableSources)
 	if err != nil {
 		return nil, fmt.Errorf("resolve tables: %w", err)
 	}
@@ -374,8 +426,8 @@ func documentFromObservations(snapshot []byte, observed parser.DocumentObservati
 		tableCellIndexes:          tableModel.cellIndexes,
 		tableRowIDs:               tableOwnerModel.rowIDs,
 		tableOwnedHeaderCellIDs:   tableOwnerModel.headerCellIDs,
-		fencedSources:             fencedSources,
-		blockquoteSources:         blockquoteSources,
+		fencedSources:             mapper.fencedSources,
+		blockquoteSources:         mapper.blockquoteSources,
 		footnoteSources:           footnoteSources,
 		sections:                  sections,
 		sectionIndex:              sectionIndex,
@@ -525,7 +577,11 @@ func unresolvedReferenceUsagesOutsideRange(usages []parser.UnresolvedReferenceUs
 }
 
 func cloneNode(node Node) Node {
-	node.TableAlignments = append([]TableAlignment(nil), node.TableAlignments...)
+	if node.table != nil {
+		detail := *node.table
+		detail.TableAlignments = append([]TableAlignment(nil), detail.TableAlignments...)
+		node.table = &detail
+	}
 	return node
 }
 

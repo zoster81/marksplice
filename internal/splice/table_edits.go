@@ -24,10 +24,10 @@ func (d *Document) PrepareSetTableColumnAlignment(id NodeID, column int, alignme
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if column < 0 || column >= target.TableColumnCount {
+	if column < 0 || column >= target.tableData().TableColumnCount {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
-	expected := append([]TableAlignment(nil), target.TableAlignments...)
+	expected := append([]TableAlignment(nil), target.tableData().TableAlignments...)
 	expected[column] = alignment
 	return d.prepareSetTableAlignments(target, mapping, expected, "table column alignment")
 }
@@ -38,7 +38,7 @@ func (d *Document) PrepareSetTableAlignments(id NodeID, alignments []TableAlignm
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if len(alignments) != target.TableColumnCount {
+	if len(alignments) != target.tableData().TableColumnCount {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
 	return d.prepareSetTableAlignments(target, mapping, append([]TableAlignment(nil), alignments...), "table alignments")
@@ -69,19 +69,19 @@ func (d *Document) prepareSetTableAlignments(target Node, mapping source.TableMa
 }
 
 func (d *Document) planTableAlignmentPatches(target Node, mapping source.TableMapping, expected []TableAlignment) (tableAlignmentPatchPlan, error) {
-	if len(expected) != target.TableColumnCount || len(mapping.Delimiter.Cells) != target.TableColumnCount {
+	if len(expected) != target.tableData().TableColumnCount || len(mapping.Delimiter.Cells) != target.tableData().TableColumnCount {
 		return tableAlignmentPatchPlan{}, ErrInvalidReplacement
 	}
 	plan := tableAlignmentPatchPlan{
-		patches:    make([]source.Patch, 0, target.TableColumnCount),
-		transforms: make([]patchTransform, 0, target.TableColumnCount),
+		patches:    make([]source.Patch, 0, target.tableData().TableColumnCount),
+		transforms: make([]patchTransform, 0, target.tableData().TableColumnCount),
 	}
 	for column, alignment := range expected {
 		lexical, ok := sourceTableDelimiterAlignment(alignment)
 		if !ok {
 			return tableAlignmentPatchPlan{}, ErrInvalidReplacement
 		}
-		if alignment == target.TableAlignments[column] {
+		if alignment == target.tableData().TableAlignments[column] {
 			continue
 		}
 		delimiterRange := mapping.Delimiter.Cells[column].ContentRange
@@ -104,16 +104,16 @@ func (d *Document) validateTableAlignmentCandidate(target Node, expected []Table
 	if candidateIndex.rowCount != d.promotedTableRowCount() {
 		return ErrInvalidReplacement
 	}
-	policy := tableSurvivorPolicy{tableAnchor: target.TableAnchor, alignments: expected}
+	policy := tableSurvivorPolicy{tableAnchor: target.tableData().TableAnchor, alignments: expected}
 	if err := d.validateOriginalTableModelAfterPatchesWithPolicy(candidate, candidateIndex, plan.transforms, nil, &policy); err != nil {
 		return err
 	}
-	candidateTable, ok := promotedTableAtAnchor(candidateDocument, target.TableAnchor)
+	candidateTable, ok := promotedTableAtAnchor(candidateDocument, target.tableData().TableAnchor)
 	if !ok || promotedTableCount(candidateDocument) != promotedTableCount(d) ||
-		candidateTable.TableColumnCount != target.TableColumnCount ||
-		candidateTable.TableBodyRowCount != target.TableBodyRowCount ||
+		candidateTable.tableData().TableColumnCount != target.tableData().TableColumnCount ||
+		candidateTable.tableData().TableBodyRowCount != target.tableData().TableBodyRowCount ||
 		candidateTable.Range != shiftedEnd(target.Range, plan.totalDelta) ||
-		!slices.Equal(candidateTable.TableAlignments, expected) {
+		!slices.Equal(candidateTable.tableData().TableAlignments, expected) {
 		return ErrInvalidReplacement
 	}
 	return nil
@@ -153,16 +153,16 @@ func (d *Document) validateAppendedTableRowCandidate(target Node, fragment, cand
 		return err
 	}
 	insertAt := insertRange.Start
-	if !candidateOwnedTableRow(candidate, candidateIndex, insertAt, fragment, target.TableColumnCount, target.TableAnchor, target.TableAlignments) {
+	if !candidateOwnedTableRow(candidate, candidateIndex, insertAt, fragment, target.tableData().TableColumnCount, target.tableData().TableAnchor, target.tableData().TableAlignments) {
 		return ErrInvalidReplacement
 	}
-	candidateTable, ok := promotedTableAtAnchor(candidateDocument, target.TableAnchor)
+	candidateTable, ok := promotedTableAtAnchor(candidateDocument, target.tableData().TableAnchor)
 	if !ok || promotedTableCount(candidateDocument) != promotedTableCount(d) ||
-		candidateTable.TableColumnCount != target.TableColumnCount ||
-		candidateTable.TableBodyRowCount != target.TableBodyRowCount+1 ||
-		candidateTable.TableLastBodyRowAnchor != insertAt ||
+		candidateTable.tableData().TableColumnCount != target.tableData().TableColumnCount ||
+		candidateTable.tableData().TableBodyRowCount != target.tableData().TableBodyRowCount+1 ||
+		candidateTable.tableData().TableLastBodyRowAnchor != insertAt ||
 		candidateTable.Range != (Range{Start: target.Range.Start, End: target.Range.End + len(fragment)}) ||
-		!slices.Equal(candidateTable.TableAlignments, target.TableAlignments) {
+		!slices.Equal(candidateTable.tableData().TableAlignments, target.tableData().TableAlignments) {
 		return ErrInvalidReplacement
 	}
 	return nil
@@ -197,7 +197,7 @@ func promotedTableAtAnchor(document *Document, anchor int) (Node, bool) {
 	var result Node
 	found := false
 	for _, node := range document.nodes {
-		if node.Kind != KindTable || !node.Editable || node.TableAnchor != anchor {
+		if node.Kind != KindTable || !node.Editable || node.tableData().TableAnchor != anchor {
 			continue
 		}
 		if found {

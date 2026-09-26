@@ -22,7 +22,7 @@ func (d *Document) PrepareInsertTableColumn(id NodeID, column int, header []byte
 	}
 
 	templateColumn := column
-	if templateColumn == target.TableColumnCount {
+	if templateColumn == target.tableData().TableColumnCount {
 		templateColumn--
 	}
 	delimiterContent, err := source.TableDelimiterAlignmentReplacement(d.source, rows[1].Cells[templateColumn].ContentRange, lexicalAlignment)
@@ -39,9 +39,9 @@ func (d *Document) PrepareInsertTableColumn(id NodeID, column int, header []byte
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	expectedAlignments := insertTableAlignment(target.TableAlignments, column, alignment)
+	expectedAlignments := insertTableAlignment(target.tableData().TableAlignments, column, alignment)
 	candidateTable, err := d.validateTableColumnMutationCandidate(
-		candidate, target, transforms, target.TableColumnCount+1,
+		candidate, target, transforms, target.tableData().TableColumnCount+1,
 		target.Range.End+totalInserted, expectedAlignments,
 	)
 	if err != nil || !candidateInsertedTableColumn(candidate, candidateTable, column, expectedContents) {
@@ -56,7 +56,7 @@ func (d *Document) PrepareRemoveTableColumn(id NodeID, column int) (ChangeSet, e
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if target.TableColumnCount <= 1 || column < 0 || column >= target.TableColumnCount {
+	if target.tableData().TableColumnCount <= 1 || column < 0 || column >= target.tableData().TableColumnCount {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
 	rows, err := d.completeTableRows(target, mapping)
@@ -81,9 +81,9 @@ func (d *Document) PrepareRemoveTableColumn(id NodeID, column int) (ChangeSet, e
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	expectedAlignments := removeTableAlignment(target.TableAlignments, column)
+	expectedAlignments := removeTableAlignment(target.tableData().TableAlignments, column)
 	if _, err := d.validateTableColumnMutationCandidate(
-		candidate, target, transforms, target.TableColumnCount-1,
+		candidate, target, transforms, target.tableData().TableColumnCount-1,
 		target.Range.End-totalRemoved, expectedAlignments,
 	); err != nil {
 		return ChangeSet{}, err
@@ -97,7 +97,7 @@ func (d *Document) PrepareMoveTableColumn(id NodeID, from, to int) (ChangeSet, e
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	if from < 0 || from >= target.TableColumnCount || to < 0 || to >= target.TableColumnCount {
+	if from < 0 || from >= target.tableData().TableColumnCount || to < 0 || to >= target.tableData().TableColumnCount {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
 	if from == to {
@@ -107,7 +107,7 @@ func (d *Document) PrepareMoveTableColumn(id NodeID, from, to int) (ChangeSet, e
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	order := tableColumnMoveOrder(target.TableColumnCount, from, to)
+	order := tableColumnMoveOrder(target.tableData().TableColumnCount, from, to)
 	if order == nil {
 		return ChangeSet{}, ErrInvalidReplacement
 	}
@@ -127,9 +127,9 @@ func (d *Document) PrepareMoveTableColumn(id NodeID, from, to int) (ChangeSet, e
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	expectedAlignments := reorderTableAlignments(target.TableAlignments, order)
+	expectedAlignments := reorderTableAlignments(target.tableData().TableAlignments, order)
 	if _, err := d.validateTableColumnMutationCandidate(
-		candidate, target, transforms, target.TableColumnCount,
+		candidate, target, transforms, target.tableData().TableColumnCount,
 		target.Range.End, expectedAlignments,
 	); err != nil {
 		return ChangeSet{}, err
@@ -138,13 +138,13 @@ func (d *Document) PrepareMoveTableColumn(id NodeID, from, to int) (ChangeSet, e
 }
 
 func validTableColumnInsertionRequest(target Node, column int, alignmentOK bool, bodyCount int) bool {
-	if column < 0 || column > target.TableColumnCount {
+	if column < 0 || column > target.tableData().TableColumnCount {
 		return false
 	}
 	if !alignmentOK {
 		return false
 	}
-	return bodyCount == target.TableBodyRowCount
+	return bodyCount == target.tableData().TableBodyRowCount
 }
 
 func tableColumnInsertionContents(header, delimiter []byte, body [][]byte) [][]byte {
@@ -181,19 +181,19 @@ func (d *Document) validateTableColumnMutationCandidate(candidate []byte, target
 	if err != nil {
 		return Node{}, err
 	}
-	policy := tableSurvivorPolicy{tableAnchor: target.TableAnchor, skipRows: true, skipCells: true}
+	policy := tableSurvivorPolicy{tableAnchor: target.tableData().TableAnchor, skipRows: true, skipCells: true}
 	if err := d.validateOriginalTableModelAfterPatchesWithPolicy(candidate, candidateIndex, transforms, nil, &policy); err != nil {
 		return Node{}, err
 	}
-	candidateTable, ok := promotedTableAtAnchor(candidateDocument, target.TableAnchor)
+	candidateTable, ok := promotedTableAtAnchor(candidateDocument, target.tableData().TableAnchor)
 	if !ok || promotedTableCount(candidateDocument) != promotedTableCount(d) {
 		return Node{}, ErrInvalidReplacement
 	}
-	if candidateTable.TableColumnCount != expectedColumnCount || candidateTable.TableBodyRowCount != target.TableBodyRowCount {
+	if candidateTable.tableData().TableColumnCount != expectedColumnCount || candidateTable.tableData().TableBodyRowCount != target.tableData().TableBodyRowCount {
 		return Node{}, ErrInvalidReplacement
 	}
 	expectedRange := Range{Start: target.Range.Start, End: expectedEnd}
-	if candidateTable.Range != expectedRange || !slices.Equal(candidateTable.TableAlignments, expectedAlignments) {
+	if candidateTable.Range != expectedRange || !slices.Equal(candidateTable.tableData().TableAlignments, expectedAlignments) {
 		return Node{}, ErrInvalidReplacement
 	}
 	if !completeCandidateTableRows(candidate, candidateTable) {
@@ -203,7 +203,7 @@ func (d *Document) validateTableColumnMutationCandidate(candidate []byte, target
 }
 
 func (d *Document) completeTableRows(target Node, mapping source.TableMapping) ([]source.TableRowMapping, error) {
-	rows, err := source.MapCompleteTableRows(d.source, mapping, target.TableColumnCount, target.TableBodyRowCount)
+	rows, err := source.MapCompleteTableRows(d.source, mapping, target.tableData().TableColumnCount, target.tableData().TableBodyRowCount)
 	if err != nil {
 		return nil, ErrInvalidReplacement
 	}
@@ -215,7 +215,7 @@ func completeCandidateTableRows(candidate []byte, table Node) bool {
 	if !ok {
 		return false
 	}
-	_, err := source.MapCompleteTableRows(candidate, mapping, table.TableColumnCount, table.TableBodyRowCount)
+	_, err := source.MapCompleteTableRows(candidate, mapping, table.tableData().TableColumnCount, table.tableData().TableBodyRowCount)
 	return err == nil
 }
 
@@ -224,8 +224,8 @@ func candidateInsertedTableColumn(candidate []byte, table Node, column int, expe
 	if !ok {
 		return false
 	}
-	rows, err := source.MapCompleteTableRows(candidate, mapping, table.TableColumnCount, table.TableBodyRowCount)
-	if err != nil || len(rows) != len(expectedContents) || column < 0 || column >= table.TableColumnCount {
+	rows, err := source.MapCompleteTableRows(candidate, mapping, table.tableData().TableColumnCount, table.tableData().TableBodyRowCount)
+	if err != nil || len(rows) != len(expectedContents) || column < 0 || column >= table.tableData().TableColumnCount {
 		return false
 	}
 	for index, row := range rows {

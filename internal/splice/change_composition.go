@@ -220,7 +220,7 @@ func compositionOwnedRange(document *Document, node Node) Range {
 	case KindListItem:
 		return node.ListItemLineRange
 	case KindTableCell:
-		return node.TableCellRange
+		return node.tableData().TableCellRange
 	case KindTableRow:
 		return node.Range
 	case KindTable:
@@ -246,17 +246,18 @@ func compositionOwnedRange(document *Document, node Node) Range {
 }
 
 func compositionNodeSemantic(document *Document, node Node, index int, indexes map[NodeID]int, owned Range) compositionNodeSemanticView {
+	nodeTable := node.tableData()
 	view := compositionNodeSemanticView{
 		kind:                node.Kind,
 		survivor:            removalSurvivorSemanticSignature(node),
-		tableAlignments:     compositionTableAlignments(node.TableAlignments),
+		tableAlignments:     compositionTableAlignments(nodeTable.TableAlignments),
 		listSubtreeComplete: node.ListSubtreeComplete,
 		listChildCount:      node.ListChildCount,
 		listParent:          relativeNodeIndex(index, node.ListParentID, indexes),
-		table:               relativeNodeIndex(index, node.TableID, indexes),
-		row:                 relativeNodeIndex(index, node.TableRowID, indexes),
-		previousRow:         relativeNodeIndex(index, node.TablePreviousRowID, indexes),
-		nextRow:             relativeNodeIndex(index, node.TableNextRowID, indexes),
+		table:               relativeNodeIndex(index, nodeTable.TableID, indexes),
+		row:                 relativeNodeIndex(index, nodeTable.TableRowID, indexes),
+		previousRow:         relativeNodeIndex(index, nodeTable.TablePreviousRowID, indexes),
+		nextRow:             relativeNodeIndex(index, nodeTable.TableNextRowID, indexes),
 	}
 	if node.Kind == KindBlockquote {
 		if mapping, ok := document.blockquoteSource(node); ok {

@@ -150,7 +150,7 @@ func (d *Document) planTableRowMove(id, anchorID NodeID, after bool) (tableRowMo
 	if err != nil {
 		return tableRowMovePlan{}, false, err
 	}
-	if moved.TableAnchor != anchor.TableAnchor {
+	if moved.tableData().TableAnchor != anchor.tableData().TableAnchor {
 		return tableRowMovePlan{}, false, ErrInvalidReplacement
 	}
 	plan := tableRowMovePlan{

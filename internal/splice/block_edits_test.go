@@ -474,8 +474,8 @@ func TestReplaceTableCellPreservesUntouchedTableSource(t *testing.T) {
 				t.Fatal("mapped table cell Editable = false, want true")
 			}
 			mapping, ok := remapTableCellSource(tt.source, target)
-			if !ok || mapping.ContentRange != target.ContentRange || mapping.Column != target.TableColumn {
-				t.Fatalf("remapped table capability = %+v, %v; target content/column = %v/%d", mapping, ok, target.ContentRange, target.TableColumn)
+			if !ok || mapping.ContentRange != target.ContentRange || mapping.Column != target.TableData().TableColumn {
+				t.Fatalf("remapped table capability = %+v, %v; target content/column = %v/%d", mapping, ok, target.ContentRange, target.TableData().TableColumn)
 			}
 
 			prefix := append([]byte(nil), tt.source[:target.ContentRange.Start]...)

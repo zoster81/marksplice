@@ -17,8 +17,8 @@ func remapTableCellSource(input []byte, node Node) (source.TableCellMapping, boo
 	if node.Kind != KindTableCell || !node.Editable {
 		return source.TableCellMapping{}, false
 	}
-	mapping, err := source.MapTableCell(input, node.ContentRange, node.TableColumn)
-	if err != nil || mapping.Range != node.TableCellRange || mapping.Column != node.TableColumn {
+	mapping, err := source.MapTableCell(input, node.ContentRange, node.tableData().TableColumn)
+	if err != nil || mapping.Range != node.tableData().TableCellRange || mapping.Column != node.tableData().TableColumn {
 		return source.TableCellMapping{}, false
 	}
 	return mapping, true
@@ -28,9 +28,9 @@ func remapTableRowSource(input []byte, node Node) (source.TableRowMapping, bool)
 	if node.Kind != KindTableRow || !node.Editable {
 		return source.TableRowMapping{}, false
 	}
-	mapping, err := source.MapTableRow(input, node.TableRowAnchor)
-	if err != nil || node.TableRowAnchor != node.TableRowSourceAnchor || mapping.Anchor != node.TableRowSourceAnchor || mapping.Range != node.ContentRange || mapping.LineRange != node.Range ||
-		len(mapping.Cells) != node.TableColumnCount {
+	mapping, err := source.MapTableRow(input, node.tableData().TableRowAnchor)
+	if err != nil || node.tableData().TableRowAnchor != node.tableData().TableRowSourceAnchor || mapping.Anchor != node.tableData().TableRowSourceAnchor || mapping.Range != node.ContentRange || mapping.LineRange != node.Range ||
+		len(mapping.Cells) != node.tableData().TableColumnCount {
 		return source.TableRowMapping{}, false
 	}
 	return mapping, true
@@ -40,9 +40,9 @@ func remapTableSource(input []byte, node Node) (source.TableMapping, bool) {
 	if node.Kind != KindTable || !node.Editable {
 		return source.TableMapping{}, false
 	}
-	mapping, err := source.MapTable(input, node.TableAnchor, node.TableBodyRowCount, node.TableLastBodyRowAnchor)
-	if err != nil || mapping.Range != node.Range || len(mapping.Header.Cells) != node.TableColumnCount ||
-		len(mapping.Delimiter.Cells) != node.TableColumnCount || len(mapping.DelimiterAlignments) != node.TableColumnCount {
+	mapping, err := source.MapTable(input, node.tableData().TableAnchor, node.tableData().TableBodyRowCount, node.tableData().TableLastBodyRowAnchor)
+	if err != nil || mapping.Range != node.Range || len(mapping.Header.Cells) != node.tableData().TableColumnCount ||
+		len(mapping.Delimiter.Cells) != node.tableData().TableColumnCount || len(mapping.DelimiterAlignments) != node.tableData().TableColumnCount {
 		return source.TableMapping{}, false
 	}
 	return mapping, true

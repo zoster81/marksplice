@@ -156,24 +156,24 @@ func TestDocumentNodeCopiesAndRemappedTableRowsDoNotAlias(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	rows := nodesOfKind(doc.Nodes(), KindTableRow)
-	if len(rows) != 1 || len(rows[0].TableAlignments) != 2 {
+	if len(rows) != 1 || len(rows[0].TableData().TableAlignments) != 2 {
 		t.Fatalf("table rows = %+v, want one row with two alignments", rows)
 	}
 	rowID := rows[0].ID
-	rows[0].TableAlignments[0] = TableAlignmentCenter
+	rows[0].TableData().TableAlignments[0] = TableAlignmentCenter
 
 	again := nodesOfKind(doc.Nodes(), KindTableRow)
-	if len(again) != 1 || again[0].TableAlignments[0] != TableAlignmentLeft || again[0].TableAlignments[1] != TableAlignmentRight {
-		t.Fatalf("Nodes() table copy = alignments %v, want [left right]", again[0].TableAlignments)
+	if len(again) != 1 || again[0].TableData().TableAlignments[0] != TableAlignmentLeft || again[0].TableData().TableAlignments[1] != TableAlignmentRight {
+		t.Fatalf("Nodes() table copy = alignments %v, want [left right]", again[0].TableData().TableAlignments)
 	}
 	node, ok := doc.Node(rowID)
 	if !ok {
 		t.Fatalf("Node(%q) ok = false", rowID)
 	}
-	node.TableAlignments[1] = TableAlignmentCenter
+	node.TableData().TableAlignments[1] = TableAlignmentCenter
 	nodeAgain, ok := doc.Node(rowID)
-	if !ok || nodeAgain.TableAlignments[0] != TableAlignmentLeft || nodeAgain.TableAlignments[1] != TableAlignmentRight {
-		t.Fatalf("Node() table copy = alignments %v, %v; want [left right], true", nodeAgain.TableAlignments, ok)
+	if !ok || nodeAgain.TableData().TableAlignments[0] != TableAlignmentLeft || nodeAgain.TableData().TableAlignments[1] != TableAlignmentRight {
+		t.Fatalf("Node() table copy = alignments %v, %v; want [left right], true", nodeAgain.TableData().TableAlignments, ok)
 	}
 
 	mapping, ok := doc.TableRowSource(rowID)
