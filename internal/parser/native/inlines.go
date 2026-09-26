@@ -118,8 +118,9 @@ func parseInlineBlocks(source []byte, blocks []inlineBlock, definitions []refere
 
 func parseInlineBlocksIndexed(source []byte, blocks []inlineBlock, definitions referenceDefinitionIndex) inlineParseResult {
 	result := inlineParseResult{}
+	var resolver delimiterResolver
 	for _, block := range blocks {
-		appendInlineAnalysis(&result, analyzeInlineBlock(source, block, definitions))
+		appendInlineAnalysis(&result, analyzeInlineBlock(source, block, definitions, &resolver))
 	}
 	sortInlineParseResult(&result)
 	return result
@@ -128,8 +129,9 @@ func parseInlineBlocksIndexed(source []byte, blocks []inlineBlock, definitions r
 func analyzeInlineBlocks(source []byte, blocks []inlineBlock, definitions []referenceDefinitionParse) []inlineAnalysis {
 	resolved := basicReferenceDefinitions(definitions)
 	analyses := make([]inlineAnalysis, len(blocks))
+	var resolver delimiterResolver
 	for index, block := range blocks {
-		analyses[index] = analyzeInlineBlock(source, block, resolved)
+		analyses[index] = analyzeInlineBlock(source, block, resolved, &resolver)
 	}
 	return analyses
 }
@@ -143,8 +145,9 @@ func parseDocumentInlineFacts(source []byte, blocks blockParseResult) (inlinePar
 	results := make([]inlineParseResult, len(blocks.inlines))
 	hasMath := bytes.IndexByte(source, '$') >= 0
 	var dollarMath []parser.MathExpressionObservation
+	var resolver delimiterResolver
 	for index, block := range blocks.inlines {
-		analysis := analyzeInlineBlock(source, block, definitions)
+		analysis := analyzeInlineBlock(source, block, definitions, &resolver)
 		completeBackendHeading(source, blocks.nodes, headings, analysis)
 		if hasMath {
 			dollarMath = appendNativeInlineDollarMath(source, analysis, dollarMath)
@@ -211,7 +214,7 @@ func sortInlineParseResult(result *inlineParseResult) {
 	}
 }
 
-func analyzeInlineBlock(source []byte, block inlineBlock, definitions referenceDefinitionIndex) inlineAnalysis {
+func analyzeInlineBlock(source []byte, block inlineBlock, definitions referenceDefinitionIndex, resolver *delimiterResolver) inlineAnalysis {
 	if !hasInlineSyntax(source, block) {
 		return inlineAnalysis{block: block}
 	}
@@ -221,7 +224,7 @@ func analyzeInlineBlock(source []byte, block inlineBlock, definitions referenceD
 	ownerExclusions := inlineOwnerExclusions(block, owners, nil)
 	composites := collectCompositeInlinesIndexed(source, block, owners, definitions, ownerExclusions)
 	delimiterExclusions := appendCompositeDelimiterExclusions(ownerExclusions, block, composites)
-	delimiters := parseDelimiterObservationsWithExclusions(source, block, owners, barriers, composites, delimiterExclusions)
+	delimiters := parseDelimiterObservationsWithExclusions(source, block, owners, barriers, composites, delimiterExclusions, resolver)
 	relationshipExclusions := promoteRelationshipExclusions(delimiterExclusions, block, composites)
 	compositeNodes := projectCompositeObservations(source, block, owners, delimiters.composites, delimiters.matches)
 	nodes := primaryInlineOwnerObservations(source, block, owners, delimiters.composites, len(compositeNodes)+len(delimiters.nodes))

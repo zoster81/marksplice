@@ -18,6 +18,8 @@ func TestNativeDelimiterAdapterPreservesSharedResolverMatches(t *testing.T) {
 		return state % limit
 	}
 	matchedSamples := 0
+	var reusable delimiterResolver
+	var retained, retainedWant []delimiterMatch
 
 	for sample := 0; sample < 10000; sample++ {
 		count := int(next(8)) + 1
@@ -53,6 +55,14 @@ func TestNativeDelimiterAdapterPreservesSharedResolverMatches(t *testing.T) {
 		}
 
 		nativeMatches := processDelimiters(append([]delimiterRun(nil), runs...))
+		ownedMatches := reusable.resolveOwned(runs)
+		if !reflect.DeepEqual(ownedMatches, nativeMatches) {
+			t.Fatalf("sample %d retained resolver differs from fresh resolution", sample)
+		}
+		if retained == nil && len(ownedMatches) != 0 {
+			retained = ownedMatches
+			retainedWant = append([]delimiterMatch(nil), ownedMatches...)
+		}
 		sharedMatches := parser.ResolveDelimiterRuns(shared)
 		if len(nativeMatches) != 0 {
 			matchedSamples++
@@ -78,6 +88,9 @@ func TestNativeDelimiterAdapterPreservesSharedResolverMatches(t *testing.T) {
 	}
 	if matchedSamples < 1000 {
 		t.Fatalf("generated only %d matched samples", matchedSamples)
+	}
+	if !reflect.DeepEqual(retained, retainedWant) {
+		t.Fatal("later resolver reuse changed an owned result")
 	}
 }
 

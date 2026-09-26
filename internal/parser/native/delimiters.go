@@ -48,13 +48,14 @@ func parseDelimiterObservationsIndexed(source []byte, block inlineBlock, owners 
 	ownerExclusions := inlineOwnerExclusions(block, owners, nil)
 	composites := collectCompositeInlinesIndexed(source, block, owners, definitions, ownerExclusions)
 	exclusions := appendCompositeDelimiterExclusions(ownerExclusions, block, composites)
-	return parseDelimiterObservationsWithExclusions(source, block, owners, barriers, composites, exclusions)
+	var resolver delimiterResolver
+	return parseDelimiterObservationsWithExclusions(source, block, owners, barriers, composites, exclusions, &resolver)
 }
 
-func parseDelimiterObservationsWithExclusions(source []byte, block inlineBlock, owners []inlineSpan, barriers []backtickRun, composites []compositeInline, exclusions [][]parser.Range) delimiterParseResult {
+func parseDelimiterObservationsWithExclusions(source []byte, block inlineBlock, owners []inlineSpan, barriers []backtickRun, composites []compositeInline, exclusions [][]parser.Range, resolver *delimiterResolver) delimiterParseResult {
 	barriers = activeBacktickBarriers(barriers, exclusions)
 	runs := collectDelimiterRuns(source, block, exclusions)
-	matches := processDelimiters(runs)
+	matches := resolver.resolveOwned(runs)
 	projection := newDelimiterProjectionIndex(len(block.segments), owners, composites, matches, barriers, runs)
 	nodes := make([]parser.Node, 0, len(matches))
 	for index, match := range matches {
@@ -296,11 +297,18 @@ func processDelimiters(runs []delimiterRun) []delimiterMatch {
 }
 
 // delimiterResolver owns temporary conversion and resolution storage. A result
-// must be consumed before the next call; ordinary parsing uses a fresh resolver.
+// from resolve must be consumed before the next call. resolveOwned detaches the
+// returned matches so separate inline analyses can share only temporary scratch.
 type delimiterResolver struct {
 	sharedRuns []parser.DelimiterRun
 	shared     parser.DelimiterRunResolver
 	matches    []delimiterMatch
+}
+
+func (r *delimiterResolver) resolveOwned(runs []delimiterRun) []delimiterMatch {
+	matches := r.resolve(runs)
+	r.matches = nil
+	return matches
 }
 
 func (r *delimiterResolver) resolve(runs []delimiterRun) []delimiterMatch {
