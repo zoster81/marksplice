@@ -165,14 +165,7 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 	}
 	if indentedCodeLine(source, line) {
 		semantic, next := parseIndentedCodeLines(source, lines, index)
-		range_ := semanticPhysicalBlockRange(lines, index, next, line.physicalStart)
-		capture.add(parent, parser.SemanticEvent{
-			Kind:         parser.SemanticCodeBlock,
-			Range:        range_,
-			ContentRange: semanticRangesEnvelope(semantic),
-			Value:        semanticIndentedCodeValue(source, lines[index:next]),
-			Fenced:       false,
-		}, parser.Range{})
+		capture.addIndentedCode(source, lines[index:next], semantic, parent)
 		result.semantic = append(result.semantic, semantic...)
 		result.lastLeafParagraph = false
 		recordRoot(result, rootBlock{kind: rootBlockOther, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
@@ -185,19 +178,7 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 			result.nodes = append(result.nodes, node)
 			result.fencedCodeDetails = append(result.fencedCodeDetails, detail)
 		}
-		content := parser.Range{}
-		if len(detail.ContentRanges) == 1 {
-			content = detail.ContentRanges[0]
-		}
-		capture.add(parent, parser.SemanticEvent{
-			Kind:         parser.SemanticCodeBlock,
-			Range:        node.Range,
-			ContentRange: content,
-			Value:        semanticFencedCodeValue(source, detail.ContentRanges),
-			Info:         detail.Info,
-			Language:     detail.Language,
-			Fenced:       true,
-		}, parser.Range{})
+		capture.addFencedCode(source, node.Range, detail, parent)
 		result.semantic = append(result.semantic, semantic...)
 		result.lastLeafParagraph = false
 		recordRoot(result, rootBlock{kind: rootBlockOther}, blankBeforeRoot)
@@ -206,7 +187,7 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 	if opening, ok := htmlBlockStart(source, line); ok {
 		node, semantic, next := parseHTMLBlock(source, lines, index, opening)
 		result.nodes = append(result.nodes, node)
-		capture.add(parent, parser.SemanticEvent{Kind: parser.SemanticHTMLBlock, Range: node.Range, ContentRange: node.Range, Value: semanticLogicalLinesValue(source, lines[index:next])}, parser.Range{})
+		capture.addHTMLBlock(source, lines[index:next], node.Range, parent)
 		result.semantic = append(result.semantic, semantic...)
 		result.lastLeafParagraph = false
 		recordRoot(result, rootBlock{kind: rootBlockOther, hasLineAnchor: true, lineAnchor: line.physicalStart}, blankBeforeRoot)
@@ -216,7 +197,7 @@ func parseLeafBlock(result *blockParseResult, source []byte, lines []physicalLin
 		if node.Kind != parser.KindUnknown {
 			result.nodes = append(result.nodes, node)
 		}
-		if reference.projectable && reference.destination != "" {
+		if capture != nil && reference.projectable && reference.destination != "" {
 			range_ := semanticReferenceDefinitionRange(lines, reference, node.Range.Start)
 			capture.add(parent, parser.SemanticEvent{
 				Kind:         parser.SemanticReferenceDefinition,

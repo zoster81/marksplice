@@ -43,6 +43,49 @@ func (capture *semanticBlockCapture) add(parent int, event parser.SemanticEvent,
 	return index
 }
 
+// Materialize renderer payloads only for the explicitly requested semantic walk.
+// A nil capture is the ordinary observation parser, which needs source ranges only.
+func (capture *semanticBlockCapture) addIndentedCode(source []byte, lines []physicalLine, semantic []parser.Range, parent int) {
+	if capture == nil {
+		return
+	}
+	capture.add(parent, parser.SemanticEvent{
+		Kind:         parser.SemanticCodeBlock,
+		Range:        semanticPhysicalBlockRange(lines, 0, len(lines), lines[0].physicalStart),
+		ContentRange: semanticRangesEnvelope(semantic),
+		Value:        semanticIndentedCodeValue(source, lines),
+	}, parser.Range{})
+}
+
+func (capture *semanticBlockCapture) addFencedCode(source []byte, range_ parser.Range, detail parser.FencedCodeDetail, parent int) {
+	if capture == nil {
+		return
+	}
+	content := parser.Range{}
+	if len(detail.ContentRanges) == 1 {
+		content = detail.ContentRanges[0]
+	}
+	capture.add(parent, parser.SemanticEvent{
+		Kind:         parser.SemanticCodeBlock,
+		Range:        range_,
+		ContentRange: content,
+		Value:        semanticFencedCodeValue(source, detail.ContentRanges),
+		Info:         detail.Info,
+		Language:     detail.Language,
+		Fenced:       true,
+	}, parser.Range{})
+}
+
+func (capture *semanticBlockCapture) addHTMLBlock(source []byte, lines []physicalLine, range_ parser.Range, parent int) {
+	if capture == nil {
+		return
+	}
+	capture.add(parent, parser.SemanticEvent{
+		Kind: parser.SemanticHTMLBlock, Range: range_, ContentRange: range_,
+		Value: semanticLogicalLinesValue(source, lines),
+	}, parser.Range{})
+}
+
 func (capture *semanticBlockCapture) update(index int, update func(*parser.SemanticEvent)) {
 	if capture == nil || index < 0 || index >= len(capture.blocks) {
 		return
