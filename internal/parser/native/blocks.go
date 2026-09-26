@@ -392,7 +392,7 @@ func parseBlockquoteOpening(source []byte, line physicalLine) (anchor, contentSt
 
 func blockquoteContentLine(source []byte, line physicalLine, anchor, contentStart int) physicalLine {
 	_, indentColumns := leadingIndent(source, line)
-	markerColumn := line.columnOffset + indentColumns
+	markerColumn := int(line.columnPhase) + indentColumns
 	virtualIndent := 0
 	if contentStart > anchor+1 && source[anchor+1] == '\t' {
 		virtualIndent = 4 - (markerColumn+1)%4 - 1

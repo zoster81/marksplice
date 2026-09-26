@@ -3,7 +3,8 @@ package native
 import "bytes"
 
 // physicalLine is a byte-preserving view over one physical source line.
-// columnOffset is the logical visual column before virtualIndent at start.
+// columnPhase is the logical visual column modulo four before virtualIndent
+// at start. Only tab-stop alignment needs this value, not the absolute column.
 // virtualIndent records columns left behind when a tab is only partially
 // consumed by a container indentation without inventing byte offsets.
 type physicalLine struct {
@@ -11,8 +12,8 @@ type physicalLine struct {
 	start         int
 	end           int
 	next          int
-	columnOffset  int
-	virtualIndent int
+	columnPhase   uint8
+	virtualIndent uint8
 }
 
 func physicalLines(source []byte) []physicalLine {
@@ -60,13 +61,13 @@ func sourceIndentHasTab(source []byte, line physicalLine, bytes_ int) bool {
 
 func leadingIndent(source []byte, line physicalLine) (bytes_, columns int) {
 	position := line.start
-	columns = line.virtualIndent
+	columns = int(line.virtualIndent)
 	for position < line.end {
 		switch source[position] {
 		case ' ':
 			columns++
 		case '\t':
-			columns += 4 - (line.columnOffset+columns)%4
+			columns += 4 - (int(line.columnPhase)+columns)%4
 		default:
 			return position - line.start, columns
 		}
@@ -76,7 +77,7 @@ func leadingIndent(source []byte, line physicalLine) (bytes_, columns int) {
 }
 
 func advancePhysicalLineStart(source []byte, line physicalLine, start, virtualIndent int) physicalLine {
-	column := line.columnOffset + line.virtualIndent
+	column := int(line.columnPhase) + int(line.virtualIndent)
 	for position := line.start; position < start; position++ {
 		if source[position] == '\t' {
 			column += 4 - column%4
@@ -85,8 +86,8 @@ func advancePhysicalLineStart(source []byte, line physicalLine, start, virtualIn
 		}
 	}
 	line.start = start
-	line.virtualIndent = virtualIndent
-	line.columnOffset = column - virtualIndent
+	line.virtualIndent = uint8(virtualIndent)
+	line.columnPhase = uint8(column-virtualIndent) & 3
 	return line
 }
 
@@ -103,13 +104,13 @@ func stripIndentColumns(source []byte, line physicalLine, columns int) physicalL
 		return line
 	}
 	remaining := columns
-	if line.virtualIndent >= remaining {
-		line.columnOffset += remaining
-		line.virtualIndent -= remaining
+	if int(line.virtualIndent) >= remaining {
+		line.columnPhase = (line.columnPhase + uint8(remaining)) & 3
+		line.virtualIndent -= uint8(remaining)
 		return line
 	}
-	line.columnOffset += line.virtualIndent
-	remaining -= line.virtualIndent
+	line.columnPhase = (line.columnPhase + line.virtualIndent) & 3
+	remaining -= int(line.virtualIndent)
 	line.virtualIndent = 0
 	position := line.start
 	for position < line.end && remaining > 0 {
@@ -118,19 +119,19 @@ func stripIndentColumns(source []byte, line physicalLine, columns int) physicalL
 		case ' ':
 			width = 1
 		case '\t':
-			width = 4 - line.columnOffset%4
+			width = 4 - int(line.columnPhase)
 		default:
 			line.start = position
 			return line
 		}
 		position++
 		if width > remaining {
-			line.columnOffset += remaining
+			line.columnPhase = (line.columnPhase + uint8(remaining)) & 3
 			line.start = position
-			line.virtualIndent = width - remaining
+			line.virtualIndent = uint8(width - remaining)
 			return line
 		}
-		line.columnOffset += width
+		line.columnPhase = (line.columnPhase + uint8(width)) & 3
 		remaining -= width
 	}
 	line.start = position

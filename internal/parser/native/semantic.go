@@ -474,7 +474,7 @@ func semanticIndentedCodeValue(source []byte, lines []physicalLine) string {
 	for _, line := range lines[:lastContent] {
 		stripped := stripIndentColumns(source, line, 4)
 		if stripped.virtualIndent > 0 {
-			result.WriteString(strings.Repeat(" ", stripped.virtualIndent))
+			result.WriteString(strings.Repeat(" ", int(stripped.virtualIndent)))
 		}
 		if stripped.start < stripped.end {
 			result.Write(source[stripped.start:stripped.end])
