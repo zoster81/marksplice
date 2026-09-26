@@ -8,6 +8,14 @@ func (d *Document) SourceLen() int {
 	return len(d.source)
 }
 
+// SourceText returns an immutable copy of the already-normalized source snapshot.
+func (d *Document) SourceText() string {
+	if d == nil {
+		return ""
+	}
+	return string(d.source)
+}
+
 // NodeSelectionAt returns lightweight public-promotion facts plus the operation-oriented
 // source span used by structural queries, without cloning the full internal node.
 func (d *Document) NodeSelectionAt(index int) (NodeSummary, Range, bool) {

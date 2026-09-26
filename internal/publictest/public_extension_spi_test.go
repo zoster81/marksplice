@@ -1,13 +1,71 @@
 package publictest
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/zoster81/marksplice"
 )
+
+func TestExtensionSourceUsesTheNormalizedImmutableSnapshot(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{
+		"", "plain [[page]]\n", "\x00[[page]]\n", "before\x00\x00[[page]]\x00\n",
+		"# caf\u00e9\x00\n\n[[page]]\n", "\xff\x00[[page]]\n", "\x00\x00",
+	} {
+		t.Run(fmt.Sprintf("%q", input), func(t *testing.T) {
+			t.Parallel()
+			callerSource := []byte(input)
+			want := strings.ReplaceAll(input, "\x00", "\ufffd")
+			var received string
+			document, err := marksplice.ParseWithOptions(callerSource, marksplice.ParseOptions{
+				Extensions: []marksplice.Extension{{
+					ID: "example.org/snapshot",
+					Recognize: func(source marksplice.ExtensionSource) ([]marksplice.ExtensionMatch, error) {
+						received = source.Text()
+						start := strings.Index(received, "[[page]]")
+						if start < 0 {
+							return nil, nil
+						}
+						return []marksplice.ExtensionMatch{{Kind: "page", Range: marksplice.Range{Start: start, End: start + len("[[page]]")}}}, nil
+					},
+				}},
+				ExtensionLimits: marksplice.ExtensionLimits{MaxNodes: 1, MaxMetadataBytes: 128},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if received != want {
+				t.Errorf("recognizer received %q, want normalized %q", received, want)
+			}
+			if !bytes.Equal(callerSource, []byte(input)) {
+				t.Fatal("normalization modified the caller's source")
+			}
+			baseline, err := marksplice.Parse([]byte(input))
+			if err != nil || !reflect.DeepEqual(document.Nodes(), baseline.Nodes()) {
+				t.Fatalf("extension changed core nodes: %v", err)
+			}
+			for index := range callerSource {
+				callerSource[index] = 'X'
+			}
+			owned, ok := document.SourceRange(marksplice.Range{Start: 0, End: len(want)})
+			if !ok || string(owned) != want || received != want {
+				t.Errorf("snapshot and recognizer disagree: snapshot=%q recognizer=%q want=%q", owned, received, want)
+			}
+			for _, node := range document.ExtensionNodes() {
+				owned, ok := document.SourceRange(node.Range())
+				if !ok || string(owned) != "[[page]]" {
+					t.Errorf("extension range does not address its snapshot text: %q", owned)
+				}
+			}
+		})
+	}
+}
 
 func TestExtensionOverlayIsExplicitNamespacedAndReadOnly(t *testing.T) {
 	t.Parallel()

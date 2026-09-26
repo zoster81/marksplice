@@ -121,7 +121,7 @@ func ParseWithOptions(source []byte, options ParseOptions) (*Document, error) {
 	if len(options.Extensions) == 0 {
 		return document, nil
 	}
-	nodes, err := buildExtensionNodes(string(source), options.Extensions, options.ExtensionLimits)
+	nodes, err := buildExtensionNodes(document.document.SourceText(), options.Extensions, options.ExtensionLimits)
 	if err != nil {
 		return nil, err
 	}
