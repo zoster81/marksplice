@@ -202,7 +202,7 @@ func isConstructionProofNode(document *splice.Document, node splice.Node) bool {
 	case splice.KindThematicBreak, splice.KindBlockquote:
 		return node.TopLevel
 	case splice.KindFencedCode:
-		mapping, _, _, ok := document.FencedBlockSource(node.ID)
+		mapping, _, _, ok := document.FencedBlockMetadata(node.ID)
 		return ok && node.TopLevel && mapping.OpeningFenceLength >= 3
 	}
 	if !node.Editable {

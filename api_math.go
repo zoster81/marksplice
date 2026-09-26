@@ -124,7 +124,7 @@ func publicMathExpression(document *splice.Document, node splice.Node) (MathExpr
 	if document == nil || node.Kind != splice.KindFencedCode || !node.TopLevel {
 		return MathExpression{}, false
 	}
-	block, info, _, ok := document.FencedBlockSource(node.ID)
+	block, info, _, ok := document.FencedBlockMetadata(node.ID)
 	if !ok || info != "math" || block.Range.Start >= block.Range.End {
 		return MathExpression{}, false
 	}

@@ -46,17 +46,41 @@ func (d *Document) fencedSource(node Node) (fencedSourceDetail, bool) {
 
 // FencedBlockSource returns a caller-owned source mapping and metadata for one source-proven top-level fenced block.
 func (d *Document) FencedBlockSource(id NodeID) (source.FencedBlockMapping, string, string, bool) {
-	node, ok := d.nodeByID(id)
-	if !ok || !node.TopLevel {
-		return source.FencedBlockMapping{}, "", "", false
-	}
-	detail, ok := d.fencedSource(node)
-	if !ok || detail.block.OpeningFenceLength < 3 || detail.block.OpeningFenceRange.Start >= detail.block.OpeningFenceRange.End {
+	detail, ok := d.fencedBlockDetail(id)
+	if !ok {
 		return source.FencedBlockMapping{}, "", "", false
 	}
 	mapping := detail.block
 	mapping.ContentRanges = append([]source.Range(nil), mapping.ContentRanges...)
 	return mapping, detail.info, detail.language, true
+}
+
+// FencedBlockMetadata returns the validated scalar mapping and metadata without
+// copying payload ranges. ContentRanges is always nil; use FencedBlockSource
+// when the per-line payload ranges are needed.
+func (d *Document) FencedBlockMetadata(id NodeID) (source.FencedBlockMapping, string, string, bool) {
+	detail, ok := d.fencedBlockDetail(id)
+	if !ok {
+		return source.FencedBlockMapping{}, "", "", false
+	}
+	mapping := detail.block
+	mapping.ContentRanges = nil
+	return mapping, detail.info, detail.language, true
+}
+
+func (d *Document) fencedBlockDetail(id NodeID) (fencedSourceDetail, bool) {
+	if d == nil {
+		return fencedSourceDetail{}, false
+	}
+	node, ok := d.nodeByID(id)
+	if !ok || !node.TopLevel {
+		return fencedSourceDetail{}, false
+	}
+	detail, ok := d.fencedSource(node)
+	if !ok || detail.block.OpeningFenceLength < 3 || detail.block.OpeningFenceRange.Start >= detail.block.OpeningFenceRange.End {
+		return fencedSourceDetail{}, false
+	}
+	return detail, true
 }
 
 // FencedCodeSource returns the source mapping for one editable contiguous fenced-code payload.

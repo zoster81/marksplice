@@ -133,7 +133,7 @@ func publicFootnoteDefinition(document *splice.Document, node splice.Node) (Foot
 	if document == nil || node.Kind != splice.KindFootnoteDefinition || !node.Editable || !node.TopLevel {
 		return FootnoteDefinition{}, false
 	}
-	mapping, ok := document.FootnoteSource(node.ID)
+	mapping, ok := document.FootnoteMetadata(node.ID)
 	if !ok ||
 		mapping.Range.Start >= mapping.Range.End || mapping.LabelRange.Start >= mapping.LabelRange.End {
 		return FootnoteDefinition{}, false

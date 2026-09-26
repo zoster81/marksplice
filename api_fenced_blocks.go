@@ -170,7 +170,7 @@ func publicFencedBlock(document *splice.Document, node splice.Node) (FencedBlock
 	if document == nil || node.Kind != splice.KindFencedCode || !node.TopLevel {
 		return FencedBlock{}, false
 	}
-	mapping, info, language, ok := document.FencedBlockSource(node.ID)
+	mapping, info, language, ok := document.FencedBlockMetadata(node.ID)
 	if !ok || mapping.OpeningFenceLength < 3 ||
 		mapping.OpeningFenceRange.Start >= mapping.OpeningFenceRange.End {
 		return FencedBlock{}, false

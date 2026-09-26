@@ -194,11 +194,7 @@ func validFootnoteSourceMapping(input []byte, node Node, mapping source.Footnote
 
 // FootnoteSource returns a caller-owned source mapping for one promoted top-level footnote definition.
 func (d *Document) FootnoteSource(id NodeID) (source.FootnoteDefinitionMapping, bool) {
-	node, ok := d.nodeByID(id)
-	if !ok {
-		return source.FootnoteDefinitionMapping{}, false
-	}
-	mapping, ok := d.footnoteSource(node)
+	mapping, ok := d.footnoteSourceByID(id)
 	if !ok {
 		return source.FootnoteDefinitionMapping{}, false
 	}
@@ -206,16 +202,28 @@ func (d *Document) FootnoteSource(id NodeID) (source.FootnoteDefinitionMapping, 
 	return mapping, true
 }
 
-// FootnoteDefinitionBodyRanges returns caller-owned parser-proven semantic body ranges.
-func (d *Document) FootnoteDefinitionBodyRanges(id NodeID) ([]Range, bool) {
+// FootnoteMetadata returns the validated scalar mapping without copying body
+// segments. BodyRanges is always nil; use FootnoteSource for the full mapping.
+func (d *Document) FootnoteMetadata(id NodeID) (source.FootnoteDefinitionMapping, bool) {
+	mapping, ok := d.footnoteSourceByID(id)
+	mapping.BodyRanges = nil
+	return mapping, ok
+}
+
+func (d *Document) footnoteSourceByID(id NodeID) (source.FootnoteDefinitionMapping, bool) {
 	if d == nil {
-		return nil, false
+		return source.FootnoteDefinitionMapping{}, false
 	}
 	node, ok := d.nodeByID(id)
 	if !ok {
-		return nil, false
+		return source.FootnoteDefinitionMapping{}, false
 	}
-	mapping, ok := d.footnoteSource(node)
+	return d.footnoteSource(node)
+}
+
+// FootnoteDefinitionBodyRanges returns caller-owned parser-proven semantic body ranges.
+func (d *Document) FootnoteDefinitionBodyRanges(id NodeID) ([]Range, bool) {
+	mapping, ok := d.footnoteSourceByID(id)
 	if !ok {
 		return nil, false
 	}
