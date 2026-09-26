@@ -114,7 +114,8 @@ func validateKnowledgeDocument(document KnowledgeDocument, graph *DocumentGraph,
 	if err := validateKnowledgeTags(document.Document, state.tags); err != nil {
 		return knowledgeDocumentState{}, nil, err
 	}
-	references := append([]DocumentKey(nil), document.References...)
+	// References are consumed synchronously into owned scalar index entries.
+	references := document.References
 	if err := validateKnowledgeReferences(document.Document, references, graph); err != nil {
 		return knowledgeDocumentState{}, nil, err
 	}
@@ -261,18 +262,20 @@ func (k *KnowledgeIndex) ReachableFrom(key DocumentKey) ([]DocumentKey, bool) {
 	}
 	visited := make(map[DocumentKey]bool, len(k.graph.documents))
 	visited[key] = true
-	queue := []DocumentKey{key}
-	result := make([]DocumentKey, 0, len(k.graph.documents)-1)
+	queue := make([]DocumentKey, 1, len(k.graph.documents))
+	queue[0] = key
 	for head := 0; head < len(queue); head++ {
 		current := queue[head]
 		for _, edgeIndex := range k.graph.outgoing[current] {
-			appendUnvisitedDocument(k.graph.edges[edgeIndex].targetDocument, visited, &queue, &result)
+			appendUnvisitedDocument(k.graph.edges[edgeIndex].targetDocument, visited, &queue)
 		}
 		for _, referenceIndex := range k.outgoing[current] {
-			appendUnvisitedDocument(k.references[referenceIndex].targetDocument, visited, &queue, &result)
+			appendUnvisitedDocument(k.references[referenceIndex].targetDocument, visited, &queue)
 		}
 	}
-	return result, true
+	// The queue already has discovery order. Do not retain the excluded root.
+	queue[0] = ""
+	return queue[1:], true
 }
 
 // RelatedDocuments returns unique direct neighbors across both resolved Markdown graph

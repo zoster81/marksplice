@@ -259,13 +259,12 @@ func (g *DocumentGraph) hasDocument(key DocumentKey) bool {
 	return ok
 }
 
-func appendUnvisitedDocument(target DocumentKey, visited map[DocumentKey]bool, queue, result *[]DocumentKey) {
+func appendUnvisitedDocument(target DocumentKey, visited map[DocumentKey]bool, queue *[]DocumentKey) {
 	if visited[target] {
 		return
 	}
 	visited[target] = true
 	*queue = append(*queue, target)
-	*result = append(*result, target)
 }
 
 // ReachableFrom returns every other document reachable from key using resolved graph
@@ -278,33 +277,25 @@ func (g *DocumentGraph) ReachableFrom(key DocumentKey) ([]DocumentKey, bool) {
 	visited[key] = true
 	queue := make([]DocumentKey, 1, len(g.documents))
 	queue[0] = key
-	result := make([]DocumentKey, 0, len(g.documents)-1)
 	for head := 0; head < len(queue); head++ {
 		for _, edgeIndex := range g.outgoing[queue[head]] {
-			appendUnvisitedDocument(g.edges[edgeIndex].targetDocument, visited, &queue, &result)
+			appendUnvisitedDocument(g.edges[edgeIndex].targetDocument, visited, &queue)
 		}
 	}
-	return result, true
+	// The queue already has discovery order. Do not retain the excluded root.
+	queue[0] = ""
+	return queue[1:], true
 }
 
 func (g *DocumentGraph) reachableFromRoots(roots []DocumentKey) map[DocumentKey]bool {
 	visited := make(map[DocumentKey]bool, len(g.documents))
 	queue := make([]DocumentKey, 0, len(g.documents))
 	for _, root := range roots {
-		if visited[root] {
-			continue
-		}
-		visited[root] = true
-		queue = append(queue, root)
+		appendUnvisitedDocument(root, visited, &queue)
 	}
 	for head := 0; head < len(queue); head++ {
 		for _, edgeIndex := range g.outgoing[queue[head]] {
-			target := g.edges[edgeIndex].targetDocument
-			if visited[target] {
-				continue
-			}
-			visited[target] = true
-			queue = append(queue, target)
+			appendUnvisitedDocument(g.edges[edgeIndex].targetDocument, visited, &queue)
 		}
 	}
 	return visited

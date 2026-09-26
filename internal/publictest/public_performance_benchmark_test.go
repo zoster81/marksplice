@@ -260,6 +260,16 @@ func BenchmarkWorkspaceGraphKnowledgeScaling(b *testing.B) {
 			b.Fatal(err)
 		}
 		metadata := knowledgeDocuments(count)
+		b.Run(fmt.Sprintf("GraphReachable/%d", count), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				keys, ok := graph.ReachableFrom("doc-0")
+				if !ok {
+					b.Fatal("root unavailable")
+				}
+				benchmarkKeysSink = keys
+			}
+		})
 
 		b.Run(fmt.Sprintf("BuildGraph/%d", count), func(b *testing.B) {
 			b.ReportAllocs()
