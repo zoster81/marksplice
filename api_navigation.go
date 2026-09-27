@@ -123,7 +123,7 @@ func (d *Document) GenerateTOC() []byte {
 	if d == nil || d.document == nil {
 		return nil
 	}
-	return append([]byte(nil), d.document.GenerateTOC()...)
+	return d.document.GenerateTOC()
 }
 
 // TOCStale reports whether one explicitly designated section body is a recognized

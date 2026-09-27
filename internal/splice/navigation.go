@@ -218,7 +218,7 @@ func (d *Document) renderTOC(eol string) []byte {
 	if !ok {
 		return nil
 	}
-	var toc strings.Builder
+	var toc bytes.Buffer
 	for index, section := range d.sections {
 		node, ok := d.nodeByID(section.HeadingID)
 		if !ok || node.Kind != KindHeading {
@@ -232,7 +232,7 @@ func (d *Document) renderTOC(eol string) []byte {
 		toc.WriteByte(')')
 		toc.WriteString(eol)
 	}
-	return []byte(toc.String())
+	return toc.Bytes()
 }
 
 func (d *Document) sectionDepths() ([]int, bool) {

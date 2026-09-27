@@ -89,10 +89,15 @@ func TestGenerateTOCUsesSectionHierarchyAndEscapesLabels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	got := string(doc.GenerateTOC())
+	output := doc.GenerateTOC()
+	got := string(output)
 	want := "- [Root](#root)\n  - [Child \\[one\\]](#child-one)\n    - [Deep \\\\ slash](#deep--slash)\n  - [Child \\[one\\]](#child-one-1)\n- [Tail](#tail)\n"
 	if got != want {
 		t.Fatalf("GenerateTOC() = %q, want %q", got, want)
+	}
+	output[0] = 'X'
+	if string(doc.GenerateTOC()) != want {
+		t.Fatal("caller mutation changed subsequent generated output")
 	}
 }
 
