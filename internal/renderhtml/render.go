@@ -847,9 +847,14 @@ func unsafeDestination(destination string) bool {
 }
 
 func decodeMarkdownString(value string) string {
+	position := strings.IndexAny(value, "\\&")
+	if position < 0 {
+		return value
+	}
 	var output strings.Builder
 	output.Grow(len(value))
-	for position := 0; position < len(value); {
+	output.WriteString(value[:position])
+	for position < len(value) {
 		if value[position] == '\\' && position+1 < len(value) && isASCIIPunctuation(value[position+1]) {
 			output.WriteByte(value[position+1])
 			position += 2
@@ -880,9 +885,17 @@ func isASCIIPunctuation(value byte) bool {
 func percentEncodeURL(value string) string {
 	const hex = "0123456789ABCDEF"
 	authorityStart, authorityEnd, hasAuthority := urlAuthorityRange(value)
+	start := 0
+	for start < len(value) && urlSafeByte(value[start], start, authorityStart, authorityEnd, hasAuthority) {
+		start++
+	}
+	if start == len(value) {
+		return value
+	}
 	var output strings.Builder
 	output.Grow(len(value))
-	for index := 0; index < len(value); index++ {
+	output.WriteString(value[:start])
+	for index := start; index < len(value); index++ {
 		current := value[index]
 		if urlSafeByte(current, index, authorityStart, authorityEnd, hasAuthority) {
 			output.WriteByte(current)
@@ -979,8 +992,7 @@ func escapeText(value string) string {
 }
 
 func escapeAttribute(value string) string {
-	value = escapeText(value)
-	return strings.ReplaceAll(value, "\"", "&quot;")
+	return escapeText(value)
 }
 
 func stripHTMLTags(value string) string {
