@@ -63,10 +63,18 @@ type ChangeSet struct {
 
 // NewChangeSet validates and copies patches against source.
 func NewChangeSet(source []byte, patches []Patch) (ChangeSet, error) {
+	prepared, err := validatedPatchCopies(len(source), patches)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	return ChangeSet{fingerprint: Sum(source), patches: prepared}, nil
+}
+
+func validatedPatchCopies(sourceLength int, patches []Patch) ([]Patch, error) {
 	prepared := make([]Patch, len(patches))
 	for i, patch := range patches {
-		if !patch.Range.Valid(len(source)) {
-			return ChangeSet{}, fmt.Errorf("%w: patch %d has range [%d,%d) for source length %d", ErrInvalidRange, i, patch.Range.Start, patch.Range.End, len(source))
+		if !patch.Range.Valid(sourceLength) {
+			return nil, fmt.Errorf("%w: patch %d has range [%d,%d) for source length %d", ErrInvalidRange, i, patch.Range.Start, patch.Range.End, sourceLength)
 		}
 		prepared[i] = Patch{
 			Range:       patch.Range,
@@ -84,14 +92,11 @@ func NewChangeSet(source []byte, patches []Patch) (ChangeSet, error) {
 		previous := prepared[i-1].Range
 		current := prepared[i].Range
 		if current.Start == previous.Start || current.Start < previous.End {
-			return ChangeSet{}, fmt.Errorf("%w: [%d,%d) conflicts with [%d,%d)", ErrOverlappingPatches, previous.Start, previous.End, current.Start, current.End)
+			return nil, fmt.Errorf("%w: [%d,%d) conflicts with [%d,%d)", ErrOverlappingPatches, previous.Start, previous.End, current.Start, current.End)
 		}
 	}
 
-	return ChangeSet{
-		fingerprint: Sum(source),
-		patches:     prepared,
-	}, nil
+	return prepared, nil
 }
 
 // ComposeChangeSets combines already-prepared changes from exactly one source
@@ -105,7 +110,11 @@ func ComposeChangeSets(source []byte, changes ...ChangeSet) (ChangeSet, error) {
 		}
 		patches = append(patches, change.patches...)
 	}
-	return NewChangeSet(source, patches)
+	prepared, err := validatedPatchCopies(len(source), patches)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	return ChangeSet{fingerprint: fingerprint, patches: prepared}, nil
 }
 
 // Patches returns a defensive copy of the prepared source-coordinate patches.
