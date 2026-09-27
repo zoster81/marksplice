@@ -318,7 +318,8 @@ func htmlAttributeNameContinue(value byte) bool {
 }
 
 func asciiLetter(value byte) bool {
-	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
+	folded := value | 0x20
+	return folded >= 'a' && folded <= 'z'
 }
 
 func asciiDigit(value byte) bool {
