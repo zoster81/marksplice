@@ -120,19 +120,7 @@ func (d *Document) linkRelationships() ([]LinkRelationship, bool) {
 	if d == nil || d.document == nil {
 		return nil, false
 	}
-	internal, ok := d.document.LinkRelationships()
-	if !ok {
-		return nil, false
-	}
-	result := make([]LinkRelationship, len(internal))
-	for index, relationship := range internal {
-		public, ok := publicLinkRelationship(relationship)
-		if !ok {
-			return nil, false
-		}
-		result[index] = public
-	}
-	return result, true
+	return splice.MapLinkRelationships(d.document, publicLinkRelationship)
 }
 
 func publicLinkRelationship(relationship splice.LinkRelationship) (LinkRelationship, bool) {

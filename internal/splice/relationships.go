@@ -64,16 +64,25 @@ type LinkRelationship struct {
 // LinkRelationships returns all parser-resolved outgoing link/image/autolink
 // relationships in source order. The returned slice is caller-owned.
 func (d *Document) LinkRelationships() ([]LinkRelationship, bool) {
+	return MapLinkRelationships(d, func(relationship LinkRelationship) (LinkRelationship, bool) {
+		return relationship, true
+	})
+}
+
+// MapLinkRelationships projects source-ordered relationships directly into a
+// caller-owned result. Conversion is synchronous and not retained; any semantic
+// or conversion failure discards the partial result.
+func MapLinkRelationships[T any](d *Document, convert func(LinkRelationship) (T, bool)) ([]T, bool) {
 	if d == nil {
 		return nil, true
 	}
 	if len(d.linkUsages) == 0 {
-		return []LinkRelationship{}, true
+		return []T{}, true
 	}
 	sourceNodes := d.linkUsageSourceNodes()
 	var definitionOwners map[referenceDefinitionKey]referenceDefinitionOwner
 	var fragments fragmentCatalog
-	result := make([]LinkRelationship, 0, len(d.linkUsages))
+	result := make([]T, 0, len(d.linkUsages))
 	for _, usage := range d.linkUsages {
 		if usage.Form != parser.LinkUsageDirect && definitionOwners == nil {
 			definitionOwners = d.referenceDefinitionOwners()
@@ -85,7 +94,11 @@ func (d *Document) LinkRelationships() ([]LinkRelationship, bool) {
 		if !ok {
 			return nil, false
 		}
-		result = append(result, relationship)
+		converted, ok := convert(relationship)
+		if !ok {
+			return nil, false
+		}
+		result = append(result, converted)
 	}
 	return result, true
 }
