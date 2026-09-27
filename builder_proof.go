@@ -92,7 +92,6 @@ func validateConstructionDocument(source []byte, expected []constructionExpectat
 	if err := validateConstructionAlertProofs(source, expected); err != nil {
 		return err
 	}
-	nodeExpected := constructionNodeExpectations(expected)
 	document, err := splice.Parse(source)
 	if err != nil {
 		return fmt.Errorf("%w: generated GFM parse: %v", ErrInvalidConstruction, err)
@@ -111,15 +110,15 @@ func validateConstructionDocument(source []byte, expected []constructionExpectat
 		if isConstructionOnlyBlockquoteObservation(node, expected) || !isConstructionProofNode(document, node) {
 			continue
 		}
-		if matched >= len(nodeExpected) {
+		if matched >= len(expected) {
 			return fmt.Errorf("%w: generated unexpected top-level block", ErrInvalidConstruction)
 		}
-		if err := validateConstructionExpectation(document, node, nodeExpected[matched]); err != nil {
+		if err := validateConstructionExpectation(document, node, expected[matched]); err != nil {
 			return err
 		}
 		matched++
 	}
-	if matched != len(nodeExpected) {
+	if matched != len(expected) {
 		return fmt.Errorf("%w: generated block count changed", ErrInvalidConstruction)
 	}
 	return validateConstructionTaskExpectations(tasks, expected)
@@ -158,10 +157,6 @@ func validateConstructionAlertProofs(source []byte, expected []constructionExpec
 		}
 	}
 	return nil
-}
-
-func constructionNodeExpectations(expected []constructionExpectation) []constructionExpectation {
-	return append([]constructionExpectation(nil), expected...)
 }
 
 func validateConstructionTaskExpectations(tasks map[int]splice.Node, expected []constructionExpectation) error {
