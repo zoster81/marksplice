@@ -1,6 +1,8 @@
 package rendermarkdown
 
 import (
+	"slices"
+
 	"github.com/zoster81/marksplice/internal/parser"
 	"github.com/zoster81/marksplice/internal/parser/native"
 )
@@ -13,6 +15,13 @@ type canonicalInlineCandidate struct {
 	extendedAutolinks []native.ExtendedAutolinkOwner
 	bareWWW           canonicalBareWWWContinuation
 	alternationCost   int
+}
+
+// canonicalInlineProofWorkspace reuses temporary proof indexes within one
+// serial host selection. Candidate results remain independently owned.
+type canonicalInlineProofWorkspace struct {
+	topology       native.DelimiterTopologyCandidate
+	delimiterNodes []canonicalInlineDelimiterNodePair
 }
 
 type canonicalInlineChoiceCost struct {
@@ -118,6 +127,17 @@ func canonicalInlineCandidateForPlan(
 	context canonicalInlineEmitContext,
 	tableCell bool,
 ) (canonicalInlineCandidate, error) {
+	var workspace canonicalInlineProofWorkspace
+	return workspace.candidateForPlan(ast, normalization, plan, context, tableCell)
+}
+
+func (w *canonicalInlineProofWorkspace) candidateForPlan(
+	ast canonicalInlineAST,
+	normalization canonicalInlineNormalization,
+	plan canonicalInlinePlan,
+	context canonicalInlineEmitContext,
+	tableCell bool,
+) (canonicalInlineCandidate, error) {
 	metadata := canonicalInlineCandidateMetadata{}
 	output, err := emitCanonicalInlineASTWithMetadata(
 		ast,
@@ -130,7 +150,7 @@ func canonicalInlineCandidateForPlan(
 	if err != nil {
 		return canonicalInlineCandidate{}, err
 	}
-	pairs, alternationCost, ok := canonicalInlineCandidateProof(ast, metadata.delimiterSites)
+	pairs, alternationCost, ok := w.candidateProof(ast, metadata.delimiterSites)
 	if !ok {
 		return canonicalInlineCandidate{}, ErrInvalidInput
 	}
@@ -157,7 +177,16 @@ func canonicalInlineDelimiterNodePairs(
 	ast canonicalInlineAST,
 	sites []canonicalInlineDelimiterSite,
 ) ([]canonicalInlineDelimiterNodePair, bool) {
-	nodes := make([]canonicalInlineDelimiterNodePair, len(ast.nodes))
+	return canonicalInlineDelimiterNodePairsUsing(ast, sites, nil)
+}
+
+func canonicalInlineDelimiterNodePairsUsing(
+	ast canonicalInlineAST,
+	sites []canonicalInlineDelimiterSite,
+	nodes []canonicalInlineDelimiterNodePair,
+) ([]canonicalInlineDelimiterNodePair, bool) {
+	nodes = slices.Grow(nodes[:0], len(ast.nodes))[:len(ast.nodes)]
+	clear(nodes)
 	for _, site := range sites {
 		if site.node <= ast.root || site.node >= len(ast.nodes) {
 			return nil, false
@@ -275,11 +304,12 @@ func canonicalInlineDelimiterTopologyPairsFromNodes(
 	return pairs, true
 }
 
-func canonicalInlineCandidateProof(
+func (w *canonicalInlineProofWorkspace) candidateProof(
 	ast canonicalInlineAST,
 	sites []canonicalInlineDelimiterSite,
 ) ([]native.DelimiterTopologyPair, int, bool) {
-	nodes, ok := canonicalInlineDelimiterNodePairs(ast, sites)
+	nodes, ok := canonicalInlineDelimiterNodePairsUsing(ast, sites, w.delimiterNodes)
+	w.delimiterNodes = nodes
 	if !ok {
 		return nil, 0, false
 	}

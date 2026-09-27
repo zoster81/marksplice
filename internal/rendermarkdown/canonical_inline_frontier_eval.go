@@ -226,7 +226,7 @@ func canonicalInlineEvaluateFrontierCandidate(
 	needsTilde bool,
 	context canonicalInlineEmitContext,
 	tableCell bool,
-	topology *native.DelimiterTopologyCandidate,
+	workspace *canonicalInlineProofWorkspace,
 ) ([]canonicalInlineFrontierCandidate, error) {
 	variants, markerNodes, strikeNodes, textOrdinals, ok :=
 		canonicalInlineFrontierPayloadVariants(ast, normalization, candidate)
@@ -234,6 +234,7 @@ func canonicalInlineEvaluateFrontierCandidate(
 		return nil, ErrInvalidInput
 	}
 	result := make([]canonicalInlineFrontierCandidate, 0, len(variants))
+	topology := &workspace.topology
 	for _, variant := range variants {
 		plan, ok := canonicalInlinePlanForFrontierCandidate(
 			ast, variant, textOrdinals, markerNodes, strikeNodes,
@@ -241,7 +242,7 @@ func canonicalInlineEvaluateFrontierCandidate(
 		if !ok {
 			return nil, ErrInvalidInput
 		}
-		proof, err := canonicalInlineCandidateForPlan(
+		proof, err := workspace.candidateForPlan(
 			ast,
 			normalization,
 			plan,
@@ -315,6 +316,7 @@ func canonicalInlinePendingRawTabProof(
 	rawNode int,
 	context canonicalInlineEmitContext,
 	tableCell bool,
+	workspace *canonicalInlineProofWorkspace,
 ) (canonicalInlineCandidate, error) {
 	pendingNormalization := canonicalInlineNormalization{
 		nodes: append([]canonicalInlineNodeNormalization(nil), normalization.nodes...),
@@ -328,7 +330,7 @@ func canonicalInlinePendingRawTabProof(
 		return canonicalInlineCandidate{}, ErrInvalidInput
 	}
 	plan.nodes[rawNode].payload = canonicalInlineRawTabPayload
-	return canonicalInlineCandidateForPlan(
+	return workspace.candidateForPlan(
 		ast,
 		pendingNormalization,
 		plan,
@@ -343,18 +345,19 @@ func canonicalInlinePendingRawTabResponse(
 	candidate canonicalInlineFrontierCandidate,
 	context canonicalInlineEmitContext,
 	tableCell bool,
-	topology *native.DelimiterTopologyCandidate,
+	workspace *canonicalInlineProofWorkspace,
 ) (canonicalInlineSelectorState, bool, error) {
 	textOrdinals, rawNode, ok := canonicalInlinePendingRawTabNode(ast, candidate)
 	if !ok {
 		return canonicalInlineSelectorState{}, false, nil
 	}
 	proof, err := canonicalInlinePendingRawTabProof(
-		ast, normalization, candidate, textOrdinals, rawNode, context, tableCell,
+		ast, normalization, candidate, textOrdinals, rawNode, context, tableCell, workspace,
 	)
 	if err != nil {
 		return canonicalInlineSelectorState{}, false, err
 	}
+	topology := &workspace.topology
 	if !topology.Reset(proof.output, proof.owners, proof.pairs) {
 		return canonicalInlineSelectorState{}, false, nil
 	}
@@ -438,7 +441,7 @@ func canonicalInlinePruneFrontier(
 	needsTilde bool,
 	context canonicalInlineEmitContext,
 	tableCell bool,
-	topology *native.DelimiterTopologyCandidate,
+	workspace *canonicalInlineProofWorkspace,
 ) ([]canonicalInlineFrontierCandidate, error) {
 	if len(candidates) == 0 {
 		return nil, nil
@@ -450,14 +453,14 @@ func canonicalInlinePruneFrontier(
 	selected := canonicalInlinePruneAccumulator{}
 	for _, candidate := range candidates {
 		emittedVariants, err := canonicalInlineEvaluateFrontierCandidate(
-			ast, normalization, candidate, needsTilde, context, tableCell, topology,
+			ast, normalization, candidate, needsTilde, context, tableCell, workspace,
 		)
 		if err != nil {
 			return nil, err
 		}
 		if len(emittedVariants) == 0 {
 			pendingState, pending, err := canonicalInlinePendingRawTabResponse(
-				ast, normalization, candidate, context, tableCell, topology,
+				ast, normalization, candidate, context, tableCell, workspace,
 			)
 			if err != nil {
 				return nil, err
@@ -475,7 +478,7 @@ func canonicalInlinePruneFrontier(
 			key := canonicalInlinePruneKey{}
 			if disposition == canonicalInlinePruneKeyed {
 				pendingState, pending, err := canonicalInlinePendingRawTabResponse(
-					ast, normalization, emitted, context, tableCell, topology,
+					ast, normalization, emitted, context, tableCell, workspace,
 				)
 				if err != nil {
 					return nil, err
@@ -498,16 +501,14 @@ func canonicalInlineBottomUpHostInContext(
 		return nil, false, err
 	}
 	_, strikeNodes := canonicalInlineDelimiterPlanNodes(ast)
-	// Proof results retained by the frontier are values, so sibling and parent
-	// candidates can share resolver scratch during this serial host operation.
-	var topology native.DelimiterTopologyCandidate
+	var workspace canonicalInlineProofWorkspace
 	prune := func(
 		view canonicalInlineAST,
 		candidates []canonicalInlineFrontierCandidate,
 		needsTilde bool,
 	) ([]canonicalInlineFrontierCandidate, error) {
 		return canonicalInlinePruneFrontier(
-			view, candidates, needsTilde, context, tableCell, &topology,
+			view, candidates, needsTilde, context, tableCell, &workspace,
 		)
 	}
 	return canonicalInlineBottomUpHostWithNormalization(
