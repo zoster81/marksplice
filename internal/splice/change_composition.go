@@ -64,11 +64,24 @@ type compositionModelView struct {
 }
 
 func compositionModelViews(document *Document) compositionModelView {
-	return compositionModelView{
-		nodes:     compositionNodeViews(document),
-		links:     compositionLinkViews(document.linkUsages),
-		footnotes: compositionFootnoteReferenceViews(document),
+	var views compositionModelView
+	views.reset(document)
+	return views
+}
+
+func (views *compositionModelView) reset(document *Document) {
+	views.nodes = compositionNodeViews(document, views.nodes)
+	views.links = compositionLinkViews(document.linkUsages, views.links)
+	views.footnotes = compositionFootnoteReferenceViews(document, views.footnotes)
+}
+
+// Every retained delta owns its replacement storage, so candidate views can be
+// reused within one composition. Drop references in any truncated tail.
+func resizeCompositionViews[T any](views []T, size int) []T {
+	if size < len(views) {
+		clear(views[size:])
 	}
+	return slices.Grow(views[:0], size)[:size]
 }
 
 func (d *Document) expectedCompositionModel(changes []ChangeSet) (compositionModelView, error) {
@@ -76,6 +89,7 @@ func (d *Document) expectedCompositionModel(changes []ChangeSet) (compositionMod
 	nodeDeltas := make([]compositionDelta[compositionNodeView], 0, len(changes))
 	linkDeltas := make([]compositionDelta[compositionLinkView], 0, len(changes))
 	footnoteDeltas := make([]compositionDelta[compositionFootnoteReferenceView], 0, len(changes))
+	var candidateViews compositionModelView
 	for _, change := range changes {
 		candidate, err := change.Apply(d.source)
 		if err != nil {
@@ -86,9 +100,10 @@ func (d *Document) expectedCompositionModel(changes []ChangeSet) (compositionMod
 			return compositionModelView{}, fmt.Errorf("%w: parse independently prepared composition candidate: %v", ErrInvalidReplacement, err)
 		}
 		sourceStart := compositionPatchStart(change.Patches())
-		nodeDeltas = append(nodeDeltas, newCompositionDeltas(original.nodes, compositionNodeViews(candidateDocument), sourceStart)...)
-		linkDeltas = append(linkDeltas, newCompositionDeltas(original.links, compositionLinkViews(candidateDocument.linkUsages), sourceStart)...)
-		footnoteDeltas = append(footnoteDeltas, newCompositionDeltas(original.footnotes, compositionFootnoteReferenceViews(candidateDocument), sourceStart)...)
+		candidateViews.reset(candidateDocument)
+		nodeDeltas = append(nodeDeltas, newCompositionDeltas(original.nodes, candidateViews.nodes, sourceStart)...)
+		linkDeltas = append(linkDeltas, newCompositionDeltas(original.links, candidateViews.links, sourceStart)...)
+		footnoteDeltas = append(footnoteDeltas, newCompositionDeltas(original.footnotes, candidateViews.footnotes, sourceStart)...)
 	}
 	return applyCompositionModelDeltas(original, nodeDeltas, linkDeltas, footnoteDeltas)
 }
@@ -187,12 +202,12 @@ type compositionFootnoteReferenceView struct {
 	definitionIndex int
 }
 
-func compositionNodeViews(document *Document) []compositionNodeView {
+func compositionNodeViews(document *Document, views []compositionNodeView) []compositionNodeView {
 	if document == nil {
 		return nil
 	}
 	indexes := document.nodeIndex
-	views := make([]compositionNodeView, len(document.nodes))
+	views = resizeCompositionViews(views, len(document.nodes))
 	for index, node := range document.nodes {
 		owned := compositionOwnedRange(document, node)
 		if !owned.Valid(len(document.source)) || owned.Start > node.Range.Start || owned.End < node.Range.End {
@@ -320,12 +335,12 @@ func compositionRelativeRanges(ranges []source.Range, base Range) string {
 	return string(encoded)
 }
 
-func compositionFootnoteReferenceViews(document *Document) []compositionFootnoteReferenceView {
+func compositionFootnoteReferenceViews(document *Document, views []compositionFootnoteReferenceView) []compositionFootnoteReferenceView {
 	if document == nil {
 		return nil
 	}
 	definitions := footnoteDefinitionIndexes(document)
-	views := make([]compositionFootnoteReferenceView, len(document.footnoteReferences))
+	views = resizeCompositionViews(views, len(document.footnoteReferences))
 	for index, reference := range document.footnoteReferences {
 		definitionIndex := -1
 		if reference.HasDefinition {
@@ -343,8 +358,8 @@ func compositionFootnoteReferenceViews(document *Document) []compositionFootnote
 	return views
 }
 
-func compositionLinkViews(usages []parser.LinkUsage) []compositionLinkView {
-	views := make([]compositionLinkView, len(usages))
+func compositionLinkViews(usages []parser.LinkUsage, views []compositionLinkView) []compositionLinkView {
+	views = resizeCompositionViews(views, len(usages))
 	for index, usage := range usages {
 		views[index] = compositionLinkView{
 			kind:          usage.Kind,
