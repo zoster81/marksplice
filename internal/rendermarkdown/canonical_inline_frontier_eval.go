@@ -226,6 +226,7 @@ func canonicalInlineEvaluateFrontierCandidate(
 	needsTilde bool,
 	context canonicalInlineEmitContext,
 	tableCell bool,
+	topology *native.DelimiterTopologyCandidate,
 ) ([]canonicalInlineFrontierCandidate, error) {
 	variants, markerNodes, strikeNodes, textOrdinals, ok :=
 		canonicalInlineFrontierPayloadVariants(ast, normalization, candidate)
@@ -250,8 +251,7 @@ func canonicalInlineEvaluateFrontierCandidate(
 		if err != nil {
 			return nil, err
 		}
-		topology, ok := native.PrepareDelimiterTopologyCandidate(proof.output, proof.owners, proof.pairs)
-		if !ok {
+		if !topology.Reset(proof.output, proof.owners, proof.pairs) {
 			continue
 		}
 		structuralValid := topology.Matches()
@@ -269,7 +269,7 @@ func canonicalInlineEvaluateFrontierCandidate(
 		}
 		state, ok := canonicalInlineSelectorStateFromProof(
 			proof,
-			&topology,
+			topology,
 			len(strikeNodes) != 0 || needsTilde,
 			deferred,
 		)
@@ -343,6 +343,7 @@ func canonicalInlinePendingRawTabResponse(
 	candidate canonicalInlineFrontierCandidate,
 	context canonicalInlineEmitContext,
 	tableCell bool,
+	topology *native.DelimiterTopologyCandidate,
 ) (canonicalInlineSelectorState, bool, error) {
 	textOrdinals, rawNode, ok := canonicalInlinePendingRawTabNode(ast, candidate)
 	if !ok {
@@ -354,12 +355,11 @@ func canonicalInlinePendingRawTabResponse(
 	if err != nil {
 		return canonicalInlineSelectorState{}, false, err
 	}
-	topology, ok := native.PrepareDelimiterTopologyCandidate(proof.output, proof.owners, proof.pairs)
-	if !ok {
+	if !topology.Reset(proof.output, proof.owners, proof.pairs) {
 		return canonicalInlineSelectorState{}, false, nil
 	}
 	if topology.Matches() {
-		state, ok := canonicalInlineSelectorStateFromProof(proof, &topology, true, false)
+		state, ok := canonicalInlineSelectorStateFromProof(proof, topology, true, false)
 		if !ok {
 			return canonicalInlineSelectorState{}, false, ErrInvalidInput
 		}
@@ -368,7 +368,7 @@ func canonicalInlinePendingRawTabResponse(
 	if !canonicalInlineDeferredRecoverable(proof.output, proof.owners, proof.pairs) {
 		return canonicalInlineSelectorState{}, false, nil
 	}
-	state, ok := canonicalInlineSelectorStateFromProof(proof, &topology, false, true)
+	state, ok := canonicalInlineSelectorStateFromProof(proof, topology, false, true)
 	if !ok {
 		return canonicalInlineSelectorState{}, false, ErrInvalidInput
 	}
@@ -431,6 +431,7 @@ func canonicalInlinePruneFrontier(
 	needsTilde bool,
 	context canonicalInlineEmitContext,
 	tableCell bool,
+	topology *native.DelimiterTopologyCandidate,
 ) ([]canonicalInlineFrontierCandidate, error) {
 	if len(candidates) == 0 {
 		return nil, nil
@@ -442,14 +443,14 @@ func canonicalInlinePruneFrontier(
 	selected := canonicalInlinePruneAccumulator{}
 	for _, candidate := range candidates {
 		emittedVariants, err := canonicalInlineEvaluateFrontierCandidate(
-			ast, normalization, candidate, needsTilde, context, tableCell,
+			ast, normalization, candidate, needsTilde, context, tableCell, topology,
 		)
 		if err != nil {
 			return nil, err
 		}
 		if len(emittedVariants) == 0 {
 			pendingState, pending, err := canonicalInlinePendingRawTabResponse(
-				ast, normalization, candidate, context, tableCell,
+				ast, normalization, candidate, context, tableCell, topology,
 			)
 			if err != nil {
 				return nil, err
@@ -467,7 +468,7 @@ func canonicalInlinePruneFrontier(
 			key := canonicalInlinePruneKey{}
 			if disposition == canonicalInlinePruneKeyed {
 				pendingState, pending, err := canonicalInlinePendingRawTabResponse(
-					ast, normalization, emitted, context, tableCell,
+					ast, normalization, emitted, context, tableCell, topology,
 				)
 				if err != nil {
 					return nil, err
@@ -490,13 +491,16 @@ func canonicalInlineBottomUpHostInContext(
 		return nil, false, err
 	}
 	_, strikeNodes := canonicalInlineDelimiterPlanNodes(ast)
+	// Proof results retained by the frontier are values, so sibling and parent
+	// candidates can share resolver scratch during this serial host operation.
+	var topology native.DelimiterTopologyCandidate
 	prune := func(
 		view canonicalInlineAST,
 		candidates []canonicalInlineFrontierCandidate,
 		needsTilde bool,
 	) ([]canonicalInlineFrontierCandidate, error) {
 		return canonicalInlinePruneFrontier(
-			view, candidates, needsTilde, context, tableCell,
+			view, candidates, needsTilde, context, tableCell, &topology,
 		)
 	}
 	return canonicalInlineBottomUpHostWithNormalization(

@@ -2,11 +2,60 @@ package native
 
 import (
 	"bytes"
+	"math/rand/v2"
 	"slices"
 	"testing"
 
 	"github.com/zoster81/marksplice/internal/parser"
 )
+
+func TestDelimiterTopologyResetMatchesFreshCandidates(t *testing.T) {
+	cases := []struct {
+		source   string
+		owners   []parser.Range
+		expected []DelimiterTopologyPair
+	}{
+		{},
+		{source: "*a*", expected: []DelimiterTopologyPair{{'*', parser.Range{Start: 0, End: 1}, parser.Range{Start: 2, End: 3}}}},
+		{source: "__b__", expected: []DelimiterTopologyPair{{'_', parser.Range{Start: 0, End: 2}, parser.Range{Start: 3, End: 5}}}},
+		{source: "~~gone~~", expected: []DelimiterTopologyPair{{'~', parser.Range{Start: 0, End: 2}, parser.Range{Start: 6, End: 8}}}},
+		{source: "***c***", expected: []DelimiterTopologyPair{
+			{'*', parser.Range{Start: 1, End: 3}, parser.Range{Start: 4, End: 6}},
+			{'*', parser.Range{Start: 0, End: 1}, parser.Range{Start: 6, End: 7}},
+		}},
+		{source: "`*a*`", owners: []parser.Range{{Start: 0, End: 5}}},
+		{source: "*a*"}, // Prepared successfully, but the claimed topology does not match.
+		{source: "*a*", owners: []parser.Range{{Start: 0, End: 20}}},
+		{source: "*a*", expected: []DelimiterTopologyPair{{'?', parser.Range{Start: 0, End: 1}, parser.Range{Start: 2, End: 3}}}},
+	}
+	random := rand.New(rand.NewPCG(41, 97))
+	var reused DelimiterTopologyCandidate
+	for iteration := 0; iteration < 500; iteration++ {
+		item := cases[random.IntN(len(cases))]
+		source := []byte(item.source)
+		owners, expected := slices.Clone(item.owners), slices.Clone(item.expected)
+		fresh, wantOK := PrepareDelimiterTopologyCandidate(source, owners, expected)
+		if gotOK := reused.Reset(source, owners, expected); gotOK != wantOK {
+			t.Fatalf("reset validity differs for %q", source)
+		}
+		if !wantOK {
+			continue
+		}
+		if reused.Matches() != fresh.Matches() {
+			t.Fatalf("reused matching differs for %q", source)
+		}
+		for _, withTilde := range []bool{true, false} {
+			got, gotOK := reused.TransferFacts(withTilde)
+			want, wantOK := fresh.TransferFacts(withTilde)
+			if gotOK != wantOK || got != want {
+				t.Fatalf("reused transfer differs for %q: got %+v/%v, want %+v/%v", source, got, gotOK, want, wantOK)
+			}
+		}
+		if string(source) != item.source || !slices.Equal(owners, item.owners) || !slices.Equal(expected, item.expected) {
+			t.Fatal("reused proof mutated caller input")
+		}
+	}
+}
 
 func TestPreparedDelimiterTopologyCanAlternateProofsWithoutMutatingInputs(t *testing.T) {
 	source := []byte("*x* `~`")

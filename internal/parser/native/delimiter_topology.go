@@ -56,8 +56,18 @@ type DelimiterTopologyCandidate struct {
 
 // PrepareDelimiterTopologyCandidate scans once with Native owner exclusions.
 func PrepareDelimiterTopologyCandidate(source []byte, owners []parser.Range, expected []DelimiterTopologyPair) (DelimiterTopologyCandidate, bool) {
+	var candidate DelimiterTopologyCandidate
+	ok := candidate.Reset(source, owners, expected)
+	return candidate, ok
+}
+
+// Reset prepares another candidate while retaining only resolver scratch.
+// Borrowed inputs must remain unchanged until the next Reset. Proof methods
+// may be called only after a successful reset, serially within one operation.
+func (c *DelimiterTopologyCandidate) Reset(source []byte, owners []parser.Range, expected []DelimiterTopologyPair) bool {
 	runs, want, ok := delimiterTopologyLeadingRunPreparation(source, owners, expected)
-	return DelimiterTopologyCandidate{source: source, expected: expected, runs: runs, want: want}, ok
+	c.source, c.expected, c.runs, c.want = source, expected, runs, want
+	return ok
 }
 
 // Matches proves exact delimiter consumption without rescanning the source.
