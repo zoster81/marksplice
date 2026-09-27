@@ -90,7 +90,6 @@ type renderer struct {
 	definitions     map[int]footnoteDefinition
 	footnoteNumbers map[int]int
 	footnoteOrder   []int
-	footnoteLabels  map[int]string
 	counter         *countingWriter
 	collect         SourceMapCollector
 	captureMappings []SourceMapEntry
@@ -132,12 +131,9 @@ func renderMapped(writer io.Writer, counter *countingWriter, source []byte, back
 
 func newRenderer(writer io.Writer, options Options, sourceLength int) *renderer {
 	return &renderer{
-		writer:          writer,
-		options:         options,
-		definitions:     make(map[int]footnoteDefinition),
-		footnoteNumbers: make(map[int]int),
-		footnoteLabels:  make(map[int]string),
-		sourceLength:    sourceLength,
+		writer:       writer,
+		options:      options,
+		sourceLength: sourceLength,
 	}
 }
 
@@ -598,11 +594,15 @@ func (r *renderer) exitFootnoteDefinition(current frame) error {
 	if !current.footnoteCapture || r.capture == nil {
 		return fmt.Errorf("%w: missing footnote capture", ErrInvalidInput)
 	}
+	if r.definitions == nil {
+		r.definitions = make(map[int]footnoteDefinition)
+	}
+	// Each definition starts fresh capture storage; transfer it before clearing.
 	r.definitions[current.anchor] = footnoteDefinition{
 		label:    current.label,
-		body:     append([]byte(nil), r.capture.Bytes()...),
+		body:     r.capture.Bytes(),
 		source:   current.sourceRange,
-		mappings: append([]SourceMapEntry(nil), r.captureMappings...),
+		mappings: r.captureMappings,
 	}
 	r.capture = nil
 	r.captureMappings = nil
@@ -694,10 +694,12 @@ func (r *renderer) writeMath(event parser.SemanticEvent) error {
 func (r *renderer) writeFootnoteReference(event parser.SemanticEvent) error {
 	number, ok := r.footnoteNumbers[event.DefinitionAnchor]
 	if !ok {
+		if r.footnoteNumbers == nil {
+			r.footnoteNumbers = make(map[int]int)
+		}
 		number = len(r.footnoteOrder) + 1
 		r.footnoteNumbers[event.DefinitionAnchor] = number
 		r.footnoteOrder = append(r.footnoteOrder, event.DefinitionAnchor)
-		r.footnoteLabels[event.DefinitionAnchor] = event.Label
 	}
 	label := footnoteID(event.Label)
 	refID := "fnref:" + label

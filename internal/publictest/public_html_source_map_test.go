@@ -60,6 +60,35 @@ func TestHTMLSourceMapTranslatesFootnoteCaptureAndImageOutput(t *testing.T) {
 	assertMapping(t, source, output, mappings, "foot text", "foot text")
 }
 
+func TestHTMLFootnoteCapturesKeepSeparateBodiesAndMappings(t *testing.T) {
+	t.Parallel()
+	source := []byte("notes[^b] and[^a] again[^b].\n\n[^a]: alpha **bold**.\n\n[^b]: beta *italic*.\n\n[^unused]: hidden.\n")
+	document, err := marksplice.Parse(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := marksplice.DefaultHTMLRenderOptions()
+	output, mappings, err := document.HTMLWithSourceMap(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := document.HTML(options)
+	if err != nil || !bytes.Equal(plain, output) {
+		t.Fatalf("mapped rendering changed HTML: %v", err)
+	}
+	html := string(output)
+	first, second := strings.Index(html, `id="fn:b"`), strings.Index(html, `id="fn:a"`)
+	if first < 0 || second <= first || strings.Contains(html, "hidden") || !strings.Contains(html, `id="fnref:b-2"`) {
+		t.Fatalf("footnote order, repeated reference or unused definition changed: %s", html)
+	}
+	if !strings.Contains(html[first:second], "beta <em>italic</em>.") || !strings.Contains(html[second:], "alpha <strong>bold</strong>.") {
+		t.Fatalf("captured bodies changed: %s", html)
+	}
+	assertMappingsValidAndOrdered(t, source, output, mappings)
+	assertMapping(t, source, output, mappings, "bold", "bold")
+	assertMapping(t, source, output, mappings, "italic", "italic")
+}
+
 func TestStandaloneHTMLSourceMapIncludesReviewedMetadataAndAbsoluteBodyOffsets(t *testing.T) {
 	t.Parallel()
 
