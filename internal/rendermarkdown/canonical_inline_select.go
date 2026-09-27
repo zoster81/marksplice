@@ -20,6 +20,7 @@ type canonicalInlineCandidate struct {
 // canonicalInlineProofWorkspace reuses temporary proof indexes within one
 // serial host selection. Candidate results remain independently owned.
 type canonicalInlineProofWorkspace struct {
+	emitter        canonicalInlineEmitWorkspace
 	topology       native.DelimiterTopologyCandidate
 	delimiterNodes []canonicalInlineDelimiterNodePair
 }
@@ -139,7 +140,7 @@ func (w *canonicalInlineProofWorkspace) candidateForPlan(
 	tableCell bool,
 ) (canonicalInlineCandidate, error) {
 	metadata := canonicalInlineCandidateMetadata{}
-	output, err := emitCanonicalInlineASTWithMetadata(
+	output, err := w.emitter.emit(
 		ast,
 		normalization,
 		plan,

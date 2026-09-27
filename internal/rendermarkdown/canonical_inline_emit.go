@@ -281,15 +281,37 @@ func emitCanonicalInlineASTWithMetadata(
 	tableCell bool,
 	metadata *canonicalInlineCandidateMetadata,
 ) ([]byte, error) {
+	var workspace canonicalInlineEmitWorkspace
+	return workspace.emit(ast, normalization, plan, context, tableCell, metadata)
+}
+
+type canonicalInlineEmitWorkspace struct {
+	stack []canonicalInlineASTEmitFrame
+}
+
+func (w *canonicalInlineEmitWorkspace) emit(
+	ast canonicalInlineAST,
+	normalization canonicalInlineNormalization,
+	plan canonicalInlinePlan,
+	context canonicalInlineEmitContext,
+	tableCell bool,
+	metadata *canonicalInlineCandidateMetadata,
+) ([]byte, error) {
 	if !canonicalInlineEmissionInputValid(ast, normalization, plan) {
 		return nil, ErrInvalidInput
 	}
 	output := make([]byte, 0)
-	stack := []canonicalInlineASTEmitFrame{{
+	stack := append(w.stack[:0], canonicalInlineASTEmitFrame{
 		node:      ast.root,
 		nextChild: ast.nodes[ast.root].firstChild,
 		state:     newCanonicalInlineASTState(),
-	}}
+	})
+	defer func() {
+		// Popped frames also retain semantic strings. Release every reference on
+		// success and failure while keeping only operation-local stack storage.
+		clear(stack[:cap(stack)])
+		w.stack = stack[:0]
+	}()
 	for len(stack) != 0 {
 		frame := &stack[len(stack)-1]
 		if frame.nextChild == noCanonicalInlineASTNode {
