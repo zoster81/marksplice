@@ -57,6 +57,14 @@ func TestTableNodeDataKeepsSnapshotAndReturnedValuesIndependent(t *testing.T) {
 		if len(single.table.TableAlignments) != 0 {
 			single.table.TableAlignments[0] = TableAlignmentCenter
 		}
+		indexed, ok := document.NodeAt(index)
+		if !ok || !reflect.DeepEqual(indexed, original[index]) {
+			t.Fatal("indexed table node differs from the complete snapshot")
+		}
+		indexed.table.TableColumnCount = -5
+		if len(indexed.table.TableAlignments) != 0 {
+			indexed.table.TableAlignments[0] = TableAlignmentCenter
+		}
 	}
 	if tableKinds != [3]bool{true, true, true} {
 		t.Fatalf("missing table kind coverage: %v", tableKinds)

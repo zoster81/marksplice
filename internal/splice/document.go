@@ -484,6 +484,14 @@ func (d *Document) NodeCount() int {
 	return len(d.nodes)
 }
 
+// NodeAt returns a detached node at one stable snapshot-local index.
+func (d *Document) NodeAt(index int) (Node, bool) {
+	if d == nil || index < 0 || index >= len(d.nodes) {
+		return Node{}, false
+	}
+	return cloneNode(d.nodes[index]), true
+}
+
 // NodeSummaryAt returns lightweight structural data at one stable snapshot-local index.
 func (d *Document) NodeSummaryAt(index int) (NodeSummary, bool) {
 	if d == nil || index < 0 || index >= len(d.nodes) {

@@ -44,6 +44,11 @@ func TestListNodeDataKeepsSnapshotAndReturnedValuesIndependent(t *testing.T) {
 			t.Fatal("missing list node")
 		}
 		single.list.ListSubtreeEnd = -3
+		indexed, ok := document.NodeAt(index)
+		if !ok || !reflect.DeepEqual(indexed, original[index]) {
+			t.Fatal("indexed list node differs from the complete snapshot")
+		}
+		indexed.list.ListParentID = "changed"
 	}
 	if items != 3 || !reflect.DeepEqual(document.Nodes(), original) {
 		t.Fatal("missing list items or snapshot changed through returned metadata")

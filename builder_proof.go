@@ -97,10 +97,10 @@ func validateConstructionDocument(source []byte, expected []constructionExpectat
 		return fmt.Errorf("%w: generated GFM parse: %v", ErrInvalidConstruction, err)
 	}
 
-	nodes := document.Nodes()
 	tasks := make(map[int]splice.Node)
 	matched := 0
-	for _, node := range nodes {
+	for index := range document.NodeCount() {
+		node, _ := document.NodeAt(index)
 		if node.Kind == splice.KindTask && node.Editable {
 			if _, exists := tasks[node.Range.Start]; exists {
 				return fmt.Errorf("%w: generated duplicate task marker", ErrInvalidConstruction)
