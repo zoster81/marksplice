@@ -411,10 +411,17 @@ func (a *canonicalInlinePruneAccumulator) observe(
 	}
 }
 
+// result consumes the accumulator; a single owned result list needs no copy.
 func (a canonicalInlinePruneAccumulator) result() []canonicalInlineFrontierCandidate {
 	count := len(a.deferred) + len(a.keyed)
 	if a.markerlessSet {
 		count++
+	}
+	if count != 0 && count == len(a.keyed) {
+		return a.keyed
+	}
+	if count != 0 && count == len(a.deferred) {
+		return a.deferred
 	}
 	result := make([]canonicalInlineFrontierCandidate, 0, count)
 	if a.markerlessSet {

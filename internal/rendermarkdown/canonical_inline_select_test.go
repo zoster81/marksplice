@@ -213,6 +213,39 @@ func TestCanonicalInlinePruneAccumulatorMatchesSelectionOrder(t *testing.T) {
 	}
 }
 
+func TestCanonicalInlinePruneAccumulatorSingleClassResults(t *testing.T) {
+	for _, disposition := range []canonicalInlinePruneDisposition{
+		canonicalInlinePruneMarkerless, canonicalInlinePruneDeferred, canonicalInlinePruneKeyed,
+	} {
+		var accumulator canonicalInlinePruneAccumulator
+		var observations []canonicalInlinePruneObservation
+		for index := 0; index < 4; index++ {
+			key := canonicalInlinePruneKey{state: canonicalInlineSelectorState{
+				base: canonicalInlineTransferState{starForbidden: uint8(index % 2)},
+			}}
+			candidate := canonicalInlineFrontierCandidate{}
+			candidate.alternationCost = 3 - index
+			candidate.payloadRawTab = make([]bool, index+1)
+			accumulator.observe(candidate, disposition, key)
+			observations = append(observations, canonicalInlinePruneObservation{
+				disposition: disposition, key: key, cost: candidate.choiceCost(),
+			})
+		}
+		got, want := accumulator.result(), canonicalInlinePruneSelection(observations)
+		if len(got) != len(want) {
+			t.Fatalf("class %d result length = %d, want %d", disposition, len(got), len(want))
+		}
+		for index, selected := range want {
+			if len(got[index].payloadRawTab) != selected+1 {
+				t.Fatalf("class %d result %d changed candidate order", disposition, index)
+			}
+		}
+	}
+	if empty := (canonicalInlinePruneAccumulator{}).result(); empty == nil || len(empty) != 0 {
+		t.Fatal("empty selection must remain an initialized empty slice")
+	}
+}
+
 func TestCanonicalInlineAlternationCostCountsTouchingSameFamilyParents(t *testing.T) {
 	t.Parallel()
 
