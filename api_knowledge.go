@@ -43,11 +43,6 @@ type knowledgeDocumentState struct {
 	tags    []KnowledgeTag
 }
 
-type knowledgeReferenceRange struct {
-	start int
-	end   int
-}
-
 // KnowledgeIndex is an immutable syntax-independent semantic overlay on one DocumentGraph.
 // It retains no parser, resolver callback, filesystem/network authority, or source mutation capability.
 type KnowledgeIndex struct {
@@ -55,7 +50,7 @@ type KnowledgeIndex struct {
 	documents   map[DocumentKey]knowledgeDocumentState
 	aliasOwners map[KnowledgeAlias]DocumentKey
 	references  []KnowledgeReference
-	outgoing    map[DocumentKey]knowledgeReferenceRange
+	outgoing    map[DocumentKey]adjacencyRange
 	backlinks   map[DocumentKey][]int
 }
 
@@ -99,7 +94,7 @@ func BuildKnowledgeIndex(graph *DocumentGraph, documents []KnowledgeDocument) (*
 		documents:   states,
 		aliasOwners: aliasOwners,
 		references:  make([]KnowledgeReference, 0, referenceCount),
-		outgoing:    make(map[DocumentKey]knowledgeReferenceRange, referenceSourceCount),
+		outgoing:    make(map[DocumentKey]adjacencyRange, referenceSourceCount),
 		backlinks:   make(map[DocumentKey][]int),
 	}
 	for _, source := range graph.keys {
@@ -179,7 +174,7 @@ func (k *KnowledgeIndex) addReferences(source DocumentKey, targets []DocumentKey
 		k.references = append(k.references, KnowledgeReference{sourceDocument: source, targetDocument: target})
 		k.backlinks[target] = append(k.backlinks[target], index)
 	}
-	k.outgoing[source] = knowledgeReferenceRange{start: start, end: len(k.references)}
+	k.outgoing[source] = adjacencyRange{start: start, end: len(k.references)}
 }
 
 func (k *KnowledgeIndex) outgoingReferences(source DocumentKey) []KnowledgeReference {
@@ -292,8 +287,9 @@ func (k *KnowledgeIndex) ReachableFrom(key DocumentKey) ([]DocumentKey, bool) {
 	queue[0] = key
 	for head := 0; head < len(queue); head++ {
 		current := queue[head]
-		for _, edgeIndex := range k.graph.outgoing[current] {
-			appendUnvisitedDocument(k.graph.edges[edgeIndex].targetDocument, visited, &queue)
+		edges := k.graph.outgoingEdges(current)
+		for index := range edges {
+			appendUnvisitedDocument(edges[index].targetDocument, visited, &queue)
 		}
 		for _, reference := range k.outgoingReferences(current) {
 			appendUnvisitedDocument(reference.targetDocument, visited, &queue)

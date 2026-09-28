@@ -58,13 +58,18 @@ func (e GraphEdge) FragmentTarget() (FragmentTarget, bool) {
 	return e.fragmentTarget, e.hasFragmentTarget
 }
 
+type adjacencyRange struct {
+	start int
+	end   int
+}
+
 // DocumentGraph is an immutable graph over an explicit caller-provided document set.
 // It stores resolved edges plus compact adjacency indexes and performs no I/O.
 type DocumentGraph struct {
 	keys      []DocumentKey
 	documents map[DocumentKey]*Document
 	edges     []GraphEdge
-	outgoing  map[DocumentKey][]int
+	outgoing  map[DocumentKey]adjacencyRange
 	backlinks map[DocumentKey][]int
 }
 
@@ -90,7 +95,7 @@ func newDocumentGraph(documents []GraphDocument) (*DocumentGraph, error) {
 	graph := &DocumentGraph{
 		keys:      make([]DocumentKey, 0, len(documents)),
 		documents: make(map[DocumentKey]*Document, len(documents)),
-		outgoing:  make(map[DocumentKey][]int, len(documents)),
+		outgoing:  make(map[DocumentKey]adjacencyRange, len(documents)),
 		backlinks: make(map[DocumentKey][]int, len(documents)),
 	}
 	for index, item := range documents {
@@ -118,6 +123,7 @@ func (g *DocumentGraph) appendDocumentRelationships(item GraphDocument, resolver
 }
 
 func (g *DocumentGraph) appendRelationshipEdges(key DocumentKey, relationships []LinkRelationship, resolver DocumentResolver, fragmentResolvers graphFragmentResolvers) error {
+	start := len(g.edges)
 	for _, relationship := range relationships {
 		if strings.HasPrefix(relationship.Destination(), "#") {
 			g.addEdge(localGraphEdge(key, relationship))
@@ -135,6 +141,10 @@ func (g *DocumentGraph) appendRelationshipEdges(key DocumentKey, relationships [
 			return fmt.Errorf("%w: resolver target %q from %q is not in the document set", ErrInvalidGraph, resolution.Target, key)
 		}
 		g.addEdge(resolvedGraphEdge(key, resolution, relationship, target, fragmentResolvers))
+	}
+	// Both builders visit each source once, so its resolved edges are contiguous.
+	if len(g.edges) != start {
+		g.outgoing[key] = adjacencyRange{start: start, end: len(g.edges)}
 	}
 	return nil
 }
@@ -189,8 +199,12 @@ func resolvedGraphEdge(source DocumentKey, resolution DocumentResolution, relati
 func (g *DocumentGraph) addEdge(edge GraphEdge) {
 	index := len(g.edges)
 	g.edges = append(g.edges, edge)
-	g.outgoing[edge.sourceDocument] = append(g.outgoing[edge.sourceDocument], index)
 	g.backlinks[edge.targetDocument] = append(g.backlinks[edge.targetDocument], index)
+}
+
+func (g *DocumentGraph) outgoingEdges(key DocumentKey) []GraphEdge {
+	range_ := g.outgoing[key]
+	return g.edges[range_.start:range_.end]
 }
 
 // DocumentKeys returns caller-defined document keys in graph-input order.
@@ -226,7 +240,7 @@ func (g *DocumentGraph) Outgoing(key DocumentKey) ([]GraphEdge, bool) {
 	if _, ok := g.documents[key]; !ok {
 		return nil, false
 	}
-	return g.edgesAt(g.outgoing[key]), true
+	return append([]GraphEdge(nil), g.outgoingEdges(key)...), true
 }
 
 // Backlinks returns resolved edges whose target is key in global edge order.
@@ -278,8 +292,9 @@ func (g *DocumentGraph) ReachableFrom(key DocumentKey) ([]DocumentKey, bool) {
 	queue := make([]DocumentKey, 1, len(g.documents))
 	queue[0] = key
 	for head := 0; head < len(queue); head++ {
-		for _, edgeIndex := range g.outgoing[queue[head]] {
-			appendUnvisitedDocument(g.edges[edgeIndex].targetDocument, visited, &queue)
+		edges := g.outgoingEdges(queue[head])
+		for index := range edges {
+			appendUnvisitedDocument(edges[index].targetDocument, visited, &queue)
 		}
 	}
 	// The queue already has discovery order. Do not retain the excluded root.
@@ -294,8 +309,9 @@ func (g *DocumentGraph) reachableFromRoots(roots []DocumentKey) map[DocumentKey]
 		appendUnvisitedDocument(root, visited, &queue)
 	}
 	for head := 0; head < len(queue); head++ {
-		for _, edgeIndex := range g.outgoing[queue[head]] {
-			appendUnvisitedDocument(g.edges[edgeIndex].targetDocument, visited, &queue)
+		edges := g.outgoingEdges(queue[head])
+		for index := range edges {
+			appendUnvisitedDocument(edges[index].targetDocument, visited, &queue)
 		}
 	}
 	return visited
@@ -313,8 +329,9 @@ func (g *DocumentGraph) RelatedDocuments(key DocumentKey) ([]DocumentKey, bool) 
 }
 
 func (g *DocumentGraph) markRelatedDocuments(key DocumentKey, related map[DocumentKey]bool) {
-	for _, edgeIndex := range g.outgoing[key] {
-		related[g.edges[edgeIndex].targetDocument] = true
+	edges := g.outgoingEdges(key)
+	for index := range edges {
+		related[edges[index].targetDocument] = true
 	}
 	for _, edgeIndex := range g.backlinks[key] {
 		related[g.edges[edgeIndex].sourceDocument] = true

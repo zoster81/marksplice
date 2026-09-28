@@ -154,6 +154,8 @@ Preserving raw HTML during rendering is not sanitization. Applications handling 
 
 `KnowledgeIndex` is a syntax-independent overlay over an existing immutable graph. Caller-provided aliases, tags, and logical references remain distinct from source-backed Markdown relationships; Marksplice does not infer them from filenames, wikilinks, hashtags, front matter, or URLs.
 
+Graph edges and knowledge references are stored once, grouped by source document. Outgoing adjacency uses bounded ranges into those vectors; backlinks retain per-target edge indices because incoming entries need not be contiguous. Public enumerations copy the selected entries, preserving caller ownership.
+
 ## Filesystem workspace adapter
 
 `workspacefs` is the only package that discovers Markdown through filesystem authority, and that authority must be supplied by the caller as `fs.FS` plus finite limits.

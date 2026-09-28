@@ -11,29 +11,44 @@ import (
 func TestValidateWorkspacePreservesResolutionAndEdgeOrderAcrossDocuments(t *testing.T) {
 	documents := []marksplice.GraphDocument{
 		{Key: "a", Document: mustParseGraphDocument(t, "# A\n\n[local](#a) [next](b)\n")},
+		{Key: "empty", Document: mustParseGraphDocument(t, "[external](outside)\n")},
 		{Key: "b", Document: mustParseGraphDocument(t, "# B\n\n[back](a) [next](c)\n")},
 		{Key: "c", Document: mustParseGraphDocument(t, "# C\n\n[back](b)\n")},
 	}
 	var calls []string
 	resolve := func(key marksplice.DocumentKey, relationship marksplice.LinkRelationship) marksplice.WorkspaceResolution {
 		calls = append(calls, string(key)+":"+relationship.Destination())
+		if relationship.Destination() == "outside" {
+			return marksplice.WorkspaceResolution{Kind: marksplice.WorkspaceResolutionIgnore}
+		}
 		return marksplice.WorkspaceResolution{Kind: marksplice.WorkspaceResolutionResolved, Target: marksplice.DocumentKey(relationship.Destination())}
 	}
 	report, err := marksplice.ValidateWorkspace(documents, resolve, marksplice.WorkspaceValidationOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(calls, []string{"a:b", "b:a", "b:c", "c:b"}) {
+	if !reflect.DeepEqual(calls, []string{"a:b", "empty:outside", "b:a", "b:c", "c:b"}) {
 		t.Fatalf("resolver calls = %v", calls)
 	}
 	want, err := marksplice.BuildDocumentGraph(documents, func(_ marksplice.DocumentKey, relationship marksplice.LinkRelationship) (marksplice.DocumentResolution, bool) {
-		return marksplice.DocumentResolution{Target: marksplice.DocumentKey(relationship.Destination())}, true
+		return marksplice.DocumentResolution{Target: marksplice.DocumentKey(relationship.Destination())}, relationship.Destination() != "outside"
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(report.Graph().Edges(), want.Edges()) {
 		t.Fatal("validation graph differs from standalone graph in edge order or contents")
+	}
+	for _, graph := range []*marksplice.DocumentGraph{report.Graph(), want} {
+		if edges, ok := graph.Outgoing("empty"); !ok || edges != nil {
+			t.Fatalf("Outgoing(empty) = %v/%v, want nil/true", edges, ok)
+		}
+		for key, destinations := range map[marksplice.DocumentKey][]string{"a": {"#a", "b"}, "b": {"a", "c"}, "c": {"b"}} {
+			edges, ok := graph.Outgoing(key)
+			if !ok || !reflect.DeepEqual(graphEdgesDestinations(edges), destinations) {
+				t.Fatalf("Outgoing(%s) = %v/%v, want %v", key, graphEdgesDestinations(edges), ok, destinations)
+			}
+		}
 	}
 }
 
