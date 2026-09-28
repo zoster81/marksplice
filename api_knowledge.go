@@ -66,6 +66,7 @@ func BuildKnowledgeIndex(graph *DocumentGraph, documents []KnowledgeDocument) (*
 	aliasOwners := make(map[KnowledgeAlias]DocumentKey)
 	referenceTargets := make(map[DocumentKey][]DocumentKey, len(documents))
 	referenceCount := 0
+	referenceSourceCount := 0
 	for position, document := range documents {
 		if !graph.hasDocument(document.Document) {
 			return nil, fmt.Errorf("%w: metadata document %q at position %d is outside the graph", ErrInvalidKnowledge, document.Document, position)
@@ -81,6 +82,9 @@ func BuildKnowledgeIndex(graph *DocumentGraph, documents []KnowledgeDocument) (*
 			return nil, fmt.Errorf("%w: too many logical references", ErrInvalidKnowledge)
 		}
 		referenceCount += len(references)
+		if len(references) != 0 {
+			referenceSourceCount++
+		}
 		states[document.Document] = state
 		referenceTargets[document.Document] = references
 	}
@@ -90,7 +94,7 @@ func BuildKnowledgeIndex(graph *DocumentGraph, documents []KnowledgeDocument) (*
 		documents:   states,
 		aliasOwners: aliasOwners,
 		references:  make([]KnowledgeReference, 0, referenceCount),
-		outgoing:    make(map[DocumentKey][]int),
+		outgoing:    make(map[DocumentKey][]int, referenceSourceCount),
 		backlinks:   make(map[DocumentKey][]int),
 	}
 	for _, source := range graph.keys {
