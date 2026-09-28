@@ -43,6 +43,11 @@ type knowledgeDocumentState struct {
 	tags    []KnowledgeTag
 }
 
+type knowledgeReferenceRange struct {
+	start int
+	end   int
+}
+
 // KnowledgeIndex is an immutable syntax-independent semantic overlay on one DocumentGraph.
 // It retains no parser, resolver callback, filesystem/network authority, or source mutation capability.
 type KnowledgeIndex struct {
@@ -50,7 +55,7 @@ type KnowledgeIndex struct {
 	documents   map[DocumentKey]knowledgeDocumentState
 	aliasOwners map[KnowledgeAlias]DocumentKey
 	references  []KnowledgeReference
-	outgoing    map[DocumentKey][]int
+	outgoing    map[DocumentKey]knowledgeReferenceRange
 	backlinks   map[DocumentKey][]int
 }
 
@@ -94,13 +99,11 @@ func BuildKnowledgeIndex(graph *DocumentGraph, documents []KnowledgeDocument) (*
 		documents:   states,
 		aliasOwners: aliasOwners,
 		references:  make([]KnowledgeReference, 0, referenceCount),
-		outgoing:    make(map[DocumentKey][]int, referenceSourceCount),
+		outgoing:    make(map[DocumentKey]knowledgeReferenceRange, referenceSourceCount),
 		backlinks:   make(map[DocumentKey][]int),
 	}
 	for _, source := range graph.keys {
-		for _, target := range referenceTargets[source] {
-			index.addReference(KnowledgeReference{sourceDocument: source, targetDocument: target})
-		}
+		index.addReferences(source, referenceTargets[source])
 	}
 	return index, nil
 }
@@ -165,11 +168,23 @@ func validKnowledgeText(value string) bool {
 	return value != "" && utf8.ValidString(value) && !strings.ContainsAny(value, "\x00\r\n")
 }
 
-func (k *KnowledgeIndex) addReference(reference KnowledgeReference) {
-	index := len(k.references)
-	k.references = append(k.references, reference)
-	k.outgoing[reference.sourceDocument] = append(k.outgoing[reference.sourceDocument], index)
-	k.backlinks[reference.targetDocument] = append(k.backlinks[reference.targetDocument], index)
+func (k *KnowledgeIndex) addReferences(source DocumentKey, targets []DocumentKey) {
+	if len(targets) == 0 {
+		return
+	}
+	// Build visits each source once, keeping its references contiguous.
+	start := len(k.references)
+	for _, target := range targets {
+		index := len(k.references)
+		k.references = append(k.references, KnowledgeReference{sourceDocument: source, targetDocument: target})
+		k.backlinks[target] = append(k.backlinks[target], index)
+	}
+	k.outgoing[source] = knowledgeReferenceRange{start: start, end: len(k.references)}
+}
+
+func (k *KnowledgeIndex) outgoingReferences(source DocumentKey) []KnowledgeReference {
+	range_ := k.outgoing[source]
+	return k.references[range_.start:range_.end]
 }
 
 func (k *KnowledgeIndex) hasDocument(key DocumentKey) bool {
@@ -241,7 +256,7 @@ func (k *KnowledgeIndex) ReferencesFrom(key DocumentKey) ([]KnowledgeReference, 
 	if !k.hasDocument(key) {
 		return nil, false
 	}
-	return k.referencesAt(k.outgoing[key]), true
+	return append([]KnowledgeReference(nil), k.outgoingReferences(key)...), true
 }
 
 // ReferencedBy returns logical references whose target is key in global reference order.
@@ -280,8 +295,8 @@ func (k *KnowledgeIndex) ReachableFrom(key DocumentKey) ([]DocumentKey, bool) {
 		for _, edgeIndex := range k.graph.outgoing[current] {
 			appendUnvisitedDocument(k.graph.edges[edgeIndex].targetDocument, visited, &queue)
 		}
-		for _, referenceIndex := range k.outgoing[current] {
-			appendUnvisitedDocument(k.references[referenceIndex].targetDocument, visited, &queue)
+		for _, reference := range k.outgoingReferences(current) {
+			appendUnvisitedDocument(reference.targetDocument, visited, &queue)
 		}
 	}
 	// The queue already has discovery order. Do not retain the excluded root.
@@ -303,8 +318,8 @@ func (k *KnowledgeIndex) RelatedDocuments(key DocumentKey) ([]DocumentKey, bool)
 }
 
 func (k *KnowledgeIndex) markRelatedKnowledgeDocuments(key DocumentKey, related map[DocumentKey]bool) {
-	for _, referenceIndex := range k.outgoing[key] {
-		related[k.references[referenceIndex].targetDocument] = true
+	for _, reference := range k.outgoingReferences(key) {
+		related[reference.targetDocument] = true
 	}
 	for _, referenceIndex := range k.backlinks[key] {
 		related[k.references[referenceIndex].sourceDocument] = true

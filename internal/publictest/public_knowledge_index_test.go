@@ -75,6 +75,12 @@ func TestKnowledgeIndexAddsSyntaxIndependentAliasesTagsAndLogicalReferences(t *t
 	if got, ok := index.ReferencesFrom("a"); !ok || len(got) != 2 || got[0].TargetDocument() != "b" || got[1].TargetDocument() != "c" {
 		t.Fatalf("ReferencesFrom(a) = %#v/%v", got, ok)
 	}
+	if got, ok := index.ReferencesFrom("b"); !ok || got != nil {
+		t.Fatalf("ReferencesFrom(b) = %#v/%v, want nil/true", got, ok)
+	}
+	if got, ok := index.ReferencesFrom("c"); !ok || len(got) != 1 || got[0].SourceDocument() != "c" || got[0].TargetDocument() != "b" {
+		t.Fatalf("ReferencesFrom(c) = %#v/%v", got, ok)
+	}
 	if got, ok := index.ReferencedBy("b"); !ok || len(got) != 2 || got[0].SourceDocument() != "a" || got[1].SourceDocument() != "c" {
 		t.Fatalf("ReferencedBy(b) = %#v/%v", got, ok)
 	}
