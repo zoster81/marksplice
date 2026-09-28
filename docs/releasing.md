@@ -20,7 +20,8 @@ A version that has been observed by Go module tooling must never be reused for d
 
 - `v1.0.0` established the first stable public API contract.
 - `v1.1.0` contains the compatible structured-editing expansion but is retracted because it reached Go module tooling before public release metadata and maintenance naming were fully corrected.
-- `v1.1.1` is the supported v1.1 release and contains the same public runtime/API capability set with corrected public documentation and maintenance naming.
+- `v1.1.1` is the corrected v1.1 release and contains the same public runtime/API capability set as the retracted `v1.1.0` with corrected public documentation and maintenance naming.
+- `v1.2.0` is the current supported stable release. It adds compatible local-fragment continuity, final-state TOC composition, multiline footnote construction, Markdown correctness fixes, and profile-guided internal performance/allocation improvements without changing the v1 compatibility contract.
 
 Future release targets belong in [`roadmap.md`](roadmap.md). A development boundary is not a release by itself; publication always requires an exact reviewed commit and green release gates.
 
@@ -92,8 +93,8 @@ Temporary consumer modules are maintainer tooling, not repository content.
 Example tag commands:
 
 ```text
-git tag -a v1.1.1 -m "Marksplice v1.1.1"
-git push origin v1.1.1
+git tag -a v1.2.0 -m "Marksplice v1.2.0"
+git push origin v1.2.0
 ```
 
 For prereleases, use an exact semantic prerelease such as `v1.2.0-rc.1` and mark the GitHub Release accordingly.
@@ -103,20 +104,20 @@ For prereleases, use an exact semantic prerelease such as `v1.2.0-rc.1` and mark
 After the tag and tag CI are green:
 
 ```text
-GOPROXY=https://proxy.golang.org go list -m github.com/zoster81/marksplice@v1.1.1
+GOPROXY=https://proxy.golang.org go list -m github.com/zoster81/marksplice@v1.2.0
 ```
 
 On PowerShell:
 
 ```powershell
 $env:GOPROXY = 'https://proxy.golang.org'
-go list -m github.com/zoster81/marksplice@v1.1.1
+go list -m github.com/zoster81/marksplice@v1.2.0
 ```
 
 Then verify the corresponding package documentation:
 
 ```text
-https://pkg.go.dev/github.com/zoster81/marksplice@v1.1.1
+https://pkg.go.dev/github.com/zoster81/marksplice@v1.2.0
 ```
 
 ## Retractions

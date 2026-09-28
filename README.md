@@ -25,13 +25,13 @@ An ordinary AST parser tells you what Markdown means. Marksplice also proves **w
 | Conformance evidence | 652 CommonMark + 676 parser-applicable GFM parser contracts; profile-aware HTML checked against all 652 CommonMark and 677 published-GFM examples; canonical Markdown semantic round-trip/idempotence checked across all 652 + 677 published examples |
 | Source safety | Exact byte ranges, immutable snapshots, stale-source detection, minimal operation-owned patches |
 | Real-world validation | Byte-certified corpus of 6,857 Markdown documents, 60.8 MB, from 195 open-source repositories |
-| Measured parse performance | v0.5 engineering freeze: 25.06 MB/s public `Parse`, 30.87 MB/s Native on the same preloaded 60.8 MB corpus |
+| Measured parse performance | v1.2 engineering freeze: 30.53 MB/s public `Parse`, 39.92 MB/s Native on the same preloaded 60.8 MB corpus |
 | Robustness | Focused/pathological tests, fuzz targets, race testing, static analysis, and cross-platform builds |
 | Portability | Pure Go; Go 1.26+; no third-party Markdown parser dependency |
 | Dependencies | One direct dependency: `golang.org/x/text`, used for full Unicode GFM reference-label folding |
 | Authority boundary | No hidden filesystem traversal, URL fetching, network access, or command execution in the document core |
 
-Performance is measured on real documents as well as focused benchmarks; correctness and source preservation are not traded away to win a parser-only microbenchmark. On the same-host v0.5 campaign, public `Parse` improved from 15.04 to **25.06 MB/s** while allocated bytes fell from about 4.49 GB/op to **2.70 GB/op**. These are engineering benchmark results for that corpus/host, not cross-machine guarantees.
+Performance is measured on real documents as well as focused benchmarks; correctness and source preservation are not traded away to win a parser-only microbenchmark. On the current v1.2 engineering freeze, the preloaded 60.8 MB corpus measures **30.53 MB/s** for public `Parse` with about **1.94 GB/op** allocated and **39.92 MB/s** for Native parsing with about **1.45 GB/op** allocated. These are engineering benchmark results for that corpus and recorded Windows/amd64 host, not cross-machine guarantees.
 
 ## Built for tools and AI agents
 
@@ -47,10 +47,10 @@ The document core does not crawl files or fetch URLs. `workspacefs` performs onl
 
 ## Install
 
-Marksplice requires Go 1.26 or newer. The current stable release is `v1.1.1`:
+Marksplice requires Go 1.26 or newer. The current stable release is `v1.2.0`:
 
 ```sh
-go get github.com/zoster81/marksplice@v1.1.1
+go get github.com/zoster81/marksplice@v1.2.0
 ```
 
 ## Try a real file
@@ -123,7 +123,7 @@ See the concise [capability matrix](docs/capabilities.md) for current boundaries
 
 ## Status
 
-Marksplice `v1.1.1` is the current stable release; `v1.0.0` established the first stable API contract. `v1.1.0` is retracted; use `v1.1.1` for the v1.1 feature set. Public API compatibility follows Semantic Versioning: compatible fixes and additions stay within the v1 line, while an intentionally breaking public API requires a new major version and the corresponding Go module-path decision. The production parser is Marksplice's native CommonMark/GFM implementation; ordinary users do not need parser internals to use the public API.
+Marksplice `v1.2.0` is the current stable release; `v1.0.0` established the first stable API contract. `v1.1.0` is retracted; `v1.1.1` remains the corrected v1.1 release. Public API compatibility follows Semantic Versioning: compatible fixes and additions stay within the v1 line, while an intentionally breaking public API requires a new major version and the corresponding Go module-path decision. The production parser is Marksplice's native CommonMark/GFM implementation; ordinary users do not need parser internals to use the public API.
 
 ## License
 
