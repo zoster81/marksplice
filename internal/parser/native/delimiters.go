@@ -181,7 +181,11 @@ func activeBacktickBarriers(barriers []backtickRun, exclusions [][]parser.Range)
 }
 
 func collectDelimiterRuns(source []byte, block inlineBlock, exclusions [][]parser.Range) []delimiterRun {
-	runs := make([]delimiterRun, 0)
+	return collectDelimiterRunsUsing(source, block, exclusions, make([]delimiterRun, 0))
+}
+
+func collectDelimiterRunsUsing(source []byte, block inlineBlock, exclusions [][]parser.Range, runs []delimiterRun) []delimiterRun {
+	runs = runs[:0]
 	for segmentIndex, segment := range block.segments {
 		segmentExclusions := inlineExclusionsAt(exclusions, segmentIndex)
 		excludedIndex := 0

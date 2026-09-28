@@ -2,6 +2,7 @@ package native
 
 import (
 	"bytes"
+	"maps"
 	"math/rand/v2"
 	"slices"
 	"testing"
@@ -27,6 +28,14 @@ func TestDelimiterTopologyResetMatchesFreshCandidates(t *testing.T) {
 		{source: "*a*"}, // Prepared successfully, but the claimed topology does not match.
 		{source: "*a*", owners: []parser.Range{{Start: 0, End: 20}}},
 		{source: "*a*", expected: []DelimiterTopologyPair{{'?', parser.Range{Start: 0, End: 1}, parser.Range{Start: 2, End: 3}}}},
+		{source: "*a*", expected: []DelimiterTopologyPair{
+			{'*', parser.Range{Start: 0, End: 1}, parser.Range{Start: 2, End: 3}},
+			{'*', parser.Range{Start: 0, End: 1}, parser.Range{Start: 2, End: 3}},
+		}}, // Duplicate expected pairs retain their exact multiplicity.
+		{source: "*a*", expected: []DelimiterTopologyPair{
+			{'*', parser.Range{Start: 0, End: 1}, parser.Range{Start: 2, End: 3}},
+			{'_', parser.Range{Start: 0, End: 0}, parser.Range{Start: 2, End: 3}},
+		}}, // Invalid after a valid entry partially populated the map.
 	}
 	random := rand.New(rand.NewPCG(41, 97))
 	var reused DelimiterTopologyCandidate
@@ -37,6 +46,9 @@ func TestDelimiterTopologyResetMatchesFreshCandidates(t *testing.T) {
 		fresh, wantOK := PrepareDelimiterTopologyCandidate(source, owners, expected)
 		if gotOK := reused.Reset(source, owners, expected); gotOK != wantOK {
 			t.Fatalf("reset validity differs for %q", source)
+		}
+		if !slices.Equal(reused.runs, fresh.runs) || !maps.Equal(reused.want, fresh.want) {
+			t.Fatalf("reset retained stale scan or expected pairs for %q", source)
 		}
 		if !wantOK {
 			continue

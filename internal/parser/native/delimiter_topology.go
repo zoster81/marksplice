@@ -61,11 +61,11 @@ func PrepareDelimiterTopologyCandidate(source []byte, owners []parser.Range, exp
 	return candidate, ok
 }
 
-// Reset prepares another candidate while retaining only resolver scratch.
+// Reset prepares another candidate while reusing scan, index and resolver storage.
 // Borrowed inputs must remain unchanged until the next Reset. Proof methods
 // may be called only after a successful reset, serially within one operation.
 func (c *DelimiterTopologyCandidate) Reset(source []byte, owners []parser.Range, expected []DelimiterTopologyPair) bool {
-	runs, want, ok := delimiterTopologyLeadingRunPreparation(source, owners, expected)
+	runs, want, ok := delimiterTopologyLeadingRunPreparationUsing(source, owners, expected, c.runs, c.want)
 	c.source, c.expected, c.runs, c.want = source, expected, runs, want
 	return ok
 }
@@ -501,16 +501,29 @@ func delimiterTopologyLeadingRunPreparation(
 	owners []parser.Range,
 	expected []DelimiterTopologyPair,
 ) ([]delimiterRun, map[delimiterTopologyKey]int, bool) {
+	return delimiterTopologyLeadingRunPreparationUsing(source, owners, expected, nil, nil)
+}
+
+func delimiterTopologyLeadingRunPreparationUsing(
+	source []byte,
+	owners []parser.Range,
+	expected []DelimiterTopologyPair,
+	runs []delimiterRun,
+	want map[delimiterTopologyKey]int,
+) ([]delimiterRun, map[delimiterTopologyKey]int, bool) {
 	exclusions, ok := delimiterTopologyExclusions(source, owners)
 	if !ok {
 		return nil, nil, false
 	}
-	want, ok := delimiterTopologyExpected(source, expected)
+	want, ok = delimiterTopologyExpectedUsing(source, expected, want)
 	if !ok {
 		return nil, nil, false
 	}
+	if runs == nil {
+		runs = make([]delimiterRun, 0)
+	}
 	block := inlineBlock{segments: []parser.Range{{Start: 0, End: len(source)}}}
-	return collectDelimiterRuns(source, block, [][]parser.Range{exclusions}), want, true
+	return collectDelimiterRunsUsing(source, block, [][]parser.Range{exclusions}, runs), want, true
 }
 
 func delimiterTopologyPreservedWithPreparedLeadingRun(
@@ -572,7 +585,19 @@ func delimiterTopologyExpected(
 	source []byte,
 	expected []DelimiterTopologyPair,
 ) (map[delimiterTopologyKey]int, bool) {
-	result := make(map[delimiterTopologyKey]int, len(expected))
+	return delimiterTopologyExpectedUsing(source, expected, nil)
+}
+
+func delimiterTopologyExpectedUsing(
+	source []byte,
+	expected []DelimiterTopologyPair,
+	result map[delimiterTopologyKey]int,
+) (map[delimiterTopologyKey]int, bool) {
+	if result == nil {
+		result = make(map[delimiterTopologyKey]int, len(expected))
+	} else {
+		clear(result)
+	}
 	for _, pair := range expected {
 		if pair.Marker != '*' && pair.Marker != '_' && pair.Marker != '~' {
 			return nil, false
