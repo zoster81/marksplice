@@ -79,7 +79,13 @@ func MapLinkRelationships[T any](d *Document, convert func(LinkRelationship) (T,
 	if len(d.linkUsages) == 0 {
 		return []T{}, true
 	}
-	sourceNodes := d.linkUsageSourceNodes()
+	sourceNodeCount := d.linkUsageSourceNodeCount()
+	var sourceNodes map[linkUsageNodeKey]NodeID
+	if sourceNodeCount != 0 {
+		// Allocate outside the usage loop so small scratch maps can stay on the stack.
+		sourceNodes = make(map[linkUsageNodeKey]NodeID, sourceNodeCount)
+		d.indexLinkUsageSourceNodes(sourceNodes)
+	}
 	var definitionOwners map[referenceDefinitionKey]referenceDefinitionOwner
 	var fragments fragmentCatalog
 	result := make([]T, 0, len(d.linkUsages))
@@ -108,15 +114,28 @@ type linkUsageNodeKey struct {
 	anchor int
 }
 
-func (d *Document) linkUsageSourceNodes() map[linkUsageNodeKey]NodeID {
-	result := make(map[linkUsageNodeKey]NodeID)
-	for _, node := range d.nodes {
-		if !node.Editable || (node.Kind != KindInlineLink && node.Kind != KindImage && node.Kind != KindAutoLink) {
+func (d *Document) linkUsageSourceNodeCount() int {
+	count := 0
+	for index := range d.nodes {
+		if isLinkUsageSourceNode(&d.nodes[index]) {
+			count++
+		}
+	}
+	return count
+}
+
+func (d *Document) indexLinkUsageSourceNodes(result map[linkUsageNodeKey]NodeID) {
+	for index := range d.nodes {
+		node := &d.nodes[index]
+		if !isLinkUsageSourceNode(node) {
 			continue
 		}
 		result[linkUsageNodeKey{kind: node.Kind, anchor: node.Anchor}] = node.ID
 	}
-	return result
+}
+
+func isLinkUsageSourceNode(node *Node) bool {
+	return node.Editable && (node.Kind == KindInlineLink || node.Kind == KindImage || node.Kind == KindAutoLink)
 }
 
 type referenceDefinitionKey struct {
