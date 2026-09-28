@@ -1,6 +1,7 @@
 package native
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/zoster81/marksplice/internal/parser"
@@ -51,7 +52,19 @@ type DelimiterTopologyCandidate struct {
 	expected []DelimiterTopologyPair
 	runs     []delimiterRun
 	want     map[delimiterTopologyKey]int
-	resolver delimiterResolver
+	resolver delimiterTopologyResolver
+}
+
+// delimiterTopologyResolver keeps synthetic boundary probes separate from the
+// candidate's original runs. A proof batch consumes this storage serially.
+type delimiterTopologyResolver struct {
+	delimiterResolver
+	probe []delimiterRun
+}
+
+func (r *delimiterTopologyResolver) probeRuns(count int) []delimiterRun {
+	r.probe = slices.Grow(r.probe[:0], count)[:count]
+	return r.probe
 }
 
 // PrepareDelimiterTopologyCandidate scans once with Native owner exclusions.
@@ -357,7 +370,7 @@ func DelimiterTopologyIncomingOpenerMask(
 	if !ok {
 		return 0, false
 	}
-	var resolver delimiterResolver
+	var resolver delimiterTopologyResolver
 	return delimiterTopologyIncomingOpenerMaskPrepared(source, runs, want, len(expected), &resolver)
 }
 
@@ -366,7 +379,7 @@ func delimiterTopologyIncomingOpenerMaskPrepared(
 	runs []delimiterRun,
 	want map[delimiterTopologyKey]int,
 	expectedCount int,
-	resolver *delimiterResolver,
+	resolver *delimiterTopologyResolver,
 ) (uint8, bool) {
 	if len(runs) == 0 {
 		return 0, expectedCount == 0
@@ -376,7 +389,7 @@ func delimiterTopologyIncomingOpenerMaskPrepared(
 		source, first.start, first.end, len(source),
 	)
 
-	probe := make([]delimiterRun, len(runs))
+	probe := resolver.probeRuns(len(runs))
 	var mask uint8
 	var bit uint8
 	for width := 1; width <= 2; width++ {
@@ -456,7 +469,7 @@ func DelimiterTopologyLeadingRunForbiddenMasks(
 	if !ok {
 		return 0, 0, false
 	}
-	var resolver delimiterResolver
+	var resolver delimiterTopologyResolver
 	star, underscore, _ = delimiterTopologyLeadingRunForbiddenMasksPrepared(
 		runs, want, len(expected), false, &resolver,
 	)
@@ -468,9 +481,9 @@ func delimiterTopologyLeadingRunForbiddenMasksPrepared(
 	want map[delimiterTopologyKey]int,
 	expectedCount int,
 	withTilde bool,
-	resolver *delimiterResolver,
+	resolver *delimiterTopologyResolver,
 ) (star, underscore, tilde uint8) {
-	probe := make([]delimiterRun, 0, len(runs)+1)
+	probe := resolver.probeRuns(len(runs) + 1)[:0]
 	for category := 0; category < 6; category++ {
 		width := category % 3
 		if width == 0 {
@@ -534,9 +547,9 @@ func delimiterTopologyPreservedWithPreparedLeadingRun(
 	width int,
 	canClose bool,
 ) bool {
-	var resolver delimiterResolver
+	var resolver delimiterTopologyResolver
 	return delimiterTopologyPreservedWithPreparedLeadingRunUsing(
-		make([]delimiterRun, 0, len(runs)+1),
+		resolver.probeRuns(len(runs) + 1)[:0],
 		runs, want, expectedCount, marker, width, canClose, &resolver,
 	)
 }
@@ -549,7 +562,7 @@ func delimiterTopologyPreservedWithPreparedLeadingRunUsing(
 	marker byte,
 	width int,
 	canClose bool,
-	resolver *delimiterResolver,
+	resolver *delimiterTopologyResolver,
 ) bool {
 	delta := width + 1
 	probe = probe[:0]

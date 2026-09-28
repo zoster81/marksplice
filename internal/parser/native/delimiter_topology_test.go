@@ -277,7 +277,7 @@ func TestDelimiterTopologyPreparedProbeScratchReuseIsEquivalent(t *testing.T) {
 	}
 	original := append([]delimiterRun(nil), runs...)
 	scratch := make([]delimiterRun, 0, len(runs)+1)
-	var resolver delimiterResolver
+	var resolver delimiterTopologyResolver
 
 	for repeat := 0; repeat < 3; repeat++ {
 		incoming, ok := delimiterTopologyIncomingOpenerMaskPrepared(source, runs, want, len(expected), &resolver)
