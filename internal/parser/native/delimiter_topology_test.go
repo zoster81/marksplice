@@ -53,6 +53,19 @@ func TestDelimiterTopologyResetMatchesFreshCandidates(t *testing.T) {
 		if !wantOK {
 			continue
 		}
+		fullMatches := processDelimiters(reused.runs)
+		directMatches := reused.resolver.resolve(reused.runs)
+		if len(fullMatches) != len(directMatches) {
+			t.Fatalf("direct resolution count differs for %q", source)
+		}
+		for index, full := range fullMatches {
+			direct := directMatches[index]
+			if full.marker != direct.Marker ||
+				full.openingConsumed != direct.OpeningConsumed ||
+				full.closingConsumed != direct.ClosingConsumed {
+				t.Fatalf("direct delimiter consumption differs for %q at %d", source, index)
+			}
+		}
 		if reused.Matches() != fresh.Matches() {
 			t.Fatalf("reused matching differs for %q", source)
 		}

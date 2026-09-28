@@ -304,9 +304,16 @@ func processDelimiters(runs []delimiterRun) []delimiterMatch {
 // from resolve must be consumed before the next call. resolveOwned detaches the
 // returned matches so separate inline analyses can share only temporary scratch.
 type delimiterResolver struct {
+	sharedDelimiterResolver
+	matches []delimiterMatch
+}
+
+// sharedDelimiterResolver adapts Native scans to the CommonMark resolver.
+// Topology proofs consume these matches directly; semantic parsing enriches
+// them with source ownership in delimiterResolver. Results are temporary.
+type sharedDelimiterResolver struct {
 	sharedRuns []parser.DelimiterRun
 	shared     parser.DelimiterRunResolver
-	matches    []delimiterMatch
 }
 
 func (r *delimiterResolver) resolveOwned(runs []delimiterRun) []delimiterMatch {
@@ -315,7 +322,7 @@ func (r *delimiterResolver) resolveOwned(runs []delimiterRun) []delimiterMatch {
 	return matches
 }
 
-func (r *delimiterResolver) resolve(runs []delimiterRun) []delimiterMatch {
+func (r *sharedDelimiterResolver) resolve(runs []delimiterRun) []parser.DelimiterRunMatch {
 	r.sharedRuns = slices.Grow(r.sharedRuns[:0], len(runs))[:len(runs)]
 	sharedRuns := r.sharedRuns
 	for index, run := range runs {
@@ -327,7 +334,11 @@ func (r *delimiterResolver) resolve(runs []delimiterRun) []delimiterMatch {
 			CanClose: run.canClose,
 		}
 	}
-	resolved := r.shared.Resolve(sharedRuns)
+	return r.shared.Resolve(sharedRuns)
+}
+
+func (r *delimiterResolver) resolve(runs []delimiterRun) []delimiterMatch {
+	resolved := r.sharedDelimiterResolver.resolve(runs)
 	matches := slices.Grow(r.matches[:0], len(resolved))
 	if matches == nil {
 		matches = []delimiterMatch{}

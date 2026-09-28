@@ -58,7 +58,7 @@ type DelimiterTopologyCandidate struct {
 // delimiterTopologyResolver keeps synthetic boundary probes separate from the
 // candidate's original runs. A proof batch consumes this storage serially.
 type delimiterTopologyResolver struct {
-	delimiterResolver
+	sharedDelimiterResolver
 	probe []delimiterRun
 }
 
@@ -224,7 +224,8 @@ func DelimiterTopologyMatchesInContext(
 	block := inlineBlock{segments: []parser.Range{{Start: 0, End: len(combined)}}}
 	runs := collectDelimiterRuns(combined, block, [][]parser.Range{exclusions})
 	sourceRange := parser.Range{Start: offset, End: offset + len(source)}
-	return delimiterTopologyContextMatches(processDelimiters(runs), want, sourceRange)
+	var resolver sharedDelimiterResolver
+	return delimiterTopologyContextMatches(resolver.resolve(runs), want, sourceRange)
 }
 
 func delimiterTopologyShiftOwners(
@@ -257,23 +258,23 @@ func delimiterTopologyShiftExpected(
 }
 
 func delimiterTopologyContextMatches(
-	matches []delimiterMatch,
+	matches []parser.DelimiterRunMatch,
 	want map[delimiterTopologyKey]int,
 	sourceRange parser.Range,
 ) bool {
 	got := make(map[delimiterTopologyKey]int, len(want))
 	for _, match := range matches {
 		key := delimiterTopologyKey{
-			marker:  match.marker,
-			opening: match.openingConsumed,
-			closing: match.closingConsumed,
+			marker:  match.Marker,
+			opening: match.OpeningConsumed,
+			closing: match.ClosingConsumed,
 		}
 		if want[key] != 0 {
 			got[key]++
 			continue
 		}
-		if delimiterTopologyRangesOverlap(match.openingConsumed, sourceRange) ||
-			delimiterTopologyRangesOverlap(match.closingConsumed, sourceRange) {
+		if delimiterTopologyRangesOverlap(match.OpeningConsumed, sourceRange) ||
+			delimiterTopologyRangesOverlap(match.ClosingConsumed, sourceRange) {
 			return false
 		}
 	}
@@ -425,7 +426,7 @@ func delimiterTopologyIncomingBoundaryClass(class int) (whitespace, punctuation 
 }
 
 func delimiterTopologyMatchesExpected(
-	matches []delimiterMatch,
+	matches []parser.DelimiterRunMatch,
 	want map[delimiterTopologyKey]int,
 	expectedCount int,
 	coordinateOffset int,
@@ -436,14 +437,14 @@ func delimiterTopologyMatchesExpected(
 	got := make(map[delimiterTopologyKey]int, len(matches))
 	for _, match := range matches {
 		got[delimiterTopologyKey{
-			marker: match.marker,
+			marker: match.Marker,
 			opening: parser.Range{
-				Start: match.openingConsumed.Start - coordinateOffset,
-				End:   match.openingConsumed.End - coordinateOffset,
+				Start: match.OpeningConsumed.Start - coordinateOffset,
+				End:   match.OpeningConsumed.End - coordinateOffset,
 			},
 			closing: parser.Range{
-				Start: match.closingConsumed.Start - coordinateOffset,
-				End:   match.closingConsumed.End - coordinateOffset,
+				Start: match.ClosingConsumed.Start - coordinateOffset,
+				End:   match.ClosingConsumed.End - coordinateOffset,
 			},
 		}]++
 	}
