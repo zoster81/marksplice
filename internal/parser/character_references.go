@@ -60,7 +60,7 @@ func decodeCommonMarkNumericReference(raw string) (string, bool) {
 			return "", false
 		}
 	}
-	value, err := strconv.ParseUint(digits, base, 32)
+	value, err := strconv.ParseInt(digits, base, 32)
 	if err != nil {
 		return "", false
 	}
